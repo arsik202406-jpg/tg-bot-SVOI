@@ -1,0 +1,8 @@
+{
+  "name": "Remix SVOI Travel - Telegram Bot \u0026 Management Studio",
+  "description": "Готовый к продакшену Telegram-бот на aiogram 3.x для туристического клуба SVOI Travel с интерактивным симулятором, модульным кодом и панелью заявок.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
