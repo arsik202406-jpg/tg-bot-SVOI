@@ -1,6 +1,10 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from bot_code.data.trips import TRIPS_CATALOG
-from bot_code.config import settings
+try:
+    from bot_code.data.trips import TRIPS_CATALOG
+    from bot_code.config import settings
+except ModuleNotFoundError:
+    from data.trips import TRIPS_CATALOG
+    from config import settings
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     """

@@ -4,9 +4,14 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
-from bot_code.states.states import FeedbackState
-from bot_code.keyboards.inline import get_cancel_feedback_keyboard, get_back_keyboard
-from bot_code.config import settings
+try:
+    from bot_code.states.states import FeedbackState
+    from bot_code.keyboards.inline import get_cancel_feedback_keyboard, get_back_keyboard
+    from bot_code.config import settings
+except ModuleNotFoundError:
+    from states.states import FeedbackState
+    from keyboards.inline import get_cancel_feedback_keyboard, get_back_keyboard
+    from config import settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="feedback_router")

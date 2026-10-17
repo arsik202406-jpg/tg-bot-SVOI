@@ -4,13 +4,22 @@ from aiogram.types import CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 
-from bot_code.data.trips import TRIPS_CATALOG
-from bot_code.keyboards.inline import (
-    get_trips_keyboard,
-    get_trip_detail_keyboard,
-    get_seats_keyboard
-)
-from bot_code.states.states import BookingState
+try:
+    from bot_code.data.trips import TRIPS_CATALOG
+    from bot_code.keyboards.inline import (
+        get_trips_keyboard,
+        get_trip_detail_keyboard,
+        get_seats_keyboard
+    )
+    from bot_code.states.states import BookingState
+except ModuleNotFoundError:
+    from data.trips import TRIPS_CATALOG
+    from keyboards.inline import (
+        get_trips_keyboard,
+        get_trip_detail_keyboard,
+        get_seats_keyboard
+    )
+    from states.states import BookingState
 
 logger = logging.getLogger(__name__)
 router = Router(name="trips_router")

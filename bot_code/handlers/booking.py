@@ -6,9 +6,14 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
-from bot_code.states.states import BookingState
-from bot_code.data.trips import TRIPS_CATALOG
-from bot_code.config import settings
+try:
+    from bot_code.states.states import BookingState
+    from bot_code.data.trips import TRIPS_CATALOG
+    from bot_code.config import settings
+except ModuleNotFoundError:
+    from states.states import BookingState
+    from data.trips import TRIPS_CATALOG
+    from config import settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="booking_router")

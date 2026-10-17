@@ -4,8 +4,12 @@ from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
-from bot_code.keyboards.inline import get_games_keyboard, get_back_keyboard
-from bot_code.config import settings
+try:
+    from bot_code.keyboards.inline import get_games_keyboard, get_back_keyboard
+    from bot_code.config import settings
+except ModuleNotFoundError:
+    from keyboards.inline import get_games_keyboard, get_back_keyboard
+    from config import settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="games_router")

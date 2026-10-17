@@ -8,15 +8,29 @@ export const BOT_CODE_FILES: PythonCodeFile[] = [
     description: 'Главная точка входа. Инициализирует Bot, Dispatcher, подключает роутеры и запускает Polling.',
     content: `import asyncio
 import logging
+import os
 import sys
+from pathlib import Path
 
+# Гарантируем, что папка бота и родительская папка добавлены в sys.path
+CURRENT_DIR = Path(__file__).resolve().parent
+PARENT_DIR = CURRENT_DIR.parent
+for p in [str(CURRENT_DIR), str(PARENT_DIR)]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import settings
-from handlers import menu, trips, feedback, booking, faq, games
+try:
+    from bot_code.config import settings
+    from bot_code.handlers import menu, trips, feedback, booking, faq, games
+except ModuleNotFoundError:
+    from config import settings
+    from handlers import menu, trips, feedback, booking, faq, games
 
 # Настройка логирования
 logging.basicConfig(
@@ -26,19 +40,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger("svoi_travel_bot")
 
+async def start_health_server():
+    """Запуск легкого HTTP-сервера для совместимости с Render Web Service (Health Check)"""
+    try:
+        port = int(os.environ.get("PORT", 10000))
+        app = web.Application()
+
+        async def health_check(_request):
+            return web.Response(text="SVOI Travel Bot is active and running! 🌍", status=200)
+
+        app.router.add_get("/", health_check)
+        app.router.add_get("/health", health_check)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        logger.info("🌐 Health Check сервер запущен на порту %d", port)
+    except Exception as e:
+        logger.warning("Health Check сервер: %s", e)
+
 async def main():
     logger.info("🚀 Запуск Telegram-бота SVOI Travel (@%s)...", settings.BOT_USERNAME)
 
-    # Инициализация бота с HTML парсером по умолчанию
     bot = Bot(
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
-
-    # Инициализация диспетчера с хранилищем FSM в памяти
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Подключение роутеров
     dp.include_router(menu.router)
     dp.include_router(trips.router)
     dp.include_router(feedback.router)
@@ -47,12 +77,11 @@ async def main():
     dp.include_router(games.router)
 
     try:
-        # Сброс висящих апдейтов
         await bot.delete_webhook(drop_pending_updates=True)
         bot_info = await bot.get_me()
         logger.info("✅ Успешное подключение: %s (@%s)", bot_info.first_name, bot_info.username)
         
-        # Запуск long polling
+        await start_health_server()
         await dp.start_polling(bot)
     except Exception as e:
         logger.critical("❌ Ошибка при запуске: %s", e, exc_info=True)
@@ -77,8 +106,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 class Settings(BaseSettings):
-    BOT_TOKEN: str = Field(default="8969834514:AAGjza7gfBInTsGhnR4jVWvHQR0Hcx2Mnd4")
-    ADMIN_ID: int = Field(default=0, description="Telegram ID админа для заявок и фидбека")
+    BOT_TOKEN: str = Field(default="8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM")
+    ADMIN_ID: int = Field(default=8450153980, description="Telegram ID админа для заявок и фидбека")
     MANAGER_USERNAME: str = Field(default="SVOI_travel_admin")
     BOT_USERNAME: str = Field(default="Svoi_TravelEU_bot")
     CHANNEL_URL: str = Field(default="https://t.me/+Flt_2r6vi3U4ZDg6")

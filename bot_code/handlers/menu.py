@@ -4,14 +4,24 @@ from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 
-from bot_code.keyboards.inline import (
-    get_main_menu_keyboard,
-    get_back_keyboard,
-    get_seats_keyboard,
-    get_faq_keyboard,
-    get_games_keyboard
-)
-from bot_code.config import settings
+try:
+    from bot_code.keyboards.inline import (
+        get_main_menu_keyboard,
+        get_back_keyboard,
+        get_seats_keyboard,
+        get_faq_keyboard,
+        get_games_keyboard
+    )
+    from bot_code.config import settings
+except ModuleNotFoundError:
+    from keyboards.inline import (
+        get_main_menu_keyboard,
+        get_back_keyboard,
+        get_seats_keyboard,
+        get_faq_keyboard,
+        get_games_keyboard
+    )
+    from config import settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="menu_router")

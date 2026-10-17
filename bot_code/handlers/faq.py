@@ -3,7 +3,10 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
-from bot_code.keyboards.inline import get_faq_keyboard, get_back_keyboard
+try:
+    from bot_code.keyboards.inline import get_faq_keyboard, get_back_keyboard
+except ModuleNotFoundError:
+    from keyboards.inline import get_faq_keyboard, get_back_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router(name="faq_router")

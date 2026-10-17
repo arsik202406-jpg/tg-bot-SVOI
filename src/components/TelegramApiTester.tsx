@@ -9,7 +9,7 @@ interface TelegramApiTesterProps {
 }
 
 export const TelegramApiTester: React.FC<TelegramApiTesterProps> = ({
-  initialToken = '8969834514:AAGjza7gfBInTsGhnR4jVWvHQR0Hcx2Mnd4'
+  initialToken = '8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM'
 }) => {
   const [token, setToken] = useState(initialToken);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -17,7 +17,7 @@ export const TelegramApiTester: React.FC<TelegramApiTesterProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Test message states
-  const [testChatId, setTestChatId] = useState('');
+  const [testChatId, setTestChatId] = useState('8450153980');
   const [testText, setTestText] = useState('🔔 Тестовое сообщение от бота SVOI Travel (@Svoi_TravelEU_bot)!');
   const [isSending, setIsSending] = useState(false);
   const [sendResult, setSendResult] = useState<any>(null);

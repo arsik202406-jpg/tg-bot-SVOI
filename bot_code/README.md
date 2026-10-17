@@ -76,8 +76,8 @@ pip install -r requirements.txt
 
 3. **Настройте переменные в файле `.env`:**
 ```ini
-BOT_TOKEN=8969834514:AAGjza7gfBInTsGhnR4jVWvHQR0Hcx2Mnd4
-ADMIN_ID=ВАШ_ЦИФРОВОЙ_TELEGRAM_ID
+BOT_TOKEN=8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM
+ADMIN_ID=8450153980
 MANAGER_USERNAME=SVOI_travel_admin
 BOT_USERNAME=Svoi_TravelEU_bot
 CHANNEL_URL=https://t.me/+Flt_2r6vi3U4ZDg6

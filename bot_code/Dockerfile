@@ -4,11 +4,12 @@ WORKDIR /app
 
 # Отключение буферизации вывода Python для мгновенного появления логов
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "-m", "bot_code.bot"]
+CMD ["python", "bot.py"]
