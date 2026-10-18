@@ -61,16 +61,13 @@ async def main():
         logger.critical("❌ Ошибка: BOT_TOKEN не задан! Укажите его в переменных окружения.")
         return
 
-    # Инициализация бота с поддержкой HTML форматирования по умолчанию
-    bot = Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
+    # Запускаємо HTTP сервер здоров'я для сумісності з Render Web Service ОДРАЗУ
+    await start_health_server()
 
-    # Инициализация диспетчера с хранилищем FSM состояний в оперативной памяти
+    # Ініціалізація диспетчера з пам'яттю станів FSM
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Подключение модульных роутеров
+    # Підключення модульних роутерів
     dp.include_router(menu.router)
     dp.include_router(trips.router)
     dp.include_router(feedback.router)
@@ -80,24 +77,40 @@ async def main():
     dp.include_router(channel.router)
 
     try:
-        # Удаляем старые вебхуки и накопившиеся апдейты
-        await bot.delete_webhook(drop_pending_updates=True)
+        token = settings.BOT_TOKEN.strip() if settings.BOT_TOKEN else ""
+        if not token:
+            logger.critical("❌ Помилка: BOT_TOKEN порожній! Перевірте налаштування в Render Environment Variables.")
+            return
+
+        bot = Bot(
+            token=token,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+        )
+
+        # Очищуємо старі вебхуки та чергу оновлень перед запуском
+        try:
+            await bot.delete_webhook(drop_pending_updates=True)
+        except Exception as e:
+            logger.warning("Попередження при видаленні вебхука: %s", e)
         
-        # Получаем информацию о боте для проверки авторизации
+        # Отримуємо інформацію про бота для перевірки авторизації
         bot_info = await bot.get_me()
         logger.info("✅ Успішне підключення до Telegram API: %s (@%s)", bot_info.first_name, bot_info.username)
-        logger.info("📡 Бот очікує на вхідні повідомлення та натискання кнопок...")
-        
-        # Запускаємо HTTP сервер здоров'я для сумісності з Render Web Service
-        await start_health_server()
+        logger.info("📡 Бот очікує на вхідні повідомлення та команди у Telegram...")
 
         # Запуск long polling
         await dp.start_polling(bot)
     except Exception as e:
         logger.critical("❌ Критична помилка під час роботи бота: %s", e, exc_info=True)
+        # Якщо сталася помилка конфлікту або авторизації, виводимо зрозумілу підказку
+        if "Conflict" in str(e):
+            logger.critical("⚠️ УВАГА! Інший екземпляр бота вже запущений з цим токеном (на комп'ютері або на іншому сервері). Зупиніть попередній запуск!")
+        elif "Unauthorized" in str(e):
+            logger.critical("⚠️ УВАГА! Токен бота недійсний. Перевірте BOT_TOKEN у BotFather!")
     finally:
         logger.info("🛑 Зупинка бота та закриття сесії...")
-        await bot.session.close()
+        if 'bot' in locals():
+            await bot.session.close()
 
 if __name__ == "__main__":
     try:

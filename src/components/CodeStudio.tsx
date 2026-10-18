@@ -407,27 +407,59 @@ python bot.py
             </div>
           </div>
 
+          {/* Troubleshooting Alert Card */}
+          <div className="p-4 bg-rose-950/40 border border-rose-500/40 rounded-xl space-y-3">
+            <div className="flex items-center gap-2.5 text-rose-300 font-bold text-sm">
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+              <span>🚨 Чому бот не відповідав після оновлення на Render / GitHub? (3 головні причини)</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                <p className="font-semibold text-rose-200">1. Відсутній модуль або файл</p>
+                <p className="text-slate-400 leading-relaxed">
+                  У минулому архіві був відсутній <code>data/trips.py</code>, через що бот завершувався з помилкою <i>ModuleNotFoundError</i> або <i>ImportError</i>. Тепер усі 19 файлів повністю синхронізовані в новому ZIP!
+                </p>
+              </div>
+              <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                <p className="font-semibold text-amber-200">2. Root Directory на Render</p>
+                <p className="text-slate-400 leading-relaxed">
+                  Якщо на GitHub файли бота лежать у папці <code>bot_code</code>, у Render вкажіть <b>Root Directory: <code>bot_code</code></b>. Тепер ми також додали <code>main.py</code> та <code>requirements.txt</code> у корінь, тож запускатиметься звідусіль.
+                </p>
+              </div>
+              <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                <p className="font-semibold text-blue-200">3. Конфлікт сесій (Conflict)</p>
+                <p className="text-slate-400 leading-relaxed">
+                  Якщо бот був запущений на комп'ютері або в іншій вкладці, Telegram блокує другий запуск (<i>TelegramConflictError</i>). Переконайтеся, що запущений лише один екземпляр!
+                </p>
+              </div>
+            </div>
+            <div className="bg-black/50 p-2.5 rounded-lg text-xs font-mono text-emerald-400 flex items-center justify-between">
+              <span>👉 Швидке вирішення: Завантажте свіжий ZIP-архів (кнопка вгорі) та залийте в GitHub.</span>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Option A: Render.com */}
+            {/* Option A: Render.com Web Service & Background Worker */}
             <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
               <div className="flex items-center gap-2 text-sm font-bold text-blue-300">
                 <Terminal className="w-4 h-4" />
-                Спосіб 1: Render.com (Background Worker)
+                Спосіб 1: Render.com (Web Service або Worker)
               </div>
               <p className="text-xs text-slate-400">
-                Швидкий та зручний запуск із GitHub з автоматичним рестартом 24/7.
+                Працює як безкоштовний <b>Web Service</b> (із вбудованим health check портом 10000) або <b>Background Worker</b>:
               </p>
 
               <div className="bg-black/60 p-3 rounded-lg font-mono text-xs text-emerald-300 space-y-2 overflow-x-auto">
-                <p># Налаштування сервісу на Render:</p>
-                <p className="text-slate-300">Type: Background Worker</p>
-                <p className="text-slate-300">Runtime: Python 3</p>
-                <p className="text-slate-300">Build Command: pip install -r requirements.txt</p>
-                <p className="text-slate-300">Start Command: python bot.py</p>
+                <p># Налаштування сервісу на Render (Settings):</p>
+                <p className="text-slate-300"><span className="text-slate-500">Root Directory:</span> bot_code <span className="text-slate-500">(або залиште порожнім)</span></p>
+                <p className="text-slate-300"><span className="text-slate-500">Runtime:</span> Python 3</p>
+                <p className="text-slate-300"><span className="text-slate-500">Build Command:</span> pip install -r requirements.txt</p>
+                <p className="text-slate-300"><span className="text-slate-500">Start Command:</span> python main.py</p>
                 <p className="mt-2 text-slate-400"># Environment Variables (Змінні оточення):</p>
                 <p className="text-slate-300">BOT_TOKEN = 8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM</p>
                 <p className="text-slate-300">ADMIN_ID = 8450153980</p>
                 <p className="text-slate-300">MANAGER_USERNAME = SVOI_travel_admin</p>
+                <p className="text-slate-300">PORT = 10000</p>
               </div>
             </div>
 

@@ -284,3 +284,6 @@ TRIPS_CATALOG = {
         )
     }
 }
+
+# Список турів для зручної ітерації та публікацій
+TRIPS_DATA = list(TRIPS_CATALOG.values())

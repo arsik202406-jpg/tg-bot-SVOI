@@ -137,13 +137,38 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
   const seatSurcharge = selectedSeat ? selectedSeat.surcharge : 0;
   const totalPrice = basePrice + seatSurcharge;
 
+  // Safe Telegram WebApp HapticFeedback helper
+  const triggerHaptic = (
+    type: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft' | 'success' | 'warning' | 'error' | 'selection' = 'light'
+  ) => {
+    try {
+      if (
+        typeof window !== 'undefined' &&
+        (window as any).Telegram?.WebApp?.HapticFeedback
+      ) {
+        const haptic = (window as any).Telegram.WebApp.HapticFeedback;
+        if (type === 'success' || type === 'warning' || type === 'error') {
+          haptic.notificationOccurred(type);
+        } else if (type === 'selection') {
+          haptic.selectionChanged();
+        } else {
+          haptic.impactOccurred(type);
+        }
+      }
+    } catch {
+      // Gracefully silent in standard browser mode
+    }
+  };
+
   const handleSelectTrip = (trip: TripItem) => {
+    triggerHaptic('medium');
     setSelectedTrip(trip);
     setActiveStep('seats');
   };
 
   const handleSubmitBooking = (e: React.FormEvent) => {
     e.preventDefault();
+    triggerHaptic('heavy');
     setIsSubmitting(true);
 
     const bookingCode = `SVOI-MINI-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -171,9 +196,9 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
     // Try Telegram WebApp API if running inside real Telegram
     try {
-      if ((window as any).Telegram?.WebApp) {
+      if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
         const tg = (window as any).Telegram.WebApp;
-        tg.HapticFeedback?.notificationOccurred('success');
+        triggerHaptic('success');
         tg.sendData(JSON.stringify({
           action: 'book_trip',
           trip: selectedTrip.shortTitle,
@@ -189,6 +214,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     setTimeout(() => {
       setIsSubmitting(false);
       setOrderSuccess(true);
+      triggerHaptic('success');
     }, 600);
   };
 
@@ -230,7 +256,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
         <div className="flex items-center gap-2">
           {/* Starlight toggle */}
           <button
-            onClick={() => setStarlightCeiling(!starlightCeiling)}
+            onClick={() => {
+              triggerHaptic('soft');
+              setStarlightCeiling(!starlightCeiling);
+            }}
             className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5 ${
               starlightCeiling 
                 ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.3)]' 
@@ -244,7 +273,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
           {onClose && (
             <button
-              onClick={onClose}
+              onClick={() => {
+                triggerHaptic('light');
+                onClose();
+              }}
               className="w-8 h-8 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all"
             >
               <X className="w-4 h-4" />
@@ -257,7 +289,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       <div className="relative z-10 bg-slate-900/60 backdrop-blur-md px-4 py-2 border-b border-slate-800/80 flex items-center justify-between text-xs">
         <div className="flex items-center gap-1.5 w-full">
           <button
-            onClick={() => setActiveStep('tours')}
+            onClick={() => {
+              triggerHaptic('selection');
+              setActiveStep('tours');
+            }}
             className={`flex-1 py-1.5 px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 ${
               activeStep === 'tours'
                 ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30 border border-cyan-400/40'
@@ -269,7 +304,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveStep('seats')}
+            onClick={() => {
+              triggerHaptic('selection');
+              setActiveStep('seats');
+            }}
             className={`flex-1 py-1.5 px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 ${
               activeStep === 'seats'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400/40'
@@ -281,7 +319,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveStep('checkout')}
+            onClick={() => {
+              triggerHaptic('selection');
+              setActiveStep('checkout');
+            }}
             className={`flex-1 py-1.5 px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 ${
               activeStep === 'checkout'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 border border-emerald-400/40'
@@ -314,7 +355,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               {/* Filter pills */}
               <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800 text-xs">
                 <button
-                  onClick={() => setFilterDuration('all')}
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    setFilterDuration('all');
+                  }}
                   className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
                     filterDuration === 'all' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                   }`}
@@ -322,7 +366,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   Усі (14)
                 </button>
                 <button
-                  onClick={() => setFilterDuration('1day')}
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    setFilterDuration('1day');
+                  }}
                   className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
                     filterDuration === '1day' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                   }`}
@@ -330,7 +377,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   1 день
                 </button>
                 <button
-                  onClick={() => setFilterDuration('multiday')}
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    setFilterDuration('multiday');
+                  }}
                   className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
                     filterDuration === 'multiday' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                   }`}
@@ -451,7 +501,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               </div>
 
               <button
-                onClick={() => setActiveStep('checkout')}
+                onClick={() => {
+                  triggerHaptic('medium');
+                  setActiveStep('checkout');
+                }}
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-2 self-start sm:self-auto"
               >
                 <span>Перейти до замовлення ({totalPrice}€)</span>
@@ -522,7 +575,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                       return (
                         <button
                           key={seat.id}
-                          onClick={() => setSelectedSeat(seat)}
+                          onClick={() => {
+                            triggerHaptic('selection');
+                            setSelectedSeat(seat);
+                          }}
                           className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center text-center group ${
                             isSelected
                               ? 'bg-amber-500/20 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.4)] text-white scale-[1.02]'
@@ -558,7 +614,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                       return (
                         <button
                           key={seat.id}
-                          onClick={() => setSelectedSeat(seat)}
+                          onClick={() => {
+                            triggerHaptic('selection');
+                            setSelectedSeat(seat);
+                          }}
                           className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center text-center group ${
                             isSelected
                               ? 'bg-sky-500/20 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.4)] text-white scale-[1.02]'
@@ -596,7 +655,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                       return (
                         <button
                           key={seat.id}
-                          onClick={() => setSelectedSeat(seat)}
+                          onClick={() => {
+                            triggerHaptic('selection');
+                            setSelectedSeat(seat);
+                          }}
                           className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center text-center group ${
                             isSelected
                               ? 'bg-indigo-500/20 border-indigo-400 shadow-[0_0_15px_rgba(129,140,248,0.4)] text-white scale-[1.02]'
@@ -620,7 +682,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
                 {/* Free seating option */}
                 <button
-                  onClick={() => setSelectedSeat(null)}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setSelectedSeat(null);
+                  }}
                   className={`w-full py-2.5 px-3 rounded-xl border transition-all text-xs flex items-center justify-between ${
                     selectedSeat === null
                       ? 'bg-emerald-950/60 border-emerald-400 text-emerald-200 shadow-[0_0_10px_rgba(52,211,153,0.3)]'
@@ -724,6 +789,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
                   <button
                     onClick={() => {
+                      triggerHaptic('light');
                       setOrderSuccess(false);
                       setActiveStep('tours');
                     }}
@@ -747,7 +813,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveStep('seats')}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setActiveStep('seats');
+                    }}
                     className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
                   >
                     Змінити місце
@@ -873,7 +942,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       <div className="relative z-10 bg-slate-950/90 border-t border-slate-800 px-4 py-2 text-[10px] text-slate-400 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
-          <span>Telegram WebApp SDK Ready</span>
+          <span>Telegram WebApp SDK & Haptic Feedback Active</span>
         </div>
         <span>Opel Vivaro VIP • 8 пасажирських місць</span>
       </div>

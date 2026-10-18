@@ -47,8 +47,12 @@ async def process_cancel_feedback(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Введення скасовано")
     await state.clear()
     
-    from bot_code.handlers.menu import MAIN_MENU_TEXT
-    from bot_code.keyboards.inline import get_main_menu_keyboard
+    try:
+        from bot_code.handlers.menu import MAIN_MENU_TEXT
+        from bot_code.keyboards.inline import get_main_menu_keyboard
+    except ModuleNotFoundError:
+        from handlers.menu import MAIN_MENU_TEXT
+        from keyboards.inline import get_main_menu_keyboard
     
     try:
         if callback.message:

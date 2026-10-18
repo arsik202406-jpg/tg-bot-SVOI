@@ -19,10 +19,14 @@ from aiogram.fsm.state import State, StatesGroup
 
 try:
     from bot_code.config import settings
-    from bot_code.data.trips import TRIPS_DATA
-except ModuleNotFoundError:
-    from config import settings
-    from data.trips import TRIPS_DATA
+    from bot_code.data.trips import TRIPS_CATALOG, TRIPS_DATA
+except (ModuleNotFoundError, ImportError):
+    try:
+        from config import settings
+        from data.trips import TRIPS_CATALOG, TRIPS_DATA
+    except Exception:
+        from data.trips import TRIPS_CATALOG
+        TRIPS_DATA = list(TRIPS_CATALOG.values())
 
 logger = logging.getLogger(__name__)
 router = Router(name="channel_router")
@@ -306,14 +310,16 @@ async def cb_publish_trip_selected(callback: CallbackQuery):
     trip_id = callback.data.replace("cb_publish_trip_", "")
     trip = next((t for t in TRIPS_DATA if t['id'] == trip_id), TRIPS_DATA[0])
 
+    highlights = trip.get('highlights', [])
+    highlights_text = "\n".join([f"• {h}" for h in highlights]) if highlights else "• Відвідування головних панорамних локацій\n• Вільний час для прогулянок та фото\n• Комфортний трансфер без стресу"
+
     post_text = (
-        f"🌟 <b>Ексклюзивний виїзд: {trip['title']}!</b> 🌍✨\n\n"
-        f"💰 <b>Ціна: {trip['price']}€</b> | Тривалість: <b>{trip['duration']}</b>\n"
+        f"🌟 <b>Ексклюзивний виїзд: {trip.get('title', 'Тур Європою')}!</b> 🌍✨\n\n"
+        f"💰 <b>Ціна: {trip.get('price', 100)}€</b> | Тривалість: <b>{trip.get('duration', '1 день')}</b>\n"
         f"🚐 Комфортний трансфер Opel Vivaro (дводіапазонний клімат, відкидні крісла, USB)\n"
         f"📍 Адресний збір: Саарланд, Трір, Люксембург (Door-to-Door)!\n\n"
-        f"<b>У програмі поїздки:</b>\n" +
-        "\n".join([f"• {h}" for h in trip['highlights']]) + "\n\n"
-        f"📝 <i>{trip['description']}</i>\n\n"
+        f"<b>У програмі поїздки:</b>\n"
+        f"{highlights_text}\n\n"
         "👉 Натисніть кнопку нижче, щоб обрати своє місце у салоні або забронювати тур прямо зараз:"
     )
 
@@ -405,3 +411,29 @@ async def cb_post_miniapp(callback: CallbackQuery):
     )
 
     await callback.message.answer(post_text, reply_markup=miniapp_kb)
+
+@router.callback_query(F.data == "cb_open_miniapp")
+async def cb_user_open_miniapp(callback: CallbackQuery):
+    """Обробник натискання користувачем кнопки Mini App у головному меню"""
+    await callback.answer()
+    text = (
+        "🌌 <b>Інтерактивна Mini App «Зоряне небо SVOI Travel»</b> 🚐✨\n\n"
+        "У Mini App ви можете:\n"
+        "• Клікнути на будь-яке крісло в салоні Opel Vivaro (1-й, 2-й або 3-й ряд)\n"
+        "• Побачити, які місця вільні, а які вже заброньовані\n"
+        "• Гортати яскраві картки всіх 14 турів Європою з фотографіями\n"
+        "• Миттєво забронювати вибране крісло прямо через Telegram!\n\n"
+        "👇 <i>Відкрийте Mini App або оберіть тур через текстове меню:</i>"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🚀 Відкрити Mini App (Зоряне небо)", url=f"https://t.me/{settings.BOT_USERNAME}")
+            ],
+            [
+                InlineKeyboardButton(text="💺 Обрати місце через меню", callback_data="cb_trips"),
+                InlineKeyboardButton(text="🔙 Меню", callback_data="cb_back")
+            ]
+        ]
+    )
+    await callback.message.answer(text, reply_markup=kb)

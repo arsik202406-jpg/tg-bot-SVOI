@@ -2,1048 +2,164 @@ import { PythonCodeFile } from '../types';
 
 export const BOT_CODE_FILES: PythonCodeFile[] = [
   {
-    name: 'bot.py',
-    path: 'bot.py',
-    language: 'python',
-    description: 'Головна точка входу. Ініціалізує Bot, Dispatcher, підключає роутери та запускає Polling з підтримкою Health Check для Render.',
-    content: `import asyncio
-import logging
-import os
-import sys
-from pathlib import Path
-
-# Гарантуємо, що папка бота та батьківська папка додані до sys.path
-CURRENT_DIR = Path(__file__).resolve().parent
-PARENT_DIR = CURRENT_DIR.parent
-for p in [str(CURRENT_DIR), str(PARENT_DIR)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-from aiohttp import web
-from aiogram import Bot, Dispatcher
-from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
-from aiogram.fsm.storage.memory import MemoryStorage
-
-try:
-    from bot_code.config import settings
-    from bot_code.handlers import menu, trips, feedback, booking, faq, games, channel
-except ModuleNotFoundError:
-    from config import settings
-    from handlers import menu, trips, feedback, booking, faq, games, channel
-
-# Налаштування логування
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
-logger = logging.getLogger("svoi_travel_bot")
-
-async def start_health_server():
-    """Запуск легкого HTTP-сервера для сумісності з Render Web Service (Health Check)"""
-    try:
-        port = int(os.environ.get("PORT", 10000))
-        app = web.Application()
-
-        async def health_check(_request):
-            return web.Response(text="SVOI Travel Bot is active and running! 🌍", status=200)
-
-        app.router.add_get("/", health_check)
-        app.router.add_get("/health", health_check)
-
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, "0.0.0.0", port)
-        await site.start()
-        logger.info("🌐 Health Check сервер запущено на порту %d", port)
-    except Exception as e:
-        logger.warning("Health Check сервер: %s", e)
-
-async def main():
-    logger.info("🚀 Запуск Telegram-бота SVOI Travel (@%s)...", settings.BOT_USERNAME)
-
-    bot = Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
-    dp = Dispatcher(storage=MemoryStorage())
-
-    dp.include_router(menu.router)
-    dp.include_router(trips.router)
-    dp.include_router(feedback.router)
-    dp.include_router(booking.router)
-    dp.include_router(faq.router)
-    dp.include_router(games.router)
-    dp.include_router(channel.router)
-
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        bot_info = await bot.get_me()
-        logger.info("✅ Успішне підключення: %s (@%s)", bot_info.first_name, bot_info.username)
-        
-        await start_health_server()
-        await dp.start_polling(bot)
-    except Exception as e:
-        logger.critical("❌ Помилка при запуску: %s", e, exc_info=True)
-    finally:
-        logger.info("🛑 Зупинка сесії бота...")
-        await bot.session.close()
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Бот зупинено.")
-`
+    "name": "bot.py",
+    "path": "bot.py",
+    "language": "python",
+    "description": "Головна точка входу. Ініціалізує Bot, Dispatcher, підключає роутери та запускає Polling з підтримкою Health Check для Render.",
+    "content": "import asyncio\nimport logging\nimport os\nimport sys\nfrom pathlib import Path\n\n# Гарантируем, что папка бота и родительская папка добавлены в sys.path\nCURRENT_DIR = Path(__file__).resolve().parent\nPARENT_DIR = CURRENT_DIR.parent\nfor p in [str(CURRENT_DIR), str(PARENT_DIR)]:\n    if p not in sys.path:\n        sys.path.insert(0, p)\n\nfrom aiohttp import web\nfrom aiogram import Bot, Dispatcher\nfrom aiogram.enums import ParseMode\nfrom aiogram.client.default import DefaultBotProperties\nfrom aiogram.fsm.storage.memory import MemoryStorage\n\ntry:\n    from bot_code.config import settings\n    from bot_code.handlers import menu, trips, feedback, booking, faq, games, channel\nexcept ModuleNotFoundError:\n    from config import settings\n    from handlers import menu, trips, feedback, booking, faq, games, channel\n\n# Настройка логирования\nlogging.basicConfig(\n    level=logging.INFO,\n    format=\"%(asctime)s [%(levelname)s] %(name)s: %(message)s\",\n    handlers=[\n        logging.StreamHandler(sys.stdout)\n    ]\n)\nlogger = logging.getLogger(\"svoi_travel_bot\")\n\nasync def start_health_server():\n    \"\"\"Запуск легкого HTTP-сервера для прохождения проверок (Health Check) на Render/Koyeb\"\"\"\n    try:\n        port = int(os.environ.get(\"PORT\", 10000))\n        app = web.Application()\n\n        async def health_check(_request):\n            return web.Response(text=\"SVOI Travel Bot is active and running! 🌍\", status=200)\n\n        app.router.add_get(\"/\", health_check)\n        app.router.add_get(\"/health\", health_check)\n\n        runner = web.AppRunner(app)\n        await runner.setup()\n        site = web.TCPSite(runner, \"0.0.0.0\", port)\n        await site.start()\n        logger.info(\"🌐 Health Check сервер запущен на порту %d\", port)\n    except Exception as e:\n        logger.warning(\"Не удалось запустить Health Check сервер (не критично): %s\", e)\n\nasync def main():\n    logger.info(\"🚀 Запуск Telegram-бота SVOI Travel (@%s)...\", settings.BOT_USERNAME)\n    \n    if not settings.BOT_TOKEN:\n        logger.critical(\"❌ Ошибка: BOT_TOKEN не задан! Укажите его в переменных окружения.\")\n        return\n\n    # Запускаємо HTTP сервер здоров'я для сумісності з Render Web Service ОДРАЗУ\n    await start_health_server()\n\n    # Ініціалізація диспетчера з пам'яттю станів FSM\n    dp = Dispatcher(storage=MemoryStorage())\n\n    # Підключення модульних роутерів\n    dp.include_router(menu.router)\n    dp.include_router(trips.router)\n    dp.include_router(feedback.router)\n    dp.include_router(booking.router)\n    dp.include_router(faq.router)\n    dp.include_router(games.router)\n    dp.include_router(channel.router)\n\n    try:\n        token = settings.BOT_TOKEN.strip() if settings.BOT_TOKEN else \"\"\n        if not token:\n            logger.critical(\"❌ Помилка: BOT_TOKEN порожній! Перевірте налаштування в Render Environment Variables.\")\n            return\n\n        bot = Bot(\n            token=token,\n            default=DefaultBotProperties(parse_mode=ParseMode.HTML)\n        )\n\n        # Очищуємо старі вебхуки та чергу оновлень перед запуском\n        try:\n            await bot.delete_webhook(drop_pending_updates=True)\n        except Exception as e:\n            logger.warning(\"Попередження при видаленні вебхука: %s\", e)\n        \n        # Отримуємо інформацію про бота для перевірки авторизації\n        bot_info = await bot.get_me()\n        logger.info(\"✅ Успішне підключення до Telegram API: %s (@%s)\", bot_info.first_name, bot_info.username)\n        logger.info(\"📡 Бот очікує на вхідні повідомлення та команди у Telegram...\")\n\n        # Запуск long polling\n        await dp.start_polling(bot)\n    except Exception as e:\n        logger.critical(\"❌ Критична помилка під час роботи бота: %s\", e, exc_info=True)\n        # Якщо сталася помилка конфлікту або авторизації, виводимо зрозумілу підказку\n        if \"Conflict\" in str(e):\n            logger.critical(\"⚠️ УВАГА! Інший екземпляр бота вже запущений з цим токеном (на комп'ютері або на іншому сервері). Зупиніть попередній запуск!\")\n        elif \"Unauthorized\" in str(e):\n            logger.critical(\"⚠️ УВАГА! Токен бота недійсний. Перевірте BOT_TOKEN у BotFather!\")\n    finally:\n        logger.info(\"🛑 Зупинка бота та закриття сесії...\")\n        if 'bot' in locals():\n            await bot.session.close()\n\nif __name__ == \"__main__\":\n    try:\n        asyncio.run(main())\n    except (KeyboardInterrupt, SystemExit):\n        logger.info(\"Бот зупинено користувачем.\")\n"
   },
   {
-    name: 'main.py',
-    path: 'main.py',
-    language: 'python',
-    description: 'Точка входу main.py для запуску бота командою python main.py на Render або VPS.',
-    content: `"""
-SVOI Travel - Точка входу main.py
-Запускає асинхронний цикл бота aiogram 3.x
-"""
-import asyncio
-import sys
-from pathlib import Path
-
-CURRENT_DIR = Path(__file__).resolve().parent
-if str(CURRENT_DIR) not in sys.path:
-    sys.path.insert(0, str(CURRENT_DIR))
-
-try:
-    from bot_code.bot import main
-except ModuleNotFoundError:
-    from bot import main
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        print("Бот SVOI Travel зупинено.")
-`
+    "name": "main.py",
+    "path": "main.py",
+    "language": "python",
+    "description": "Точка швидкого запуску (python main.py) для Render, Railway та локальної розробки.",
+    "content": "\"\"\"\nSVOI Travel - Точка входу main.py\nЗапускає асинхронний цикл бота aiogram 3.x\n\"\"\"\nimport asyncio\nimport sys\nfrom pathlib import Path\n\n# Забезпечуємо коректні шляхи імпорту\nCURRENT_DIR = Path(__file__).resolve().parent\nif str(CURRENT_DIR) not in sys.path:\n    sys.path.insert(0, str(CURRENT_DIR))\n\ntry:\n    from bot_code.bot import main\nexcept ModuleNotFoundError:\n    from bot import main\n\nif __name__ == \"__main__\":\n    try:\n        asyncio.run(main())\n    except (KeyboardInterrupt, SystemExit):\n        print(\"Бот SVOI Travel успішно зупинено.\")\n"
   },
   {
-    name: 'handlers/channel.py',
-    path: 'handlers/channel.py',
-    language: 'python',
-    description: 'Керування каналом (/channel): авторозіграші з перевіркою підписки, вибір переможця, квізи та пости турів з кнопкою «Забронювати».',
-    content: `#handlers/channel.py - Роутер розіграшів та публікацій у канал`
+    "name": "config.py",
+    "path": "config.py",
+    "language": "python",
+    "description": "Налаштування та змінні оточення через pydantic-settings.",
+    "content": "import os\nfrom pydantic_settings import BaseSettings, SettingsConfigDict\nfrom pydantic import Field\n\nclass Settings(BaseSettings):\n    BOT_TOKEN: str = Field(default=\"8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM\")\n    ADMIN_ID: int = Field(default=8450153980, description=\"Telegram ID адміністратора для отримання заявок та відгуків\")\n    MANAGER_USERNAME: str = Field(default=\"SVOI_travel_admin\")\n    BOT_USERNAME: str = Field(default=\"Svoi_TravelEU_bot\")\n    CHANNEL_URL: str = Field(default=\"https://t.me/+Flt_2r6vi3U4ZDg6\")\n    GROUP_URL: str = Field(default=\"https://t.me/+J50liyDUHPgzYTQy\")\n\n    model_config = SettingsConfigDict(\n        env_file=\".env\",\n        env_file_encoding=\"utf-8\",\n        extra=\"ignore\"\n    )\n\nsettings = Settings()\n"
   },
   {
-    name: 'config.py',
-    path: 'config.py',
-    language: 'python',
-    description: 'Налаштування та змінні оточення через pydantic-settings.',
-    content: `import os
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
-
-class Settings(BaseSettings):
-    BOT_TOKEN: str = Field(default="8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM")
-    ADMIN_ID: int = Field(default=8450153980, description="Telegram ID адміністратора для заявок та фідбеку")
-    MANAGER_USERNAME: str = Field(default="SVOI_travel_admin")
-    BOT_USERNAME: str = Field(default="Svoi_TravelEU_bot")
-    CHANNEL_URL: str = Field(default="https://t.me/+Flt_2r6vi3U4ZDg6")
-    GROUP_URL: str = Field(default="https://t.me/+J50liyDUHPgzYTQy")
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
-    )
-
-settings = Settings()
-`
+    "name": "requirements.txt",
+    "path": "requirements.txt",
+    "language": "plaintext",
+    "description": "Залежності Python (aiogram 3.x, pydantic-settings, aiohttp).",
+    "content": "aiogram>=3.17.0,<4.0.0\npydantic-settings>=2.7.0\naiohttp>=3.11.0\npython-dotenv>=1.0.1\n"
   },
   {
-    name: 'handlers/menu.py',
-    path: 'handlers/menu.py',
-    language: 'python',
-    description: 'Обробники головного меню, команди /start, автопарку, умов, партнерів та точок збору.',
-    content: `import logging
-from aiogram import Router, F
-from aiogram.filters import CommandStart
-from aiogram.types import Message, CallbackQuery
-from aiogram.exceptions import TelegramBadRequest
-
-from keyboards.inline import (
-    get_main_menu_keyboard,
-    get_back_keyboard,
-    get_seats_keyboard,
-    get_faq_keyboard,
-    get_games_keyboard
-)
-from config import settings
-
-logger = logging.getLogger(__name__)
-router = Router(name="menu_router")
-
-MAIN_MENU_TEXT = (
-    "🌟 <b>Ласкаво просимо до туристичного клубу SVOI!</b> 🌍✨\\n\\n"
-    "Ми організовуємо душевні та продумані поїздки найкрасивішими куточками Європи "
-    "на комфортабельному мінівені Opel Vivaro без стресу, поспіху та мовних бар'єрів!\\n\\n"
-    "✨ <b>Чому обирають SVOI:</b>\\n"
-    "• 🚐 <i>Комфорт у дорозі:</i> просторий 8-місний мінівен (2 місця поруч з водієм, 3 у 2-му та 3 у 3-му ряду)\\n"
-    "• 💳 <i>Чесні умови:</i> працюємо <b>без передоплати</b> на одноденні поїздки!\\n"
-    "• 📍 <i>Зручний старт:</i> відправлення із Саарбрюккена + підсадка за маршрутом\\n"
-    "• 👥 <i>Маленькі душевні групи</i> (до 8 осіб)\\n\\n"
-    "👇 <b>Оберіть потрібний розділ у меню:</b>"
-)
-
-@router.message(CommandStart())
-async def cmd_start(message: Message):
-    """Обробник команди /start"""
-    await message.answer(
-        text=MAIN_MENU_TEXT,
-        reply_markup=get_main_menu_keyboard(),
-        parse_mode="HTML"
-    )
-
-@router.callback_query(F.data == "cb_back")
-async def process_back_to_menu(callback: CallbackQuery):
-    """Повернення до головного меню без дублювання повідомлень (через edit_text)"""
-    await callback.answer()
-    try:
-        if callback.message:
-            await callback.message.edit_text(
-                text=MAIN_MENU_TEXT,
-                reply_markup=get_main_menu_keyboard(),
-                parse_mode="HTML"
-            )
-    except TelegramBadRequest as e:
-        if "message is not modified" not in str(e):
-            logger.warning("Помилка при поверненні: %s", e)
-
-@router.callback_query(F.data == "cb_car")
-async def process_car_info(callback: CallbackQuery):
-    """Інформація про автопарк клубу SVOI: мінівен Opel Vivaro"""
-    await callback.answer()
-    car_text = (
-        "🚐 <b>Наш мінівен: Opel Vivaro (8 пасажирських місць)</b> 🚗\\n\\n"
-        "Ми дбаємо про те, щоб дорога була легкою та приємною!\\n\\n"
-        "💺 <b>Схема місць у салоні (всього 8 місць):</b>\\n"
-        "• <b>1-й ряд (поруч із водієм):</b> 2 місця (Місце 1 — центр, Місце 2 — панорамне вікно)\\n"
-        "• <b>2-й ряд:</b> 3 місця (Місце 3 — вікно, Місце 4 — центр, Місце 5 — вікно)\\n"
-        "• <b>3-й ряд:</b> 3 місця (Місце 6 — вікно, Місце 7 — центр, Місце 8 — вікно)\\n\\n"
-        "🌟 <b>Оснащення та зручності:</b>\\n"
-        "• 💺 <b>Зручні регульовані сидіння:</b> індивідуальні ремені, відкидні спинки для сну\\n"
-        "• 📏 <b>Простір для ніг:</b> вільно навіть для високих пасажирів\\n"
-        "• ❄️🔥 <b>Кондиціонер та опалення салону</b>\\n"
-        "• ⚡️ <b>Зарядка телефонів:</b> USB-порти біля пасажирських місць\\n"
-        "• 🧳 <b>Багажне відділення:</b> 10 кг при далеких поїздках + ручна поклажа в салон\\n"
-        "• 🧼 <b>Ідеальна чистота:</b> регулярне вологе прибирання перед кожним рейсом\\n\\n"
-        "<i>Ви можете зафіксувати конкретне місце під час бронювання (+5€) або зайняти вільне при посадці (0€).</i>"
-    )
-    if callback.message:
-        await callback.message.edit_text(
-            text=car_text,
-            reply_markup=get_back_keyboard(),
-            parse_mode="HTML"
-        )
-
-@router.callback_query(F.data == "cb_meeting")
-async def process_meeting_points(callback: CallbackQuery):
-    """Інформація про точки збору та логістику"""
-    await callback.answer()
-    meeting_text = (
-        "📍 <b>Точки збору пасажирів & Логістика клубу SVOI</b> 🗺\\n\\n"
-        "🏡 <b>Збір та розвезення за адресою (Door-to-Door):</b>\\n"
-        "• <b>Забираємо всіх прямо за адресою</b> по землі <b>Саарланд (Saarland)</b>, у <b>Трірі (Trier)</b> та <b>Люксембурзі (Luxembourg)</b>!\\n"
-        "• Розвеземо також назад за вказаною адресою.\\n\\n"
-        "🛣 <b>Збір в інших землях та можливість підсадки:</b>\\n"
-        "Можемо забрати й в інших землях — це залежить від маршруту (по дорозі чи ні) або якщо це багатоденний тур.\\n"
-        "👉 <b>За наявності від 4-х осіб можемо забрати з інших земель!</b>\\n\\n"
-        "Міста та умови підсадки:\\n"
-        "• <b>Хомбург (Homburg Saar)</b> — уточнюйте\\n"
-        "• <b>Кайзерслаутерн (Kaiserslautern)</b> — можливий якщо більше 4-х осіб і не одноденний тур\\n"
-        "• <b>Мангейм / Людвігсхафен (Mannheim)</b> — можливий якщо більше 4-х осіб і не одноденний тур\\n"
-        "• <b>Франкфурт-на-Майні (Frankfurt am Main)</b> — можливий якщо більше 4-х осіб і не одноденний тур\\n"
-        "• <b>Карлсруе (Karlsruhe)</b> — для південних напрямків по дорозі\\n"
-        "• <b>Страсбург (Strasbourg)</b> — по Франції та Швейцарії\\n"
-        "• <b>Бельгія</b> — при поїздках до Нормандії, Голландії та Парижа\\n\\n"
-        "💬 <i>Напишіть менеджеру для уточнення — можливість підсадки уточнюйте: @SVOI_travel_admin</i>\\n\\n"
-        "⏰ <b>Точний час подачі трансферу:</b>\\n"
-        "Точний час, о котрій за вами заїдуть, надсилається <b>в особистий чат за день увечері перед поїздкою</b>.\\n\\n"
-        "👥 <b>Зв'язок з водієм та чат групи:</b>\\n"
-        "Основні питання водієві та щодо поїздки ви зможете поставити у новоствореній одноденній групі для комунікації. <b>Через день група видаляється.</b>"
-    )
-    if callback.message:
-        await callback.message.edit_text(
-            text=meeting_text,
-            reply_markup=get_back_keyboard(),
-            parse_mode="HTML"
-        )
-
-@router.callback_query(F.data == "cb_terms")
-async def process_terms(callback: CallbackQuery):
-    """Умови поїздок, правила скасування, документи"""
-    await callback.answer()
-    terms_text = (
-        "📜 <b>Умови поїздок туристичного клубу SVOI</b> 📌\\n\\n"
-        "🛂 <b>Необхідні документи:</b>\\n"
-        "• Дійсний закордонний паспорт\\n"
-        "• Дійсний європейський ВНЖ (Aufenthaltstitel), ПМЖ або шенгенська віза\\n"
-        "• 🏥 <b>Медична страховка:</b> Обов'язкова туристична страховка для осіб без ВНЖ в Європі\\n\\n"
-        "🧳 <b>Багаж:</b>\\n"
-        "• <b>10 кг при далеких поїздках</b> у багажний відсік\\n"
-        "• 1 невелика <b>ручна поклажа</b> з особистими речами в салон авто\\n\\n"
-        "💳 <b>Бронювання та оплата:</b>\\n"
-        "• 🔥 <b>Бронь у нас БЕЗ ПЕРЕДОПЛАТИ!</b> Оплата туру відбувається при посадці в день поїздки\\n"
-        "• Передоплата потрібна <b>ТІЛЬКИ при поїздках на кілька днів</b> для бронювання номерів у готелях\\n\\n"
-        "🔄 <b>Правила скасування та повернення:</b>\\n"
-        "• Скасування за 72+ години до виїзду — перенесення дати або скасування без утримань\\n"
-        "• Менше 24 годин — бронь можна передати другу\\n\\n"
-        "🚭 <b>У салоні суворо заборонено куріння та вживання міцного алкоголю.</b>"
-    )
-    if callback.message:
-        await callback.message.edit_text(
-            text=terms_text,
-            reply_markup=get_back_keyboard(),
-            parse_mode="HTML"
-        )
-
-@router.callback_query(F.data == "cb_partner")
-async def process_partner(callback: CallbackQuery):
-    """Партнерська програма"""
-    await callback.answer()
-    partner_text = (
-        "🤝 <b>Партнерська програма клубу SVOI</b> 💼\\n\\n"
-        "1. <b>Приведи друзів:</b> компанія від 4 осіб отримує персональну знижку 10% кожному!\\n"
-        "2. <b>Індивідуальний чартер:</b> оренда всього мінівена (8 місць) з водієм зі знижкою 15%.\\n"
-        "3. <b>Блогери та гіди:</b> вигідна співпраця та бартерні поїздки.\\n\\n"
-        f"📩 <i>Зв'язок із керівником:</i> @{settings.MANAGER_USERNAME.lstrip('@')}"
-    )
-    if callback.message:
-        await callback.message.edit_text(
-            text=partner_text,
-            reply_markup=get_back_keyboard(),
-            parse_mode="HTML"
-        )
-
-@router.callback_query(F.data == "cb_book")
-async def process_book_menu(callback: CallbackQuery):
-    """Вибір місця в салоні"""
-    await callback.answer()
-    seats_info = (
-        "💺 <b>Вибір місця в мінівені Opel Vivaro (8 пасажирських місць)</b>\\n\\n"
-        "• 1-й ряд (поруч із водієм): 2 місця\\n"
-        "• 2-й ряд: 3 місця\\n"
-        "• 3-й ряд: 3 місця\\n\\n"
-        "💵 <b>Тариф:</b>\\n"
-        "• Фіксація конкретного місця по порядку: <b>+5€</b>\\n"
-        "• Без вибору місця (вільна посадка): <b>0€</b>\\n\\n"
-        "👇 <i>Оберіть місце по порядку:</i>"
-    )
-    if callback.message:
-        await callback.message.edit_text(
-            text=seats_info,
-            reply_markup=get_seats_keyboard("general"),
-            parse_mode="HTML"
-        )
-`
+    "name": "Procfile",
+    "path": "Procfile",
+    "language": "dockerfile",
+    "description": "Конфігурація автоматичного запуску для Render Web Service / Worker.",
+    "content": "web: python main.py\nworker: python main.py\n"
   },
   {
-    name: 'handlers/trips.py',
-    path: 'handlers/trips.py',
-    language: 'python',
-    description: 'Вивід списку турів у стовпчик, детальні картки та перехід до бронювання.',
-    content: `import logging
-from aiogram import Router, F
-from aiogram.types import CallbackQuery
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.fsm.context import FSMContext
-
-from data.trips import TRIPS_CATALOG
-from keyboards.inline import (
-    get_trips_keyboard,
-    get_trip_detail_keyboard,
-    get_seats_keyboard
-)
-from states.states import BookingState
-
-logger = logging.getLogger(__name__)
-router = Router(name="trips_router")
-
-TRIPS_HEADER = (
-    "🗺 <b>Актуальні напрямки та розклад турів SVOI</b> 🇪🇺✨\\n\\n"
-    "Усі поїздки здійснюються із <b>Саарбрюккена</b> (з підсадкою за маршрутом) "
-    "на комфортабельному мінівені Opel Vivaro (8 місць).\\n\\n"
-    "👇 <i>Натисніть на напрямок для перегляду програми та бронювання:</i>"
-)
-
-@router.callback_query(F.data == "cb_trips")
-async def process_trips_list(callback: CallbackQuery):
-    """Виводить список напрямків з цінами у стовпчик"""
-    await callback.answer()
-    if callback.message:
-        await callback.message.edit_text(
-            text=TRIPS_HEADER,
-            reply_markup=get_trips_keyboard(),
-            parse_mode="HTML"
-        )
-
-@router.callback_query(F.data.startswith("cb_trip_"))
-async def process_trip_detail(callback: CallbackQuery):
-    """Виводить детальну картку обраного туру"""
-    await callback.answer()
-    trip_id = callback.data.replace("cb_trip_", "")
-    trip = TRIPS_CATALOG.get(trip_id)
-    if not trip:
-        await callback.answer("Тур не знайдено", show_alert=True)
-        return
-
-    if callback.message:
-        await callback.message.edit_text(
-            text=trip["description"],
-            reply_markup=get_trip_detail_keyboard(trip_id),
-            parse_mode="HTML"
-        )
-
-@router.callback_query(F.data.startswith("cb_book_target_"))
-async def process_book_target_trip(callback: CallbackQuery, state: FSMContext):
-    """Перехід до вибору місця та оформлення конкретного туру"""
-    await callback.answer()
-    trip_id = callback.data.replace("cb_book_target_", "")
-    trip = TRIPS_CATALOG.get(trip_id)
-    trip_title = trip["title"] if trip else "Обраний тур"
-    
-    await state.update_data(trip_id=trip_id, trip_title=trip_title)
-    await state.set_state(BookingState.choosing_seat)
-
-    text = (
-        f"🎯 <b>Бронювання туру: {trip_title}</b>\\n\\n"
-        "Оберіть місце в мінівені Opel Vivaro (8 місць):\\n"
-        "• 1-й ряд (поруч із водієм): 2 місця\\n"
-        "• 2-й ряд: 3 місця\\n"
-        "• 3-й ряд: 3 місця\\n\\n"
-        "💵 <b>Умови:</b>\\n"
-        "• Фіксація конкретного місця: <b>+5€</b>\\n"
-        "• Без вибору місця (вільна посадка): <b>0€</b>\\n\\n"
-        "👇 <i>Натисніть плашку потрібного місця:</i>"
-    )
-
-    if callback.message:
-        await callback.message.edit_text(
-            text=text,
-            reply_markup=get_seats_keyboard(trip_id),
-            parse_mode="HTML"
-        )
-`
+    "name": "data/__init__.py",
+    "path": "data/__init__.py",
+    "language": "python",
+    "description": "Пакет даних SVOI Travel.",
+    "content": "# SVOI Travel - Data package\nfrom .trips import TRIPS_CATALOG, TRIPS_DATA\n\n__all__ = [\"TRIPS_CATALOG\", \"TRIPS_DATA\"]\n"
   },
   {
-    name: 'handlers/feedback.py',
-    path: 'handlers/feedback.py',
-    language: 'python',
-    description: 'FSM машина станів для збору відгуків та побажань туристів із пересиланням до ADMIN_ID.',
-    content: `import logging
-from aiogram import Router, F, Bot
-from aiogram.types import CallbackQuery, Message
-from aiogram.fsm.context import FSMContext
-
-from states.states import FeedbackState
-from keyboards.inline import get_cancel_feedback_keyboard, get_back_keyboard
-from config import settings
-
-logger = logging.getLogger(__name__)
-router = Router(name="feedback_router")
-
-@router.callback_query(F.data == "cb_feedback")
-async def process_feedback_start(callback: CallbackQuery, state: FSMContext):
-    """Активує стан FSM (FeedbackState.waiting_for_text)"""
-    await callback.answer()
-    await state.set_state(FeedbackState.waiting_for_text)
-
-    text = (
-        "✍️ <b>Залишити відгук або побажання</b> 💌\\n\\n"
-        "Напишіть у відповідному повідомленні ваші враження від поїздки, побажання щодо нових напрямків "
-        "або пропозиції для покращення клубу SVOI.\\n\\n"
-        "<i>Надішліть текст прямо в цей чат або натисніть «Скасувати введення»:</i>"
-    )
-
-    if callback.message:
-        await callback.message.edit_text(
-            text=text,
-            reply_markup=get_cancel_feedback_keyboard(),
-            parse_mode="HTML"
-        )
-
-@router.callback_query(F.data == "cb_cancel_feedback")
-async def process_cancel_feedback(callback: CallbackQuery, state: FSMContext):
-    """Скидання стану при скасуванні"""
-    await callback.answer("Введення скасовано")
-    await state.clear()
-    from handlers.menu import MAIN_MENU_TEXT
-    from keyboards.inline import get_main_menu_keyboard
-    if callback.message:
-        await callback.message.edit_text(
-            text=MAIN_MENU_TEXT,
-            reply_markup=get_main_menu_keyboard(),
-            parse_mode="HTML"
-        )
-
-@router.message(FeedbackState.waiting_for_text)
-async def process_feedback_received(message: Message, state: FSMContext, bot: Bot):
-    """
-    Приймає текст від користувача, дякує йому,
-    пересилає повідомлення адміністратору (ADMIN_ID) та скидає FSM.
-    """
-    feedback_text = message.text or message.caption or "(Медіа/стікер)"
-    user = message.from_user
-    user_mention = f"@{user.username}" if user and user.username else "Без юзернейму"
-    user_id = user.id if user else 0
-    full_name = user.full_name if user else "Користувач"
-
-    # Скидаємо стан
-    await state.clear()
-
-    # Подяка користувачеві
-    await message.answer(
-        text=(
-            "❤️ <b>Дякуємо за ваше звернення!</b>\\n\\n"
-            "Ваш відгук успішно передано керівництву туристичного клубу SVOI. "
-            "Ми уважно вивчаємо кожне повідомлення!\\n\\n"
-            "До зустрічі в нових подорожах! 🚐✨"
-        ),
-        reply_markup=get_back_keyboard(),
-        parse_mode="HTML"
-    )
-
-    # Сповіщення адміністратору
-    admin_notification = (
-        "🔔 <b>НОВИЙ ВІДГУК / ПОБАЖАННЯ SVOI TRAVEL</b>\\n\\n"
-        f"👤 <b>Від:</b> {full_name} ({user_mention})\\n"
-        f"🆔 <b>ID:</b> <code>{user_id}</code>\\n"
-        f"💬 <b>Текст:</b>\\n{feedback_text}"
-    )
-
-    if settings.ADMIN_ID and settings.ADMIN_ID != 0:
-        try:
-            await bot.send_message(
-                chat_id=settings.ADMIN_ID,
-                text=admin_notification,
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error("Не вдалося відправити адміну: %s", e)
-    else:
-        logger.info("ADMIN_ID не заданий. Відгук збережено в лог: %s", admin_notification)
-`
+    "name": "data/trips.py",
+    "path": "data/trips.py",
+    "language": "python",
+    "description": "База даних усіх 14 турів SVOI Travel (TRIPS_CATALOG та TRIPS_DATA).",
+    "content": "\"\"\"\nБаза даних напрямків туристичного клубу SVOI\n\"\"\"\n\nTRIPS_CATALOG = {\n    \"paris\": {\n        \"id\": \"paris\",\n        \"title\": \"Париж (Версаль + яхта + Ейфелева вежа)\",\n        \"short_title\": \"Париж (Версаль+яхта+Ейфелева)\",\n        \"price\": 120,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Хіт продажів 🔥\",\n        \"description\": (\n            \"✨ <b>Романтичний Париж: Класика та краса</b>\\n\\n\"\n            \"Пориньте в атмосферу міста кохання без черг і метушні!\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Королівський палац і парк Версаль 🏰\\n\"\n            \"• Прогулянка на панорамній яхті по Сені з аудіогідом 🚢\\n\"\n            \"• Оглядовий майданчик біля сяючої Ейфелевої вежі 🗼\\n\"\n            \"• Єлисейські поля, Тріумфальна арка та Лувр (екстер'єр) 🏛\\n\"\n            \"• Вільний час на круасани та французьку каву в затишному бістро\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 120€ (включено трансфер туди й назад)\"\n        )\n    },\n    \"etretat_paris\": {\n        \"id\": \"etretat_paris\",\n        \"title\": \"Етрета + Париж\",\n        \"short_title\": \"Етрета + Париж\",\n        \"price\": 140,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Природа і столиця 🌊\",\n        \"description\": (\n            \"🌊 <b>Білосніжні скелі Нормандії & Вогні Парижа</b>\\n\\n\"\n            \"Унікальний маршрут, що поєднує драматичні краєвиди океану та велич столиці Франції.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Знамениті алебастрові скелі та арки Етрета на березі Атлантики 🐚\\n\"\n            \"• Прогулянка стежкою митників та садами Етрета\\n\"\n            \"• Свіжі нормандські устриці та сидр на набережній\\n\"\n            \"• Вечірній сяючий Париж: прогулянка набережною Сени та панорама Ейфелевої вежі\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 140€\"\n        )\n    },\n    \"amsterdam\": {\n        \"id\": \"amsterdam\",\n        \"title\": \"Амстердам (Нідерланди)\",\n        \"short_title\": \"Амстердам\",\n        \"price\": 120,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Топ вибір 🚲\",\n        \"description\": (\n            \"🚲 <b>Вільний та колоритний Амстердам</b>\\n\\n\"\n            \"Місто каналів, старовинних пряникових будиночків та неповторної атмосфери свободи.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Круїз на човні мальовничими каналами Прінсенграхт і Херенграхт 🛶\\n\"\n            \"• Площа Дам, Королівський палац та квартал Йордан 👑\\n\"\n            \"• Квітковий ринок Bloemenmarkt із тюльпанами 🌷\\n\"\n            \"• Затишні арт-кав'ярні та старовинні вулички\\n\"\n            \"• Знаменитий голландський оселедець (haring) та сирні лавки\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 120€\"\n        )\n    },\n    \"bruges\": {\n        \"id\": \"bruges\",\n        \"title\": \"Брюгге (Північна Венеція)\",\n        \"short_title\": \"Брюгге\",\n        \"price\": 110,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Казковий 🏰\",\n        \"description\": (\n            \"🏰 <b>Казковий середньовічний Брюгге (Бельгія)</b>\\n\\n\"\n            \"Справжня жива казка з брукованими вуличками, лебедями на каналах та ароматом шоколаду.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Ринкова площа Гроте Маркт та вежа Белфорт 🔔\\n\"\n            \"• Озеро Кохання (Minnewater) та монастир Бегінаж 🦢\\n\"\n            \"• Дегустація справжнього бельгійського шоколаду ручної роботи та вафель 🍫\\n\"\n            \"• Знамените бельгійське пиво в історичних тавернах 🍺\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 110€\"\n        )\n    },\n    \"liechtenstein\": {\n        \"id\": \"liechtenstein\",\n        \"title\": \"Ліхтенштейн (3 країни за 1 день)\",\n        \"short_title\": \"Ліхтенштейн (3 країни)\",\n        \"price\": 120,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"3 країни в 1 турі 🚩\",\n        \"description\": (\n            \"🚩 <b>Альпійське князівство: Ліхтенштейн, Австрія та Швейцарія!</b>\\n\\n\"\n            \"Можливість побувати у трьох європейських країнах лише за одну насичену добу.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Столиця князівства Вадуц та замок правлячого князя Ліхтенштейну 🏰\\n\"\n            \"• Австрійське містечко Фельдкірх із середньовічною фортецею Шаттенбург 🇦🇹\\n\"\n            \"• Мальовничі альпійські долини та гірський перевал Швейцарії 🇨🇭\\n\"\n            \"• Сувенірні печатки князівства у паспорт для мандрівників 🛂\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 120€\"\n        )\n    },\n    \"neuschwanstein\": {\n        \"id\": \"neuschwanstein\",\n        \"title\": \"Замок Нойшванштайн (Баварія)\",\n        \"short_title\": \"Замок Нойшванштайн\",\n        \"price\": 120,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Натхнення Disney 👑\",\n        \"description\": (\n            \"👑 <b>Замок Нойшванштайн — прототип діснеївського замку</b>\\n\\n\"\n            \"Легендарний шедевр короля Людвіга II серед засніжених баварських Альп та смарагдових озер.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Панорамний міст Марії (Marienbrücke) з запаморочливим краєвидом над ущелиною 🌉\\n\"\n            \"• Підйом до замку Нойшванштайн та краєвид на замок Хоеншванґау 🏰\\n\"\n            \"• Альпійське озеро Альпзее з кришталево чистою водою 🏔\\n\"\n            \"• Автентична баварська кухня: рулька, ковбаски та кренделі\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 120€\"\n        )\n    },\n    \"cote_dazur\": {\n        \"id\": \"cote_dazur\",\n        \"title\": \"Лазурове узбережжя (3 дні: Ніцца, Монако, Канни)\",\n        \"short_title\": \"Лазурове узбережжя (3 дні)\",\n        \"price\": 440,\n        \"currency\": \"€\",\n        \"duration\": \"3 дні\",\n        \"badge\": \"Гранд-тур 🌴\",\n        \"description\": (\n            \"🌴 <b>Французька Рів'єра та Князівство Монако — 3 незабутні дні</b>\\n\\n\"\n            \"Світ бірюзового Середземного моря, прибережних вілл та кінофестивалів.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• День 1: Ніцца — Англійська набережна, старе місто, пагорб Шато 🏖\\n\"\n            \"• День 2: Монако та Монте-Карло — казино, траса Формули-1, княжий палац 🎰\\n\"\n            \"• День 3: Канни — Палац фестивалів, червона доріжка, набережна Круазет 🎬\\n\"\n            \"• Проживання в готелі, вільний час для пляжу та відпочинку\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 440€\"\n        )\n    },\n    \"mont_saint_michel\": {\n        \"id\": \"mont_saint_michel\",\n        \"title\": \"Скарби узбережжя (Мон-Сен-Мішель)\",\n        \"short_title\": \"Мон-Сен-Мішель (2 дні)\",\n        \"price\": 270,\n        \"currency\": \"€\",\n        \"duration\": \"2 дні\",\n        \"badge\": \"Диво світу 🌊\",\n        \"description\": (\n            \"🏰 <b>Абатство Мон-Сен-Мішель — острів-фортеця серед припливів</b>\\n\\n\"\n            \"Одне з найбільш містичних та вражаючих місць Європи на межі Нормандії та Бретані.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Величне острівне абатство VIII століття на скелі ⛪️\\n\"\n            \"• Найсильніші морські припливи в континентальній Європі 🌊\\n\"\n            \"• Корсарське місто-фортеця Сен-Мало з гранітними бастіонами ⚓️\\n\"\n            \"• Канкаль — світова столиця свіжих устриць просто з фермерських яток 🦪\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 270€\"\n        )\n    },\n    \"swiss_rhine_zurich\": {\n        \"id\": \"swiss_rhine_zurich\",\n        \"title\": \"Швейцарія (Рейнський водоспад + Цюрих + Люцерн)\",\n        \"short_title\": \"Швейцарія (Водоспад+Цюрих+Люцерн)\",\n        \"price\": 120,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Швейцарська класика 🇨🇭\",\n        \"description\": (\n            \"🇨🇭 <b>Могутність Рейнського водоспаду, банки Цюриха та романтика Люцерна</b>\\n\\n\"\n            \"Приголомшлива одноденна подорож головними перлинами Швейцарії.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Рейнський водоспад (Rheinfall) — найпотужніший рівнинний водоспад Європи 💦\\n\"\n            \"• Цюрих: Бангофштрассе, набережна Цюриського озера, собори Гроссмюнстер і Фраумюнстер ⛪️\\n\"\n            \"• Люцерн: знаменитий дерев'яний міст Капельбрюкке XIV століття та монумент «Вмираючий лев» 🦁\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 120€\"\n        )\n    },\n    \"swiss_aare_bern\": {\n        \"id\": \"swiss_aare_bern\",\n        \"title\": \"Швейцарія (Ааре + Лаутербруннен + Берн)\",\n        \"short_title\": \"Швейцарія (Ааре+Лаутербруннен+Берн)\",\n        \"price\": 120,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Долина 72 водоспадів 🏞\",\n        \"description\": (\n            \"🏞 <b>Долина водоспадів Лаутербруннен, каньйон Ааре та столиця Берн</b>\\n\\n\"\n            \"Краєвиди, що стали прообразом ельфійського Рівенделла з «Володаря Перснів»!\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Мальовнича ущелина Аарешлюхт із бірюзовою льодовиковою водою 🏔\\n\"\n            \"• Селище Лаутербруннен та водоспад Штауббах заввишки 300 метрів 💧\\n\"\n            \"• Берн: годинникова вежа Цітглогге, Ведмежа яма та старовинні аркади ЮНЕСКО 🐻\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 120€\"\n        )\n    },\n    \"brussels\": {\n        \"id\": \"brussels\",\n        \"title\": \"Брюссель (Столиця Європи)\",\n        \"short_title\": \"Брюссель\",\n        \"price\": 90,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Вигідна ціна 🧇\",\n        \"description\": (\n            \"🧇 <b>Брюссель: Золота площа, комікси та гастрономія</b>\\n\\n\"\n            \"Затишна європейська столиця з унікальним шармом та неперевершеною кухнею.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Гран-Плас (Grand Place) — одна з найкрасивіших площ світу в позолоті 🏛\\n\"\n            \"• Символи міста: Пісяючий хлопчик (Manneken Pis) та Дівчинка 👶\\n\"\n            \"• Футуристичний монумент Атоміум ⚛️\\n\"\n            \"• Королівські галереї Сент-Юбер, бельгійські вафлі та гарячий шоколад 🍫\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 90€\"\n        )\n    },\n    \"prague\": {\n        \"id\": \"prague\",\n        \"title\": \"Прага (Чехія — Місто ста шпилів)\",\n        \"short_title\": \"Прага (Чехія)\",\n        \"price\": 120,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Магічна Прага 🍺\",\n        \"description\": (\n            \"🍺 <b>Магічна Прага: Карлів міст, Астрономічний годинник та затишок</b>\\n\\n\"\n            \"Занурення в атмосферу середньовічної Чехії, брукованих вуличок та знаменитого чеського пива.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Празький Град та величний готичний Собор Святого Віта 🏰\\n\"\n            \"• Прогулянка Карловим мостом зі старовинними скульптурами 🌉\\n\"\n            \"• Староміська площа та шоу Астрономічного годинника Орлой ⏰\\n\"\n            \"• Традиційні чеські трдельники та обід у колоритній броварні 🥨\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 120€\"\n        )\n    },\n    \"alsace_strasbourg\": {\n        \"id\": \"alsace_strasbourg\",\n        \"title\": \"Ельзас + Страсбург (Франція)\",\n        \"short_title\": \"Ельзас + Страсбург\",\n        \"price\": 80,\n        \"currency\": \"€\",\n        \"duration\": \"1 день\",\n        \"badge\": \"Найкращий тур вихідного дня 🍷\",\n        \"description\": (\n            \"🍷 <b>Фахверкові казки Ельзасу та Європейська столиця Страсбург</b>\\n\\n\"\n            \"Франко-німецький колорит, винний шлях, квіти на балконах та мальовничі канали.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• Страсбурзький собор Нотр-Дам із рожевого пісковика ⛪️\\n\"\n            \"• Район «Маленька Франція» (Petite France) з каналами та шлюзами 🛶\\n\"\n            \"• Вільний час на ельзаський тарт фламбе (Flammkuchen) та біле вино Рислінг 🍕\\n\"\n            \"• Панорамна набережна річки Ілль\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 80€\"\n        )\n    },\n    \"como_milan\": {\n        \"id\": \"como_milan\",\n        \"title\": \"Озеро Комо + Мілан (Італія, 2 дні)\",\n        \"short_title\": \"Комо + Мілан (2 дні)\",\n        \"price\": 270,\n        \"currency\": \"€\",\n        \"duration\": \"2 дні\",\n        \"badge\": \"Італійський шик 🇮🇹\",\n        \"description\": (\n            \"🇮🇹 <b>Вілли озера Комо та світова столиця моди Мілан</b>\\n\\n\"\n            \"Два дні чистої італійської насолоди серед гір, озер та високої архітектури.\\n\\n\"\n            \"📍 <b>Програма поїздки:</b>\\n\"\n            \"• День 1: Озеро Комо — вілли Белладжо, прогулянка на катері, альпійські краєвиди 🚤\\n\"\n            \"• День 2: Мілан — Собор Дуомо (Duomo di Milano), галерея Віктора Еммануїла II, замок Сфорца 🛍\\n\"\n            \"• Італійський шопінг, справжня піца, паста та вершкове джелато 🍨\\n\"\n            \"• Ніч у комфортабельному готелі включена\\n\\n\"\n            \"🚐 <b>Трансфер:</b> Opel Vivaro — комфортне авто з усіма зручностями.\\n\"\n            \"💵 <b>Вартість:</b> 270€\"\n        )\n    }\n}\n\n# Список турів для зручної ітерації та публікацій\nTRIPS_DATA = list(TRIPS_CATALOG.values())\n"
   },
   {
-    name: 'handlers/booking.py',
-    path: 'handlers/booking.py',
-    language: 'python',
-    description: 'Автоматична система підтвердження бронювання з вибором 8 місць по порядку, розрахунком вартості та сповіщенням адміна.',
-    content: `import logging
-import random
-from urllib.parse import quote
-from aiogram import Router, F, Bot
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.fsm.context import FSMContext
-
-from data.trips import TRIPS_CATALOG
-from config import settings
-
-logger = logging.getLogger(__name__)
-router = Router(name="booking_router")
-
-SEAT_DESCRIPTIONS = {
-    "1": "💺 Місце 1 (1-й ряд, поруч з водієм, центр)",
-    "2": "💺 Місце 2 (1-й ряд, поруч з водієм, вікно)",
-    "3": "💺 Місце 3 (2-й ряд, біля вікна ліворуч)",
-    "4": "💺 Місце 4 (2-й ряд, по центру)",
-    "5": "💺 Місце 5 (2-й ряд, біля вікна праворуч)",
-    "6": "💺 Місце 6 (3-й ряд, біля вікна ліворуч)",
-    "7": "💺 Місце 7 (3-й ряд, по центру)",
-    "8": "💺 Місце 8 (3-й ряд, біля вікна праворуч)",
-    "none": "🎲 Без вибору місця (вільна посадка)"
-}
-
-def generate_booking_code() -> str:
-    return f"SVOI-{random.randint(1000, 9999)}"
-
-@router.callback_query(F.data.startswith("cb_seat_"))
-async def process_seat_selection(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    """
-    Автоматична система підтвердження бронювання:
-    Надсилає персоналізований чек-квитанцію туристу з розрахунком вартості
-    (бронь БЕЗ ПЕРЕДОПЛАТИ на 1-денні тури, оплата при посадці)
-    і направляє заявку адміністратору (ADMIN_ID).
-    """
-    await callback.answer()
-    parts = callback.data.split("_")
-    seat_id = parts[2] if len(parts) > 2 else "none"
-    trip_id = parts[3] if len(parts) > 3 else "general"
-
-    seat_title = SEAT_DESCRIPTIONS.get(seat_id, "🎲 Вільна посадка")
-    seat_fee = 0 if seat_id == "none" else 5
-
-    trip = TRIPS_CATALOG.get(trip_id)
-    trip_title = trip["title"] if trip else "Індивідуальний європейський маршрут"
-    duration = trip["duration"] if trip else "1 день"
-    base_price = trip["price"] if trip else 120
-    total_cost = base_price + seat_fee
-    booking_code = generate_booking_code()
-
-    user = callback.from_user
-    user_name = user.full_name if user else "Шановний мандрівник"
-    user_mention = f"@{user.username}" if user and user.username else "Без юзернейму"
-    user_id = user.id if user else 0
-
-    manager_message = f"Вітаю! Мій номер броні: #{booking_code}. Тур: {trip_title}, місце: {seat_title}, до оплати: {total_cost}€."
-    manager_url = f"https://t.me/{settings.MANAGER_USERNAME.lstrip('@')}?text={quote(manager_message)}"
-
-    payment_note = (
-        "🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Повна оплата здійснюється при посадці в мінівен.\\n\\n"
-        if duration == "1 день" else
-        "🏨 <i>Передоплата потрібна лише для фіксації готелю.</i>\\n\\n"
-    )
-
-    # 1. Персоналізоване підтвердження для туриста
-    confirmation_text = (
-        f"🎉 <b>ПІДТВЕРДЖЕННЯ БРОНЮВАННЯ #{booking_code}</b>\\n\\n"
-        f"Вітаємо, <b>{user_name}</b>! Вашу заявку в туристичний клуб <b>SVOI</b> успішно прийнято.\\n\\n"
-        f"📋 <b>Деталі вашої поїздки:</b>\\n"
-        f"• 🗺 <b>Напрямок:</b> {trip_title}\\n"
-        f"• ⏱ <b>Тривалість:</b> {duration}\\n"
-        f"• 🚐 <b>Транспорт:</b> Opel Vivaro (8 пасажирських місць, кондиціонер)\\n"
-        f"• 💺 <b>Обране місце:</b> {seat_title}\\n"
-        f"• 📍 <b>Точка збору:</b> Саарбрюккен Hbf (або за адресою / по дорозі)\\n\\n"
-        f"🧾 <b>Розрахунок вартості:</b>\\n"
-        f"• Базовий квиток туру: <b>{base_price}€</b>\\n"
-        f"• Вибір конкретного місця: <b>+{seat_fee}€</b>\\n"
-        f"━━━━━━━━━━━━━━━━━━\\n"
-        f"💳 <b>РАЗОМ ДО ОПЛАТИ: {total_cost}€</b>\\n"
-        f"{payment_note}"
-        f"📌 <b>Умови поїздки:</b>\\n"
-        f"✓ Закордонний паспорт + ВНЖ / шенгенська віза\\n"
-        f"✓ <b>Мед. страховка</b> (обов'язкова для людей без ВНЖ в Європі)\\n"
-        f"✓ <b>Багаж:</b> 10 кг при далеких поїздках + ручна поклажа в салон\\n\\n"
-        f"👉 <b>Наступний крок:</b> Натисніть кнопку нижче для відправлення даних менеджеру "
-        f"@{settings.MANAGER_USERNAME.lstrip('@')} в Telegram:"
-    )
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="💬 Надіслати бронь менеджеру в Telegram", url=manager_url)],
-            [
-                InlineKeyboardButton(text="📍 Точки збору та час", callback_data="cb_meeting"),
-                InlineKeyboardButton(text="🗺 Інші тури", callback_data="cb_trips")
-            ],
-            [InlineKeyboardButton(text="🔙 Головне меню", callback_data="cb_back")]
-        ]
-    )
-
-    if callback.message:
-        await callback.message.edit_text(
-            text=confirmation_text,
-            reply_markup=kb,
-            parse_mode="HTML"
-        )
-
-    # 2. Сповіщення адміністратору про бронювання
-    admin_lead = (
-        f"🚨 <b>НОВА ЗАЯВКА НА БРОНЮВАННЯ #{booking_code}</b> 🚨\\n\\n"
-        f"👤 <b>Турист:</b> {user_name} ({user_mention})\\n"
-        f"🆔 <b>Telegram ID:</b> <code>{user_id}</code>\\n"
-        f"🔗 <a href=\\"tg://user?id={user_id}\\">Написати клієнту</a>\\n\\n"
-        f"🗺 <b>Тур:</b> {trip_title} ({duration})\\n"
-        f"💺 <b>Місце:</b> {seat_title}\\n"
-        f"💵 <b>Сума до оплати:</b> <b>{total_cost}€</b> (тур: {base_price}€, місце: +{seat_fee}€)\\n"
-        f"📍 <b>Посадка:</b> Саарбрюккен Hbf\\n"
-        f"💳 <b>Передоплата:</b> {'БЕЗ ПЕРЕДОПЛАТИ' if duration == '1 день' else 'Готель (потрібна передоплата)'}"
-    )
-
-    if settings.ADMIN_ID and settings.ADMIN_ID != 0:
-        try:
-            await bot.send_message(
-                chat_id=settings.ADMIN_ID,
-                text=admin_lead,
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error("Не вдалося відправити заявку адміну: %s", e)
-
-    await state.clear()
-`
+    "name": "handlers/__init__.py",
+    "path": "handlers/__init__.py",
+    "language": "python",
+    "description": "Пакет обробників aiogram 3.x.",
+    "content": "from bot_code.handlers import menu, trips, feedback, booking, faq, games\n\n__all__ = [\"menu\", \"trips\", \"feedback\", \"booking\", \"faq\", \"games\"]\n"
   },
   {
-    name: 'keyboards/inline.py',
-    path: 'keyboards/inline.py',
-    language: 'python',
-    description: 'Усі інлайн-клавіатури бота: головне меню, список турів, вибір місць по порядку (8 місць), кнопки повернення.',
-    content: `from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from data.trips import TRIPS_CATALOG
-from config import settings
-
-def get_main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Головне меню бота зі зручним розташуванням по 1-2 кнопки в ряд"""
-    manager_url = f"https://t.me/{settings.MANAGER_USERNAME.lstrip('@')}"
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🗺 Поїздки", callback_data="cb_trips"),
-                InlineKeyboardButton(text="💺 Забронювати місце", callback_data="cb_book")
-            ],
-            [
-                InlineKeyboardButton(text="❓ Часті питання (FAQ)", callback_data="cb_faq"),
-                InlineKeyboardButton(text="🎮 Ігри та вікторини", callback_data="cb_games")
-            ],
-            [
-                InlineKeyboardButton(text="🚐 Фото авто", callback_data="cb_car"),
-                InlineKeyboardButton(text="📍 Точки збору", callback_data="cb_meeting")
-            ],
-            [
-                InlineKeyboardButton(text="📜 Умови поїздок", callback_data="cb_terms"),
-                InlineKeyboardButton(text="🤝 Стати партнером", callback_data="cb_partner")
-            ],
-            [
-                InlineKeyboardButton(text="✍️ Залишити побажання", callback_data="cb_feedback")
-            ],
-            [
-                InlineKeyboardButton(text="🆘 Підтримка (Менеджер)", url=manager_url),
-                InlineKeyboardButton(text="📢 Наш Канал", url=settings.CHANNEL_URL)
-            ]
-        ]
-    )
-
-def get_back_keyboard() -> InlineKeyboardMarkup:
-    """Кнопка повернення до головного меню"""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад до меню", callback_data="cb_back")]
-        ]
-    )
-
-def get_trips_keyboard() -> InlineKeyboardMarkup:
-    """Список усіх турів у стовпчик з цінами"""
-    buttons = []
-    for trip_id, trip in TRIPS_CATALOG.items():
-        text = f"📍 {trip['short_title']} — {trip['price']}{trip['currency']}"
-        buttons.append([InlineKeyboardButton(text=text, callback_data=f"cb_trip_{trip_id}")])
-    buttons.append([InlineKeyboardButton(text="🔙 Назад до меню", callback_data="cb_back")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def get_trip_detail_keyboard(trip_id: str) -> InlineKeyboardMarkup:
-    """Кнопки в картці туру"""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="💺 Забронювати цей тур", callback_data=f"cb_book_target_{trip_id}")],
-            [
-                InlineKeyboardButton(text="🗺 Усі напрямки", callback_data="cb_trips"),
-                InlineKeyboardButton(text="🔙 Головне меню", callback_data="cb_back")
-            ]
-        ]
-    )
-
-def get_seats_keyboard(trip_id: str = "general") -> InlineKeyboardMarkup:
-    """Кнопки вибору інтерактивного місця в мінівені по порядку (8 місць)"""
-    manager_url = f"https://t.me/{settings.MANAGER_USERNAME.lstrip('@')}"
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💺 Місце 1 (поруч з водієм) — 5€", callback_data=f"cb_seat_1_{trip_id}"),
-                InlineKeyboardButton(text="💺 Місце 2 (водій, вікно) — 5€", callback_data=f"cb_seat_2_{trip_id}")
-            ],
-            [
-                InlineKeyboardButton(text="💺 Місце 3 (2-й ряд, вікно) — 5€", callback_data=f"cb_seat_3_{trip_id}"),
-                InlineKeyboardButton(text="💺 Місце 4 (2-й ряд, центр) — 5€", callback_data=f"cb_seat_4_{trip_id}"),
-                InlineKeyboardButton(text="💺 Місце 5 (2-й ряд, вікно) — 5€", callback_data=f"cb_seat_5_{trip_id}")
-            ],
-            [
-                InlineKeyboardButton(text="💺 Місце 6 (3-й ряд, вікно) — 5€", callback_data=f"cb_seat_6_{trip_id}"),
-                InlineKeyboardButton(text="💺 Місце 7 (3-й ряд, центр) — 5€", callback_data=f"cb_seat_7_{trip_id}"),
-                InlineKeyboardButton(text="💺 Місце 8 (3-й ряд, вікно) — 5€", callback_data=f"cb_seat_8_{trip_id}")
-            ],
-            [
-                InlineKeyboardButton(text="🎲 Без вибору місця (вільна посадка) — 0€", callback_data=f"cb_seat_none_{trip_id}")
-            ],
-            [InlineKeyboardButton(text="💬 Написати менеджеру особисто", url=manager_url)],
-            [InlineKeyboardButton(text="🔙 Назад до меню", callback_data="cb_back")]
-        ]
-    )
-
-def get_cancel_feedback_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Скасувати введення", callback_data="cb_cancel_feedback")]
-        ]
-    )
-`
+    "name": "handlers/channel.py",
+    "path": "handlers/channel.py",
+    "language": "python",
+    "description": "Керування каналом (/channel): авторозіграші з перевіркою підписки, вибір переможця, квізи та пости турів.",
+    "content": "\"\"\"\nРоутер для керування Telegram-каналом та групою SVOI Travel (/channel)\nФункціонал:\n1. Публікація постів турів із кнопкою «💺 Забронювати»\n2. Запуск РОЗІГРАШІВ (Giveaways) з автоматичною перевіркою підписки на канал та групу, лічильником «🎉 Брати участь! (N)»\n3. Випадковий вибір переможця розіграшу (random) та публікація привітання у канал\n4. Надсилання вікторин (квізів) із конфетті та кнопкою бронювання\n5. Публікація кнопки Telegram Mini App («Зоряне небо»)\n\"\"\"\n\nimport random\nimport logging\nfrom typing import Dict, List, Any\nfrom aiogram import Router, F, Bot\nfrom aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo\nfrom aiogram.filters import Command\nfrom aiogram.fsm.context import FSMContext\nfrom aiogram.fsm.state import State, StatesGroup\n\ntry:\n    from bot_code.config import settings\n    from bot_code.data.trips import TRIPS_CATALOG, TRIPS_DATA\nexcept (ModuleNotFoundError, ImportError):\n    try:\n        from config import settings\n        from data.trips import TRIPS_CATALOG, TRIPS_DATA\n    except Exception:\n        from data.trips import TRIPS_CATALOG\n        TRIPS_DATA = list(TRIPS_CATALOG.values())\n\nlogger = logging.getLogger(__name__)\nrouter = Router(name=\"channel_router\")\n\n# Стан FSM для створення розіграшу та квізу\nclass ChannelAdminStates(StatesGroup):\n    waiting_for_giveaway_prize = State()\n    waiting_for_quiz_question = State()\n\n# Сховище активних розіграшів у пам'яті (giveaway_id -> data)\nGIVEAWAYS_DB: Dict[str, Dict[str, Any]] = {\n    \"gw_active\": {\n        \"id\": \"gw_active\",\n        \"prize\": \"Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼\",\n        \"channel_id\": settings.CHANNEL_URL,\n        \"participants\": [],  # list of {user_id, username, first_name}\n        \"is_active\": True,\n        \"winner\": None\n    }\n}\n\ndef get_channel_menu_keyboard() -> InlineKeyboardMarkup:\n    \"\"\"Головне меню керування каналом для адміна\"\"\"\n    return InlineKeyboardMarkup(\n        inline_keyboard=[\n            [\n                InlineKeyboardButton(text=\"🎁 Запустити новий РОЗІГРАШ\", callback_data=\"cb_adm_gw_new\"),\n                InlineKeyboardButton(text=\"🏆 Вибрати переможця\", callback_data=\"cb_adm_gw_pick\")\n            ],\n            [\n                InlineKeyboardButton(text=\"📢 Опублікувати тур з кнопкою\", callback_data=\"cb_adm_post_tour\"),\n                InlineKeyboardButton(text=\"🧠 Надіслати вікторину (Квіз)\", callback_data=\"cb_adm_send_quiz\")\n            ],\n            [\n                InlineKeyboardButton(text=\"🚀 Опублікувати Mini App у канал\", callback_data=\"cb_adm_post_miniapp\")\n            ],\n            [\n                InlineKeyboardButton(text=\"🔙 Повернутися в головне меню\", callback_data=\"cb_menu\")\n            ]\n        ]\n    )\n\ndef get_giveaway_button(gw_id: str, count: int) -> InlineKeyboardMarkup:\n    \"\"\"Кнопка для поста розіграшу в каналі з динамічним лічильником\"\"\"\n    return InlineKeyboardMarkup(\n        inline_keyboard=[\n            [\n                InlineKeyboardButton(text=f\"🎉 Брати участь! ({count})\", callback_data=f\"gw_join_{gw_id}\")\n            ],\n            [\n                InlineKeyboardButton(text=\"🗺 Переглянути розклад турів\", url=f\"https://t.me/{settings.BOT_USERNAME}\")\n            ]\n        ]\n    )\n\n@router.message(Command(\"channel\"))\nasync def cmd_channel_admin(message: Message):\n    \"\"\"Команда /channel — центр керування каналом для адміністратора\"\"\"\n    # Перевірка: доступ для адміністратора або в тестовому режимі\n    user_id = message.from_user.id\n    is_admin = (user_id == settings.ADMIN_ID) or (settings.ADMIN_ID == 0)\n\n    gw = GIVEAWAYS_DB.get(\"gw_active\", {})\n    participants_count = len(gw.get(\"participants\", []))\n    prize_title = gw.get(\"prize\", \"Не призначено\")\n\n    text = (\n        \"📢 <b>Центр керування Telegram-каналом та групою SVOI Travel</b>\\n\\n\"\n        f\"👑 Адміністратор ID: <code>{user_id}</code>\\n\"\n        f\"📢 Канал: {settings.CHANNEL_URL}\\n\"\n        f\"💬 Група: {settings.GROUP_URL}\\n\\n\"\n        \"<b>Поточний стан активностей:</b>\\n\"\n        f\"• 🎁 Активний розіграш: <i>{prize_title}</i>\\n\"\n        f\"• 👥 Учасників у базі: <b>{participants_count}</b>\\n\"\n        f\"• 🤖 Статус бота: <b>Адміністратор каналу та групи (готов до публікацій)</b>\\n\\n\"\n        \"Оберіть дію нижче:\"\n    )\n\n    await message.answer(text, reply_markup=get_channel_menu_keyboard())\n\n@router.callback_query(F.data == \"cb_adm_channel_menu\")\nasync def cb_channel_menu(callback: CallbackQuery):\n    await callback.answer()\n    gw = GIVEAWAYS_DB.get(\"gw_active\", {})\n    count = len(gw.get(\"participants\", []))\n    prize = gw.get(\"prize\", \"Поїздка до Парижа\")\n\n    text = (\n        \"📢 <b>Центр керування каналом SVOI Travel</b>\\n\\n\"\n        f\"🎁 Поточний розіграш: <b>{prize}</b>\\n\"\n        f\"👥 Зареєстровано учасників: <b>{count}</b>\\n\\n\"\n        \"Оберіть команду:\"\n    )\n    await callback.message.edit_text(text, reply_markup=get_channel_menu_keyboard())\n\n# --- 1. ПУБЛІКАЦІЯ РОЗІГРАШУ ---\n@router.callback_query(F.data == \"cb_adm_gw_new\")\nasync def cb_giveaway_new_prompt(callback: CallbackQuery, state: FSMContext):\n    await callback.answer()\n    await state.set_state(ChannelAdminStates.waiting_for_giveaway_prize)\n    \n    text = (\n        \"🎁 <b>Запуск нового РОЗІГРАШУ в каналі</b>\\n\\n\"\n        \"Напишіть у відповідь повідомлення: <b>який приз розігрується?</b>\\n\"\n        \"<i>Наприклад: «Безкоштовне місце в турі в Брюгге на 1 день 🍫» або «Знижка 50% на тур в Амстердам 🚲»</i>\\n\\n\"\n        \"Бот автоматично оформить красивий пост, опублікує його в канал та прикріпить кнопку «🎉 Брати участь! (0)».\"\n    )\n    \n    cancel_kb = InlineKeyboardMarkup(\n        inline_keyboard=[[InlineKeyboardButton(text=\"❌ Скасувати\", callback_data=\"cb_adm_channel_menu\")]]\n    )\n    await callback.message.edit_text(text, reply_markup=cancel_kb)\n\n@router.message(ChannelAdminStates.waiting_for_giveaway_prize)\nasync def process_giveaway_prize(message: Message, state: FSMContext, bot: Bot):\n    prize_text = message.text.strip()\n    await state.clear()\n\n    # Оновлюємо базу розіграшу\n    GIVEAWAYS_DB[\"gw_active\"] = {\n        \"id\": \"gw_active\",\n        \"prize\": prize_text,\n        \"participants\": [],\n        \"is_active\": True,\n        \"winner\": None\n    }\n\n    post_text = (\n        f\"🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\\n\\n\"\n        f\"Ми розігруємо неймовірний приз:\\n\"\n        f\"🎁 <b>{prize_text}</b>\\n\\n\"\n        \"<b>Умови участі максимально прості:</b>\\n\"\n        \"1️⃣ Бути підписаним на наш офіційний канал\\n\"\n        \"2️⃣ Бути учасником нашої групи клубу SVOI\\n\"\n        \"3️⃣ Натиснути кнопку <b>«🎉 Брати участь! (0)»</b> нижче!\\n\\n\"\n        \"<i>Бот автоматично перевіряє наявність підписки та заносить вас до списку претендентів. Переможця визначить генератор випадкових чисел!</i>\\n\\n\"\n        \"Усім удачі! Подорожуйте разом з @Svoi_TravelEU_bot 🚐💨\"\n    )\n\n    # Публікуємо адміну підтвердження з кнопкою розіграшу\n    await message.answer(\n        \"✅ <b>Розіграш успішно створено та готовий до трансляції!</b>\\n\\n\"\n        \"Ось як виглядає готовий пост з лічильником:\",\n        reply_markup=get_channel_menu_keyboard()\n    )\n    \n    # Публікація в чат адміна для демонстрації/тесту\n    await message.answer(\n        post_text,\n        reply_markup=get_giveaway_button(\"gw_active\", 0)\n    )\n\n# --- 2. ОБРОБКА НАТИСКАННЯ «БРАТИ УЧАСТЬ!» У КАНАЛІ ---\n@router.callback_query(F.data.startswith(\"gw_join_\"))\nasync def cb_giveaway_join(callback: CallbackQuery, bot: Bot):\n    user = callback.from_user\n    gw = GIVEAWAYS_DB.get(\"gw_active\")\n    \n    if not gw or not gw.get(\"is_active\"):\n        await callback.answer(\"⏳ Цей розіграш уже завершено або результати підбито!\", show_alert=True)\n        return\n\n    # Перевірка чи вже бере участь\n    participants = gw[\"participants\"]\n    already_in = any(p[\"user_id\"] == user.id for p in participants)\n    if already_in:\n        await callback.answer(f\"✅ Ви вже берете участь у розіграші! Ваш номер у списку: #{participants.index(next(p for p in participants if p['user_id'] == user.id)) + 1}\", show_alert=True)\n        return\n\n    # Спроба перевірки членства в каналі через get_chat_member\n    # Якщо бот запущений у тестовому каналі або без id каналу, додаємо учасника з вітанням\n    is_subscribed = True\n    try:\n        if settings.CHANNEL_URL.startswith(\"@\") or settings.CHANNEL_URL.startswith(\"-100\"):\n            member = await bot.get_chat_member(chat_id=settings.CHANNEL_URL, user_id=user.id)\n            if member.status in ['left', 'kicked']:\n                is_subscribed = False\n    except Exception as e:\n        logger.info(\"Subscription check skipped or in invite-link mode: %s\", e)\n        is_subscribed = True\n\n    if not is_subscribed:\n        await callback.answer(\"⚠️ Будь ласка, спочатку підпишіться на наш канал та групу, щоб взяти участь!\", show_alert=True)\n        return\n\n    # Додаємо учасника\n    participant_data = {\n        \"user_id\": user.id,\n        \"username\": f\"@{user.username}\" if user.username else user.first_name,\n        \"first_name\": user.first_name\n    }\n    participants.append(participant_data)\n    new_count = len(participants)\n\n    await callback.answer(\"🎉 Вітаємо! Ви успішно зареєстровані в розіграші! Нехай пощастить! 🍀\", show_alert=True)\n\n    # Оновлюємо лічильник на кнопці поста\n    try:\n        await callback.message.edit_reply_markup(reply_markup=get_giveaway_button(\"gw_active\", new_count))\n    except Exception:\n        pass\n\n# --- 3. ПІДБИТТЯ ПІДСУМКІВ ТА ВИБІР ПЕРЕМОЖЦЯ ---\n@router.callback_query(F.data == \"cb_adm_gw_pick\")\nasync def cb_giveaway_pick_winner(callback: CallbackQuery):\n    await callback.answer()\n    gw = GIVEAWAYS_DB.get(\"gw_active\")\n\n    if not gw:\n        await callback.message.answer(\"❌ Активних розіграшів не знайдено.\")\n        return\n\n    participants = gw.get(\"participants\", [])\n    if not participants:\n        # Для демонстрації додаємо тестових кандидатів якщо список порожній\n        participants = [\n            {\"user_id\": 8450153980, \"username\": \"@svoi_traveler\", \"first_name\": \"Олександр М.\"},\n            {\"user_id\": 512948123, \"username\": \"@olena_de\", \"first_name\": \"Олена К.\"},\n            {\"user_id\": 781293401, \"username\": \"@max_voyage\", \"first_name\": \"Максим В.\"}\n        ]\n        gw[\"participants\"] = participants\n\n    # Випадковий вибір\n    winner = random.choice(participants)\n    gw[\"winner\"] = winner\n    gw[\"is_active\"] = False\n\n    winner_mention = winner[\"username\"]\n    prize = gw[\"prize\"]\n\n    winner_post = (\n        \"🎊🏆 <b>УВАГА! ПІДСУМКИ ГРАНДІОЗНОГО РОЗІГРАШУ!</b> 🏆🎊\\n\\n\"\n        f\"Приз: 🎁 <b>{prize}</b>\\n\"\n        f\"Усього брало участь: <b>{len(participants)} підписників</b>\\n\\n\"\n        \"✨ Генератор випадкових чисел обрав нашого переможця: ✨\\n\"\n        f\"🥳 <b>ПЕРЕМОЖЕЦЬ: {winner['first_name']} ({winner_mention})</b>! 🎉🎉🎉\\n\\n\"\n        f\"Щиро вітаємо з перемогою! Менеджер клубу @{settings.MANAGER_USERNAME} зв'яжеться з вами для вручення призу.\\n\\n\"\n        \"<i>Дякуємо кожному за участь! Попереду ще більше турів, розіграшів та пригод разом з SVOI Travel!</i> 🚐🌍\"\n    )\n\n    action_kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [\n                InlineKeyboardButton(text=\"💺 Забронювати поїздку\", url=f\"https://t.me/{settings.BOT_USERNAME}\"),\n                InlineKeyboardButton(text=\"💬 Написати менеджеру\", url=f\"https://t.me/{settings.MANAGER_USERNAME}\")\n            ],\n            [\n                InlineKeyboardButton(text=\"🔙 Назад до панелі каналу\", callback_data=\"cb_adm_channel_menu\")\n            ]\n        ]\n    )\n\n    await callback.message.answer(\n        \"🏆 <b>Переможця успішно обрано!</b>\\n\\n\"\n        f\"Ім'я: <b>{winner['first_name']}</b>\\n\"\n        f\"Контакт: <b>{winner_mention}</b>\\n\\n\"\n        \"Ось готовий вітальний пост для публікації в каналі:\"\n    )\n    await callback.message.answer(winner_post, reply_markup=action_kb)\n\n# --- 4. ПУБЛІКАЦІЯ ПОСТА ТУРУ З КНОПКОЮ «ЗАБРОНЮВАТИ» ---\n@router.callback_query(F.data == \"cb_adm_post_tour\")\nasync def cb_post_tour_menu(callback: CallbackQuery):\n    await callback.answer()\n    buttons = []\n    for trip in TRIPS_DATA[:6]:\n        buttons.append([\n            InlineKeyboardButton(text=f\"📢 Опублікувати: {trip['title'][:28]}...\", callback_data=f\"cb_publish_trip_{trip['id']}\")\n        ])\n    buttons.append([InlineKeyboardButton(text=\"🔙 Назад\", callback_data=\"cb_adm_channel_menu\")])\n\n    kb = InlineKeyboardMarkup(inline_keyboard=buttons)\n    await callback.message.edit_text(\n        \"📢 <b>Оберіть тур для створення публікації в каналі з кнопкою «Забронювати»:</b>\",\n        reply_markup=kb\n    )\n\n@router.callback_query(F.data.startswith(\"cb_publish_trip_\"))\nasync def cb_publish_trip_selected(callback: CallbackQuery):\n    await callback.answer()\n    trip_id = callback.data.replace(\"cb_publish_trip_\", \"\")\n    trip = next((t for t in TRIPS_DATA if t['id'] == trip_id), TRIPS_DATA[0])\n\n    highlights = trip.get('highlights', [])\n    highlights_text = \"\\n\".join([f\"• {h}\" for h in highlights]) if highlights else \"• Відвідування головних панорамних локацій\\n• Вільний час для прогулянок та фото\\n• Комфортний трансфер без стресу\"\n\n    post_text = (\n        f\"🌟 <b>Ексклюзивний виїзд: {trip.get('title', 'Тур Європою')}!</b> 🌍✨\\n\\n\"\n        f\"💰 <b>Ціна: {trip.get('price', 100)}€</b> | Тривалість: <b>{trip.get('duration', '1 день')}</b>\\n\"\n        f\"🚐 Комфортний трансфер Opel Vivaro (дводіапазонний клімат, відкидні крісла, USB)\\n\"\n        f\"📍 Адресний збір: Саарланд, Трір, Люксембург (Door-to-Door)!\\n\\n\"\n        f\"<b>У програмі поїздки:</b>\\n\"\n        f\"{highlights_text}\\n\\n\"\n        \"👉 Натисніть кнопку нижче, щоб обрати своє місце у салоні або забронювати тур прямо зараз:\"\n    )\n\n    booking_kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [\n                InlineKeyboardButton(text=\"💺 Забронювати поїздку в боті\", url=f\"https://t.me/{settings.BOT_USERNAME}?start=trip_{trip['id']}\")\n            ],\n            [\n                InlineKeyboardButton(text=\"🚀 Відкрити Mini App (3D салон)\", url=f\"https://t.me/{settings.BOT_USERNAME}\"),\n                InlineKeyboardButton(text=\"💬 Менеджер\", url=f\"https://t.me/{settings.MANAGER_USERNAME}\")\n            ]\n        ]\n    )\n\n    await callback.message.answer(\n        \"✅ <b>Згенеровано готовий пост для каналу:</b>\"\n    )\n    if trip.get(\"image\"):\n        await callback.message.answer_photo(\n            photo=trip[\"image\"],\n            caption=post_text,\n            reply_markup=booking_kb\n        )\n    else:\n        await callback.message.answer(post_text, reply_markup=booking_kb)\n\n# --- 5. ВІКТОРИНА (КВІЗ) У КАНАЛ ---\n@router.callback_query(F.data == \"cb_adm_send_quiz\")\nasync def cb_send_quiz_menu(callback: CallbackQuery):\n    await callback.answer()\n    \n    quiz_post = (\n        \"🧠 <b>РАНКОВА ВІКТОРИНА ВІД SVOI TRAVEL!</b> 🌍✨\\n\\n\"\n        \"<b>Запитання:</b> У якому місті знаходиться відомий міст закоханих біля Озера Кохання (Minnewater)?\\n\\n\"\n        \"1️⃣ Амстердам (Нідерланди)\\n\"\n        \"2️⃣ Брюгге (Бельгія) 🇧🇪\\n\"\n        \"3️⃣ Страсбург (Франція)\\n\\n\"\n        \"<i>Натисніть правильну відповідь у вікторині! За правильну відповідь на вас чекає салют із конфетті! 🎉</i>\"\n    )\n\n    quiz_kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [\n                InlineKeyboardButton(text=\"1. Амстердам 🚲\", callback_data=\"cb_quiz_ans_wrong\"),\n                InlineKeyboardButton(text=\"2. Брюгге 🏰 (Правильно)\", callback_data=\"cb_quiz_ans_correct\"),\n                InlineKeyboardButton(text=\"3. Страсбург 🍷\", callback_data=\"cb_quiz_ans_wrong\")\n            ],\n            [\n                InlineKeyboardButton(text=\"💺 Забронювати тур до Брюгге (110€)\", url=f\"https://t.me/{settings.BOT_USERNAME}?start=trip_bruges\")\n            ],\n            [\n                InlineKeyboardButton(text=\"🔙 Назад до керування каналом\", callback_data=\"cb_adm_channel_menu\")\n            ]\n        ]\n    )\n\n    await callback.message.answer(\n        \"🧠 <b>Офіційний квіз для публікації у Telegram-каналі:</b>\\n\"\n        \"<i>У Telegram надсилається як інтерактивний Poll/Quiz з конфетті або як інтерактивний пост із кнопкою швидкого бронювання:</i>\"\n    )\n    await callback.message.answer(quiz_post, reply_markup=quiz_kb)\n\n# --- 6. ПУБЛІКАЦІЯ КНОПКИ MINI APP ---\n@router.callback_query(F.data == \"cb_adm_post_miniapp\")\nasync def cb_post_miniapp(callback: CallbackQuery):\n    await callback.answer()\n    \n    post_text = (\n        \"🚀✨ <b>ЗУСТРІЧАЙТЕ НОВИЙ SVOI MINI APP У СТИЛІ «ЗОРЯНЕ НЕБО»!</b> 🌌🚐\\n\\n\"\n        \"Тепер обрати тур та місце в салоні стало неймовірно зручно прямо всередині Telegram!\\n\\n\"\n        \"<b>Що всередині нашої Mini App:</b>\\n\"\n        \"✨ <b>Інтерактивний салон Opel Vivaro</b>: оберіть своє улюблене крісло (панорама у водія, крісла з підлокітниками, зоряне LED-небо на стелі)\\n\"\n        \"🗺 <b>Вітрина всіх 14 турів</b> з яскравими фотографіями та описом\\n\"\n        \"⚡️ Миттєвий прорахунок вартості та надсилання броні в 1 клік\\n\\n\"\n        \"Натискайте кнопку <b>«🚀 Відкрити Mini App»</b> та обирайте свою ідеальну подорож Європою!\"\n    )\n\n    miniapp_kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [\n                InlineKeyboardButton(text=\"🚀 Відкрити Mini App (Зоряне небо)\", url=f\"https://t.me/{settings.BOT_USERNAME}\")\n            ],\n            [\n                InlineKeyboardButton(text=\"🗺 Наш розклад турів\", url=f\"https://t.me/{settings.BOT_USERNAME}\"),\n                InlineKeyboardButton(text=\"💬 Менеджер\", url=f\"https://t.me/{settings.MANAGER_USERNAME}\")\n            ]\n        ]\n    )\n\n    await callback.message.answer(post_text, reply_markup=miniapp_kb)\n\n@router.callback_query(F.data == \"cb_open_miniapp\")\nasync def cb_user_open_miniapp(callback: CallbackQuery):\n    \"\"\"Обробник натискання користувачем кнопки Mini App у головному меню\"\"\"\n    await callback.answer()\n    text = (\n        \"🌌 <b>Інтерактивна Mini App «Зоряне небо SVOI Travel»</b> 🚐✨\\n\\n\"\n        \"У Mini App ви можете:\\n\"\n        \"• Клікнути на будь-яке крісло в салоні Opel Vivaro (1-й, 2-й або 3-й ряд)\\n\"\n        \"• Побачити, які місця вільні, а які вже заброньовані\\n\"\n        \"• Гортати яскраві картки всіх 14 турів Європою з фотографіями\\n\"\n        \"• Миттєво забронювати вибране крісло прямо через Telegram!\\n\\n\"\n        \"👇 <i>Відкрийте Mini App або оберіть тур через текстове меню:</i>\"\n    )\n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [\n                InlineKeyboardButton(text=\"🚀 Відкрити Mini App (Зоряне небо)\", url=f\"https://t.me/{settings.BOT_USERNAME}\")\n            ],\n            [\n                InlineKeyboardButton(text=\"💺 Обрати місце через меню\", callback_data=\"cb_trips\"),\n                InlineKeyboardButton(text=\"🔙 Меню\", callback_data=\"cb_back\")\n            ]\n        ]\n    )\n    await callback.message.answer(text, reply_markup=kb)\n"
   },
   {
-    name: 'states/states.py',
-    path: 'states/states.py',
-    language: 'python',
-    description: 'Машини станів FSM (FeedbackState та BookingState).',
-    content: `from aiogram.fsm.state import State, StatesGroup
-
-class FeedbackState(StatesGroup):
-    waiting_for_text = State()
-
-class BookingState(StatesGroup):
-    choosing_trip = State()
-    choosing_seat = State()
-    waiting_for_contact = State()
-`
+    "name": "handlers/menu.py",
+    "path": "handlers/menu.py",
+    "language": "python",
+    "description": "Головне меню, /start, навігація та інформаційні розділи.",
+    "content": "import logging\nfrom aiogram import Router, F\nfrom aiogram.filters import CommandStart\nfrom aiogram.types import Message, CallbackQuery\nfrom aiogram.exceptions import TelegramBadRequest\n\ntry:\n    from bot_code.keyboards.inline import (\n        get_main_menu_keyboard,\n        get_back_keyboard,\n        get_seats_keyboard,\n        get_faq_keyboard,\n        get_games_keyboard\n    )\n    from bot_code.config import settings\nexcept ModuleNotFoundError:\n    from keyboards.inline import (\n        get_main_menu_keyboard,\n        get_back_keyboard,\n        get_seats_keyboard,\n        get_faq_keyboard,\n        get_games_keyboard\n    )\n    from config import settings\n\nlogger = logging.getLogger(__name__)\nrouter = Router(name=\"menu_router\")\n\nMAIN_MENU_TEXT = (\n    \"🌟 <b>Ласкаво просимо до туристичного клубу SVOI!</b> 🌍✨\\n\\n\"\n    \"Ми організовуємо душевні та продумані поїздки найкрасивішими куточками Європи \"\n    \"на комфортабельному мінівені Opel Vivaro без стресу, поспіху та мовних бар'єрів!\\n\\n\"\n    \"✨ <b>Чому обирають SVOI:</b>\\n\"\n    \"• 🚐 <i>Комфорт у дорозі:</i> просторий 8-місний мінівен (2 місця поруч з водієм, 3 у 2-му та 3 у 3-му ряду)\\n\"\n    \"• 💳 <i>Чесні умови:</i> працюємо <b>без передоплати</b> на одноденні поїздки!\\n\"\n    \"• 📍 <i>Зручний старт:</i> відправлення із Саарбрюккена + підсадка за маршрутом\\n\"\n    \"• 👥 <i>Маленькі душевні групи</i> (до 8 осіб)\\n\\n\"\n    \"👇 <b>Оберіть потрібний розділ у меню:</b>\"\n)\n\n@router.message(CommandStart())\nasync def cmd_start(message: Message):\n    \"\"\"Обробник команди /start\"\"\"\n    await message.answer(\n        text=MAIN_MENU_TEXT,\n        reply_markup=get_main_menu_keyboard(),\n        parse_mode=\"HTML\"\n    )\n\n@router.callback_query(F.data == \"cb_back\")\nasync def process_back_to_menu(callback: CallbackQuery):\n    \"\"\"Повернення до головного меню без дублювання повідомлень (через edit_text)\"\"\"\n    await callback.answer()\n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=MAIN_MENU_TEXT,\n                reply_markup=get_main_menu_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest as e:\n        if \"message is not modified\" not in str(e):\n            logger.warning(\"Помилка при поверненні в меню: %s\", e)\n\n@router.callback_query(F.data == \"cb_car\")\nasync def process_car_info(callback: CallbackQuery):\n    \"\"\"Інформація про автопарк клубу SVOI: мінівен Opel Vivaro\"\"\"\n    await callback.answer()\n    car_text = (\n        \"🚐 <b>Наш мінівен: Opel Vivaro (8 пасажирських місць)</b> 🚗\\n\\n\"\n        \"Ми дбаємо про те, щоб дорога була легкою та приємною!\\n\\n\"\n        \"💺 <b>Схема місць у салоні (всього 8 місць):</b>\\n\"\n        \"• <b>1-й ряд (поруч із водієм):</b> 2 місця (Місце 1 — центр, Місце 2 — панорамне вікно)\\n\"\n        \"• <b>2-й ряд:</b> 3 місця (Місце 3 — вікно, Місце 4 — центр, Місце 5 — вікно)\\n\"\n        \"• <b>3-й ряд:</b> 3 місця (Місце 6 — вікно, Місце 7 — центр, Місце 8 — вікно)\\n\\n\"\n        \"🌟 <b>Оснащення та зручності:</b>\\n\"\n        \"• 💺 <b>Зручні регульовані сидіння:</b> індивідуальні ремені безпеки, комфортний нахил спинки для відпочинку\\n\"\n        \"• 📏 <b>Простір для ніг:</b> вільно навіть для високих пасажирів\\n\"\n        \"• ❄️🔥 <b>Кондиціонер та опалення салону:</b> комфорт у будь-яку пору року\\n\"\n        \"• ⚡️ <b>Зарядка телефонів:</b> USB-роз'єми в салоні для ваших гаджетів\\n\"\n        \"• 🧳 <b>Багажне відділення:</b> 10 кг при далеких поїздках + ручна поклажа в салон\\n\"\n        \"• 🧼 <b>Ідеальна чистота:</b> вологе прибирання перед кожним виїздом\\n\\n\"\n        \"<i>Ви можете зафіксувати конкретне місце під час бронювання (+5€) або зайняти вільне при посадці (0€).</i>\"\n    )\n    \n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=car_text,\n                reply_markup=get_back_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data == \"cb_meeting\")\nasync def process_meeting_points(callback: CallbackQuery):\n    \"\"\"Інформація про точки збору та логістику\"\"\"\n    await callback.answer()\n    meeting_text = (\n        \"📍 <b>Точки збору пасажирів & Логістика клубу SVOI</b> 🗺\\n\\n\"\n        \"🏡 <b>Збір та розвезення за адресою (Door-to-Door):</b>\\n\"\n        \"• <b>Забираємо всіх прямо за адресою</b> по землі <b>Саарланд (Saarland)</b>, у <b>Трірі (Trier)</b> та <b>Люксембурзі (Luxembourg)</b>!\\n\"\n        \"• Розвеземо також назад за вказаною адресою.\\n\\n\"\n        \"🛣 <b>Збір в інших землях та можливість підсадки:</b>\\n\"\n        \"Можемо забрати й в інших землях — це залежить від маршруту (по дорозі чи ні) або якщо це багатоденний тур.\\n\"\n        \"👉 <b>За наявності від 4-х осіб можемо забрати з інших земель!</b>\\n\\n\"\n        \"Міста та умови підсадки:\\n\"\n        \"• <b>Хомбург (Homburg Saar)</b> — уточнюйте\\n\"\n        \"• <b>Кайзерслаутерн (Kaiserslautern)</b> — можливий якщо більше 4-х осіб і не одноденний тур\\n\"\n        \"• <b>Мангейм / Людвігсхафен (Mannheim)</b> — можливий якщо більше 4-х осіб і не одноденний тур\\n\"\n        \"• <b>Франкфурт-на-Майні (Frankfurt am Main)</b> — можливий якщо більше 4-х осіб і не одноденний тур\\n\"\n        \"• <b>Карлсруе (Karlsruhe)</b> — для південних напрямків по дорозі\\n\"\n        \"• <b>Страсбург (Strasbourg)</b> — по Франції та Швейцарії\\n\"\n        \"• <b>Бельгія</b> — при поїздках до Нормандії, Голландії та Парижа\\n\\n\"\n        \"💬 <i>Напишіть менеджеру для уточнення — можливість підсадки уточнюйте: @SVOI_travel_admin</i>\\n\\n\"\n        \"⏰ <b>Точний час подачі трансферу:</b>\\n\"\n        \"Точний час, о котрій за вами заїдуть, надсилається <b>в особистий чат за день увечері перед поїздкою</b>.\\n\\n\"\n        \"👥 <b>Зв'язок з водієм та чат групи:</b>\\n\"\n        \"Основні питання водієві та щодо поїздки ви зможете поставити у новоствореній одноденній групі для комунікації. <b>Через день група видаляється.</b>\"\n    )\n    \n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=meeting_text,\n                reply_markup=get_back_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data == \"cb_terms\")\nasync def process_terms(callback: CallbackQuery):\n    \"\"\"Умови поїздок, правила скасування, документи\"\"\"\n    await callback.answer()\n    terms_text = (\n        \"📜 <b>Умови поїздок туристичного клубу SVOI</b> 📌\\n\\n\"\n        \"🛂 <b>Необхідні документи:</b>\\n\"\n        \"• Дійсний закордонний паспорт\\n\"\n        \"• Дійсний європейський ВНЖ (Aufenthaltstitel), ПМЖ або шенгенська віза\\n\"\n        \"• 🏥 <b>Медична страховка:</b> Обов'язкова медична туристична страховка для людей без ВНЖ в Європі\\n\\n\"\n        \"🧳 <b>Багаж:</b>\\n\"\n        \"• <b>10 кг при далеких поїздках</b> у багажний відсік\\n\"\n        \"• 1 невелика <b>ручна поклажа</b> з особистими речами в салон авто\\n\\n\"\n        \"💳 <b>Бронювання та оплата:</b>\\n\"\n        \"• 🔥 <b>Бронь у нас БЕЗ ПЕРЕДОПЛАТИ!</b> Оплата туру відбувається при посадці в день поїздки\\n\"\n        \"• Передоплата потрібна <b>ТІЛЬКИ при поїздках на кілька днів</b> для бронювання номерів у готелях\\n\\n\"\n        \"🔄 <b>Правила скасування та повернення:</b>\\n\"\n        \"• Скасування більш ніж за 72 години до виїзду — перенесення дати або скасування без утримань\\n\"\n        \"• Менше 24 годин — бронь можна передати другу\\n\\n\"\n        \"🚭 <b>У салоні суворо заборонено куріння та вживання міцного алкоголю.</b>\"\n    )\n    \n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=terms_text,\n                reply_markup=get_back_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data == \"cb_partner\")\nasync def process_partner(callback: CallbackQuery):\n    \"\"\"Співпраця та партнерська програма\"\"\"\n    await callback.answer()\n    partner_text = (\n        \"🤝 <b>Партнерська програма & Співпраця</b> 💼\\n\\n\"\n        \"Клуб SVOI відкритий для друзів, блогерів, гідів та активних мандрівників!\\n\\n\"\n        \"🌟 <b>Наші формати співпраці:</b>\\n\"\n        \"1. <b>Приведи друзів:</b> зберіть компанію від 4 осіб та отримайте персональну знижку 10% кожному!\\n\"\n        \"2. <b>Індивідуальний чартер:</b> оренда всього мінівена (8 місць) з водієм під ваш маршрут зі знижкою 15%.\\n\"\n        \"3. <b>Для блогерів та інфлюенсерів:</b> бартерні поїздки за чесні огляди та відмітки.\\n\\n\"\n        f\"📩 <i>Зв'яжіться напряму із засновником клубу:</i> @{settings.MANAGER_USERNAME.lstrip('@')}\"\n    )\n    \n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=partner_text,\n                reply_markup=get_back_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data == \"cb_book\")\nasync def process_book_menu(callback: CallbackQuery):\n    \"\"\"Розділ вибору місця в салоні мінівена\"\"\"\n    await callback.answer()\n    seats_info = (\n        \"💺 <b>Вибір місця в мінівені Opel Vivaro (8 місць)</b>\\n\\n\"\n        \"Схема розсадки пасажирів по порядку:\\n\"\n        \"• <b>1-й ряд (поруч із водієм):</b> 2 місця\\n\"\n        \"• <b>2-й ряд:</b> 3 місця (вікно / центр / вікно)\\n\"\n        \"• <b>3-й ряд:</b> 3 місця (вікно / центр / вікно)\\n\\n\"\n        \"💵 <b>Тариф:</b>\\n\"\n        \"• Фіксація конкретного місця по порядку: <b>+5€</b>\\n\"\n        \"• Без вибору місця (вільна посадка): <b>0€</b>\\n\\n\"\n        \"👇 <i>Оберіть бажане місце:</i>\"\n    )\n    \n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=seats_info,\n                reply_markup=get_seats_keyboard(\"general\"),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data == \"cb_faq\")\nasync def process_faq_menu(callback: CallbackQuery):\n    \"\"\"Розділ частих запитань FAQ\"\"\"\n    await callback.answer()\n    faq_text = (\n        \"❓ <b>Часті питання про поїздки клубу SVOI (FAQ)</b> 💡\\n\\n\"\n        \"Зібрали для вас детальні відповіді на головні питання:\\n\\n\"\n        \"• 💳 Оплата: <b>працюємо без передоплати на одноденні поїздки</b>!\\n\"\n        \"• ⏱ Маршрути та таймінг: приклади комбінованих турів\\n\"\n        \"• 🎯 Як обрати тур: розмірені прогулянки vs. активний темп\\n\"\n        \"• 💺 Салон Opel Vivaro: 8 місць (2 спереду, 3 у 2-му та 3 у 3-му ряду)\\n\\n\"\n        \"👇 <i>Натисніть на запитання, яке вас цікавить:</i>\"\n    )\n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=faq_text,\n                reply_markup=get_faq_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data == \"cb_faq_payment\")\nasync def process_faq_payment(callback: CallbackQuery):\n    await callback.answer()\n    text = (\n        \"💳 <b>Коли та як відбувається оплата поїздки?</b>\\n\\n\"\n        \"🔥 <b>Ми працюємо БЕЗ ПЕРЕДОПЛАТИ на всі одноденні поїздки!</b>\\n\\n\"\n        \"• <b>Одноденні тури:</b> Ви просто бронюєте місце, а оплачуєте поїздку безпосередньо при посадці в мінівен!\\n\"\n        \"• <b>Багатоденні поїздки (2–3 дні):</b> Передоплата потрібна <b>ТІЛЬКИ для багатоденних турів</b> (для бронювання номерів у готелях).\\n\"\n        \"• <b>Способи оплати:</b> Готівка при посадці (в євро), банківський переказ SEPA / IBAN (Німеччина/ЄС), PayPal.\\n\"\n        \"• <b>Скасування:</b> При попередженні за 72+ години — перенесення або скасування без утримань.\"\n    )\n    await callback.message.edit_text(text=text, reply_markup=get_faq_keyboard(), parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_faq_time\")\nasync def process_faq_time(callback: CallbackQuery):\n    await callback.answer()\n    text = (\n        \"⏱ <b>Скільки часу на локаціях?</b>\\n\\n\"\n        \"Ми розраховуємо маршрут так, щоб не було відчуття поспіху:\\n\\n\"\n        \"• <b>Одноденні тури (Париж, Амстердам, Брюгге):</b> від 5 до 8 годин чистого часу в місті!\\n\\n\"\n        \"• <b>Комбіновані маршрути:</b>\\n\"\n        \"  — 🌊 <b>Етрета + Париж:</b> наприклад, <b>5 годин на скелях Етрета</b> та океані + <b>2–3 години</b> у вечірньому Парижі!\\n\"\n        \"  — 🇨🇭 <b>Швейцарія комбо:</b> <b>3 години Лаутербруннен</b> (долина 72 водоспадів), <b>2 години ущелина Ааре</b>, <b>2 години Берн</b>!\\n\\n\"\n        \"• <b>Тури на вихідні (2–3 дні):</b> розмірена програма з ночівлею в комфортабельному готелі.\"\n    )\n    await callback.message.edit_text(text=text, reply_markup=get_faq_keyboard(), parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_faq_choose\")\nasync def process_faq_choose(callback: CallbackQuery):\n    await callback.answer()\n    text = (\n        \"🎯 <b>Як обрати тур новачку?</b>\\n\\n\"\n        \"🌿 <b>Розмірені тури (для спокійних прогулянок та релаксу):</b>\\n\"\n        \"• <b>Брюгге (110€)</b> — канали, лебеді, шоколад, затишні тераси\\n\"\n        \"• <b>Ельзас + Страсбург (80€)</b> — пряникові фахверкові вулички\\n\"\n        \"• <b>Замок Нойшванштайн (120€)</b> — прогулянка до озера Альпзее та замку\\n\"\n        \"• <b>Лазурове узбережжя (3 дні, 440€)</b> — курортний відпочинок біля моря з готелем\\n\\n\"\n        \"⚡️ <b>Тури в темпі (активно, «галопом по Європах»):</b>\\n\"\n        \"• <b>Ліхтенштейн (3 країни за 1 день, 120€)</b> — Ліхтенштейн + Австрія + Швейцарія\\n\"\n        \"• <b>Етрета + Париж (140€)</b> — 5 год скелі Нормандії + 2–3 год Париж\\n\"\n        \"• <b>Швейцарія комбо (120€)</b> — 3 год Лаутербруннен + 2 год ущелина Ааре + 2 год Берн\\n\"\n        \"• <b>Париж чи Амстердам (120€)</b> — максимум вражень за 1 день\\n\\n\"\n        f\"Напишіть менеджеру @{settings.MANAGER_USERNAME.lstrip('@')} — ми з радістю допоможемо підібрати тур!\"\n    )\n    await callback.message.edit_text(text=text, reply_markup=get_faq_keyboard(), parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_faq_seats\")\nasync def process_faq_seats(callback: CallbackQuery):\n    await callback.answer()\n    text = (\n        \"💺 <b>Як розташовані та регулюються сидіння?</b>\\n\\n\"\n        \"У нашому 8-місному мінівені Opel Vivaro сидіння розташовані за схемою 2+3+3:\\n\\n\"\n        \"• <b>1-й ряд (поруч із водієм):</b> 2 місця (Місце 1 — центр, Місце 2 — панорамне вікно)\\n\"\n        \"• <b>2-й ряд:</b> 3 місця (Місце 3 — вікно, Місце 4 — центр, Місце 5 — вікно)\\n\"\n        \"• <b>3-й ряд:</b> 3 місця (Місце 6 — вікно, Місце 7 — центр, Місце 8 — вікно)\\n\\n\"\n        \"🛋 <b>Комфорт:</b> Регульований нахил спинки для сну, USB-зарядки для смартфонів, кондиціонер.\\n\"\n        \"💵 <b>Вибір місця:</b> Фіксація конкретного місця по порядку — <b>5€</b>. Без вибору (вільна посадка) — <b>0€</b>.\"\n    )\n    await callback.message.edit_text(text=text, reply_markup=get_faq_keyboard(), parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_faq_walking\")\nasync def process_faq_walking(callback: CallbackQuery):\n    await callback.answer()\n    text = (\n        \"🚶 <b>Як ми гуляємо на локаціях?</b>\\n\\n\"\n        \"1. <b>Вступна прогулянка:</b> Після прибуття ми разом знайомимося з ключовими визначними пам'ятками та видовими точками.\\n\\n\"\n        \"2. <b>Вільний час:</b> Ви не прив'язані до групи з прапорцем! Гуляйте у своєму темпі, відвідуйте музеї, відпочивайте в затишних кафе або влаштовуйте шопінг.\\n\\n\"\n        \"3. <b>Підтримка:</b> Організатор завжди на зв'язку в чаті поїздки та ділиться точними локаціями найкращих закладів.\"\n    )\n    await callback.message.edit_text(text=text, reply_markup=get_faq_keyboard(), parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_games\")\nasync def process_games_menu(callback: CallbackQuery):\n    \"\"\"Розділ ігор та вікторин\"\"\"\n    await callback.answer()\n    games_text = (\n        \"🎮 <b>Ігри та вікторини клубу SVOI</b> 🏆\\n\\n\"\n        \"Беріть участь в іграх, вигравайте бонуси та Картку Пріоритету (+5€ до безкоштовного вибору місця)!\\n\\n\"\n        \"👇 <i>Оберіть активність:</i>\"\n    )\n    await callback.message.edit_text(text=games_text, reply_markup=get_games_keyboard(), parse_mode=\"HTML\")\n"
   },
   {
-    name: 'requirements.txt',
-    path: 'requirements.txt',
-    language: 'text',
-    description: 'Залежності проєкту для встановлення через pip.',
-    content: `aiogram>=3.17.0,<4.0.0
-pydantic-settings>=2.7.0
-aiohttp>=3.11.0
-python-dotenv>=1.0.1
-`
+    "name": "handlers/trips.py",
+    "path": "handlers/trips.py",
+    "language": "python",
+    "description": "Каталог турів, вивід карток напрямків та цін.",
+    "content": "import logging\nfrom aiogram import Router, F\nfrom aiogram.types import CallbackQuery\nfrom aiogram.exceptions import TelegramBadRequest\nfrom aiogram.fsm.context import FSMContext\n\ntry:\n    from bot_code.data.trips import TRIPS_CATALOG\n    from bot_code.keyboards.inline import (\n        get_trips_keyboard,\n        get_trip_detail_keyboard,\n        get_seats_keyboard\n    )\n    from bot_code.states.states import BookingState\nexcept ModuleNotFoundError:\n    from data.trips import TRIPS_CATALOG\n    from keyboards.inline import (\n        get_trips_keyboard,\n        get_trip_detail_keyboard,\n        get_seats_keyboard\n    )\n    from states.states import BookingState\n\nlogger = logging.getLogger(__name__)\nrouter = Router(name=\"trips_router\")\n\nTRIPS_HEADER = (\n    \"🗺 <b>Актуальні напрямки та розклад турів SVOI</b> 🇪🇺✨\\n\\n\"\n    \"Усі поїздки здійснюються із <b>Саарбрюккена</b> (з підсадкою за маршрутом) \"\n    \"на комфортабельному VIP-мінівені Opel Vivaro.\\n\\n\"\n    \"👇 <i>Натисніть на напрямок, щоб відкрити детальну програму туру та забронювати:</i>\"\n)\n\n@router.callback_query(F.data == \"cb_trips\")\nasync def process_trips_list(callback: CallbackQuery):\n    \"\"\"Виводить список напрямків з цінами у стовпчик\"\"\"\n    await callback.answer()\n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=TRIPS_HEADER,\n                reply_markup=get_trips_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data.startswith(\"cb_trip_\"))\nasync def process_trip_detail(callback: CallbackQuery):\n    \"\"\"Виводить детальну картку обраного туру\"\"\"\n    await callback.answer()\n    trip_id = callback.data.replace(\"cb_trip_\", \"\")\n    \n    trip = TRIPS_CATALOG.get(trip_id)\n    if not trip:\n        await callback.answer(\"Тур не знайдено\", show_alert=True)\n        return\n    \n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=trip[\"description\"],\n                reply_markup=get_trip_detail_keyboard(trip_id),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data.startswith(\"cb_book_target_\"))\nasync def process_book_target_trip(callback: CallbackQuery, state: FSMContext):\n    \"\"\"Перехід до вибору місця та оформлення конкретного туру\"\"\"\n    await callback.answer()\n    trip_id = callback.data.replace(\"cb_book_target_\", \"\")\n    trip = TRIPS_CATALOG.get(trip_id)\n    \n    trip_title = trip[\"title\"] if trip else \"Обраний тур\"\n    await state.update_data(trip_id=trip_id, trip_title=trip_title)\n    await state.set_state(BookingState.choosing_seat)\n    \n    text = (\n        f\"🎯 <b>Бронювання туру: {trip_title}</b>\\n\\n\"\n        \"Ви можете обрати конкретне місце у 8-місному мінівені Opel Vivaro:\\n\\n\"\n        \"💺 <b>Фіксоване місце на вибір:</b> +5€\\n\"\n        \"🎲 <b>Без вибору місця (вільна посадка):</b> 0€\\n\\n\"\n        \"👇 <i>Оберіть номер місця в салоні:</i>\"\n    )\n    \n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=text,\n                reply_markup=get_seats_keyboard(trip_id),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n"
   },
   {
-    name: 'handlers/faq.py',
-    path: 'handlers/faq.py',
-    language: 'python',
-    description: 'Розділ частих запитань (FAQ): як гуляємо, час на локаціях, оплата, сидіння, посилання на тему в каналі.',
-    content: `import logging
-from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from config import settings
-
-logger = logging.getLogger(__name__)
-router = Router(name="faq_router")
-
-FAQ_MAIN_TEXT = (
-    "❓ <b>Часті питання про поїздки клубу SVOI (FAQ)</b> 💡\\n\\n"
-    "Зібрали для вас детальні відповіді на найважливіші питання:\\n\\n"
-    "• 💳 Оплата: <b>працюємо без передоплати на одноденні поїздки</b>!\\n"
-    "• ⏱ Маршрути та таймінг: приклади комбінованих турів\\n"
-    "• 🎯 Як обрати тур: розмірені прогулянки vs. активний темп\\n"
-    "• 💺 Салон Opel Vivaro: 8 місць (2 спереду, 3 у 2-му та 3 у 3-му ряду)\\n\\n"
-    "👇 <i>Натисніть на запитання, яке вас цікавить:</i>"
-)
-
-def get_faq_inline_kb():
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💳 Коли оплата? (Без передоплати)", callback_data="cb_faq_payment"),
-                InlineKeyboardButton(text="⏱ Скільки часу на локаціях?", callback_data="cb_faq_time")
-            ],
-            [
-                InlineKeyboardButton(text="🎯 Розмірений vs темп: як обрати тур?", callback_data="cb_faq_choose"),
-                InlineKeyboardButton(text="💺 Схема місць (2+3+3) та регулювання", callback_data="cb_faq_seats")
-            ],
-            [
-                InlineKeyboardButton(text="🚶 Як ми гуляємо на локаціях?", callback_data="cb_faq_walking")
-            ],
-            [
-                InlineKeyboardButton(text="📌 Читати тему в каналі (FAQ)", url="https://t.me/c/3876884115/5")
-            ],
-            [
-                InlineKeyboardButton(text="🔙 Головне меню", callback_data="cb_back")
-            ]
-        ]
-    )
-
-@router.callback_query(F.data == "cb_faq")
-async def process_faq_main(callback: CallbackQuery):
-    if callback.message:
-        await callback.message.edit_text(text=FAQ_MAIN_TEXT, reply_markup=get_faq_inline_kb(), parse_mode="HTML")
-
-@router.callback_query(F.data == "cb_faq_payment")
-async def process_faq_payment(callback: CallbackQuery):
-    await callback.answer()
-    text = (
-        "💳 <b>Коли та як оплата поїздки?</b>\\n\\n"
-        "🔥 <b>Ми працюємо БЕЗ ПЕРЕДОПЛАТИ на всі одноденні поїздки!</b>\\n\\n"
-        "• <b>Одноденні тури:</b> Ви бронюєте місце, а оплачуєте поїздку безпосередньо при посадці в мінівен!\\n"
-        "• <b>Багатоденні поїздки (2–3 дні):</b> Передоплата потрібна <b>ТОЛЬКО для багатоденних турів</b> (для бронювання номерів у готелях).\\n"
-        "• <b>Способи оплати:</b> Готівка при посадці (в євро), банківський переказ SEPA / IBAN (Німеччина/ЄС), PayPal.\\n"
-        "• <b>Скасування:</b> При попередженні за 72+ години — перенесення або скасування без утримань."
-    )
-    await callback.message.edit_text(text=text, reply_markup=get_faq_inline_kb(), parse_mode="HTML")
-
-@router.callback_query(F.data == "cb_faq_time")
-async def process_faq_time(callback: CallbackQuery):
-    await callback.answer()
-    text = (
-        "⏱ <b>Скільки часу на локаціях?</b>\\n\\n"
-        "Ми розраховуємо маршрут так, щоб не було відчуття поспіху:\\n\\n"
-        "• <b>Одноденні тури (Париж, Амстердам, Брюгге):</b> від 5 до 8 годин чистого часу в місті!\\n\\n"
-        "• <b>Комбіновані маршрути:</b>\\n"
-        "  — 🌊 <b>Етрета + Париж:</b> наприклад, <b>5 годин на скелях Етрета</b> та океані + <b>2–3 години</b> у вечірньому Парижі!\\n"
-        "  — 🇨🇭 <b>Швейцарія комбо:</b> <b>3 години Лаутербруннен</b> (долина водоспадів), <b>2 години ущелина Ааре</b>, <b>2 години Берн</b>!\\n\\n"
-        "• <b>Тури на вихідні (2–3 дні):</b> розмірена програма з ночівлею в комфортабельному готелі."
-    )
-    await callback.message.edit_text(text=text, reply_markup=get_faq_inline_kb(), parse_mode="HTML")
-
-@router.callback_query(F.data == "cb_faq_choose")
-async def process_faq_choose(callback: CallbackQuery):
-    await callback.answer()
-    text = (
-        "🎯 <b>Як обрати тур новачку?</b>\\n\\n"
-        "🌿 <b>Розмірені тури (для спокійних прогулянок та релаксу):</b>\\n"
-        "• <b>Брюгге (110€)</b> — канали, лебеді, шоколад, затишні тераси\\n"
-        "• <b>Ельзас + Страсбург (80€)</b> — пряникові фахверкові вулички\\n"
-        "• <b>Замок Нойшванштайн (120€)</b> — прогулянка до озера Альпзее та замку\\n"
-        "• <b>Лазурове узбережжя (3 дні, 440€)</b> — курортний відпочинок біля моря з готелем\\n\\n"
-        "⚡️ <b>Тури в темпі (активно, «галопом по Європах»):</b>\\n"
-        "• <b>Ліхтенштейн (3 країни за 1 день, 120€)</b> — Ліхтенштейн + Австрія + Швейцарія\\n"
-        "• <b>Етрета + Париж (140€)</b> — 5 год скелі Нормандії + 2–3 год Париж\\n"
-        "• <b>Швейцарія комбо (120€)</b> — 3 год Лаутербруннен + 2 год ущелина Ааре + 2 год Берн\\n"
-        "• <b>Париж чи Амстердам (120€)</b> — максимум вражень за 1 день\\n\\n"
-        f"Напишіть менеджеру @{settings.MANAGER_USERNAME.lstrip('@')} — ми допоможемо підібрати тур!"
-    )
-    await callback.message.edit_text(text=text, reply_markup=get_faq_inline_kb(), parse_mode="HTML")
-
-@router.callback_query(F.data == "cb_faq_seats")
-async def process_faq_seats(callback: CallbackQuery):
-    await callback.answer()
-    text = (
-        "💺 <b>Як розташовані та регулюються сидіння?</b>\\n\\n"
-        "У нашому 8-місному мінівені Opel Vivaro сидіння розташовані за схемою 2+3+3:\\n\\n"
-        "• <b>1-й ряд (поруч із водієм):</b> 2 місця (Місце 1 — центр, Місце 2 — панорамне вікно)\\n"
-        "• <b>2-й ряд:</b> 3 місця (Місце 3 — вікно, Місце 4 — центр, Місце 5 — вікно)\\n"
-        "• <b>3-й ряд:</b> 3 місця (Місце 6 — вікно, Місце 7 — центр, Місце 8 — вікно)\\n\\n"
-        "🛋 <b>Комфорт:</b> Регульований нахил спинки для сну, USB-зарядки для смартфонів, кондиціонер.\\n"
-        "💵 <b>Вибір місця:</b> Фіксація конкретного місця по порядку — <b>5€</b>. Без вибору (вільна посадка) — <b>0€</b>."
-    )
-    await callback.message.edit_text(text=text, reply_markup=get_faq_inline_kb(), parse_mode="HTML")
-
-@router.callback_query(F.data == "cb_faq_walking")
-async def process_faq_walking(callback: CallbackQuery):
-    await callback.answer()
-    text = (
-        "🚶 <b>Як ми гуляємо на локаціях?</b>\\n\\n"
-        "1. <b>Вступна прогулянка:</b> Після прибуття ми разом знайомимося з ключовими визначними пам'ятками та видовими точками.\\n\\n"
-        "2. <b>Вільний час:</b> Ви не прив'язані до групи з прапорцем! Гуляйте у своєму темпі, відвідуйте музеї, відпочивайте в затишних кафе або влаштовуйте шопінг.\\n\\n"
-        "3. <b>Підтримка:</b> Організатор завжди на зв'язку в чаті поїздки та ділиться точними локаціями найкращих закладів."
-    )
-    await callback.message.edit_text(text=text, reply_markup=get_faq_inline_kb(), parse_mode="HTML")
-`
+    "name": "handlers/booking.py",
+    "path": "handlers/booking.py",
+    "language": "python",
+    "description": "Система бронювання місць у мінівені Opel Vivaro (1-8 місця).",
+    "content": "import logging\nimport random\nfrom urllib.parse import quote\nfrom aiogram import Router, F, Bot\nfrom aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton\nfrom aiogram.fsm.context import FSMContext\nfrom aiogram.exceptions import TelegramBadRequest\n\ntry:\n    from bot_code.states.states import BookingState\n    from bot_code.data.trips import TRIPS_CATALOG\n    from bot_code.config import settings\nexcept ModuleNotFoundError:\n    from states.states import BookingState\n    from data.trips import TRIPS_CATALOG\n    from config import settings\n\nlogger = logging.getLogger(__name__)\nrouter = Router(name=\"booking_router\")\n\nSEAT_DESCRIPTIONS = {\n    \"1\": \"💺 Місце 1 (1-й ряд, поруч з водієм, центр)\",\n    \"2\": \"💺 Місце 2 (1-й ряд, поруч з водієм, вікно)\",\n    \"3\": \"💺 Місце 3 (2-й ряд, біля вікна ліворуч)\",\n    \"4\": \"💺 Місце 4 (2-й ряд, центр)\",\n    \"5\": \"💺 Місце 5 (2-й ряд, біля вікна праворуч)\",\n    \"6\": \"💺 Місце 6 (3-й ряд, біля вікна ліворуч)\",\n    \"7\": \"💺 Місце 7 (3-й ряд, центр)\",\n    \"8\": \"💺 Місце 8 (3-й ряд, біля вікна праворуч)\",\n    \"none\": \"🎲 Без вибору місця (вільна посадка)\"\n}\n\ndef generate_booking_code() -> str:\n    \"\"\"Генерує номер броні у форматі SVOI-XXXX\"\"\"\n    return f\"SVOI-{random.randint(1000, 9999)}\"\n\n@router.callback_query(F.data.startswith(\"cb_seat_\"))\nasync def process_seat_chosen(callback: CallbackQuery, state: FSMContext, bot: Bot):\n    \"\"\"\n    Система бронювання з вибором місця по порядку (всього 8 місць):\n    1-й ряд: 2 місця поруч з водієм\n    2-й ряд: 3 місця\n    3-й ряд: 3 місця\n    Фіксація конкретного місця — 5€, вільна посадка — 0€.\n    Бронь БЕЗ ПЕРЕДОПЛАТИ на одноденні тури (оплата при посадці).\n    Передоплата лише для кількаденних турів для готелів.\n    \"\"\"\n    await callback.answer()\n    parts = callback.data.split(\"_\")\n    seat_id = parts[2] if len(parts) > 2 else \"none\"\n    trip_id = parts[3] if len(parts) > 3 else \"general\"\n\n    seat_title = SEAT_DESCRIPTIONS.get(seat_id, \"🎲 Вільна посадка\")\n    seat_fee = 0 if seat_id == \"none\" else 5\n\n    trip = TRIPS_CATALOG.get(trip_id)\n    trip_title = trip[\"title\"] if trip else \"Індивідуальний європейський маршрут\"\n    duration = trip[\"duration\"] if trip else \"1 день\"\n    base_price = trip[\"price\"] if trip else 120\n    total_cost = base_price + seat_fee\n    booking_code = generate_booking_code()\n\n    user = callback.from_user\n    user_name = user.full_name if user else \"Шановний мандрівник\"\n    user_mention = f\"@{user.username}\" if user and user.username else \"Без юзернейму\"\n    user_id = user.id if user else 0\n\n    # Посилання на менеджера із заповненим текстом\n    manager_message = f\"Вітаю! Мій номер броні: #{booking_code}. Тур: {trip_title}, місце: {seat_title}, до оплати: {total_cost}€.\"\n    manager_url = f\"https://t.me/{settings.MANAGER_USERNAME.lstrip('@')}?text={quote(manager_message)}\"\n\n    payment_note = (\n        \"🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Повна оплата здійснюється при посадці в мінівен.\\n\\n\"\n        if duration == \"1 день\" else\n        \"🏨 <i>Передоплата потрібна лише для фіксації номерів у готелі.</i>\\n\\n\"\n    )\n\n    # 1. Персоналізоване підтвердження для туриста\n    confirmation_text = (\n        f\"🎉 <b>ПІДТВЕРДЖЕННЯ БРОНЮВАННЯ #{booking_code}</b>\\n\\n\"\n        f\"Вітаємо, <b>{user_name}</b>! Вашу заявку в туристичний клуб <b>SVOI</b> успішно зафіксовано.\\n\\n\"\n        f\"📋 <b>Деталі поїздки:</b>\\n\"\n        f\"• 🗺 <b>Напрямок:</b> {trip_title}\\n\"\n        f\"• ⏱ <b>Тривалість:</b> {duration}\\n\"\n        f\"• 🚐 <b>Транспорт:</b> Мінівен Opel Vivaro (8 пасажирських місць, клімат-контроль)\\n\"\n        f\"• 💺 <b>Обране місце:</b> {seat_title}\\n\"\n        f\"• 📍 <b>Точка збору:</b> Саарбрюккен Hbf (або підсадка за маршрутом)\\n\\n\"\n        f\"🧾 <b>Розрахунок вартості:</b>\\n\"\n        f\"• Базовий квиток туру: <b>{base_price}€</b>\\n\"\n        f\"• Вибір конкретного місця: <b>+{seat_fee}€</b>\\n\"\n        f\"━━━━━━━━━━━━━━━━━━\\n\"\n        f\"💳 <b>РАЗОМ ДО ОПЛАТИ: {total_cost}€</b>\\n\"\n        f\"{payment_note}\"\n        f\"📌 <b>Умови поїздки:</b>\\n\"\n        f\"✓ Закордонний паспорт + дійсний ВНЖ / шенгенська віза\\n\"\n        f\"✓ <b>Мед. страховка</b> (обов'язкова для людей без ВНЖ в Європі)\\n\"\n        f\"✓ <b>Багаж:</b> 10 кг при далеких поїздках + ручна поклажа в салон\\n\\n\"\n        f\"👉 <b>Наступний крок:</b> Натисніть кнопку нижче для відправлення даних менеджеру \"\n        f\"@{settings.MANAGER_USERNAME.lstrip('@')} в Telegram:\"\n    )\n\n    user_markup = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [\n                InlineKeyboardButton(text=\"💬 Надіслати бронь менеджеру в Telegram\", url=manager_url)\n            ],\n            [\n                InlineKeyboardButton(text=\"📍 Точки збору\", callback_data=\"cb_meeting\"),\n                InlineKeyboardButton(text=\"❓ Часті питання (FAQ)\", callback_data=\"cb_faq\")\n            ],\n            [\n                InlineKeyboardButton(text=\"🗺 Інші тури\", callback_data=\"cb_trips\"),\n                InlineKeyboardButton(text=\"🔙 Головне меню\", callback_data=\"cb_back\")\n            ]\n        ]\n    )\n\n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=confirmation_text,\n                reply_markup=user_markup,\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest as e:\n        logger.warning(\"Помилка оновлення броні: %s\", e)\n\n    # 2. Сповіщення адміністратору\n    admin_notification = (\n        f\"🚨 <b>НОВА ЗАЯВКА НА БРОНЮВАННЯ #{booking_code}</b> 🚨\\n\\n\"\n        f\"👤 <b>Турист:</b> {user_name} ({user_mention})\\n\"\n        f\"🆔 <b>Telegram ID:</b> <code>{user_id}</code>\\n\"\n        f\"🔗 <b>Контакт:</b> <a href=\\\"tg://user?id={user_id}\\\">Написати туристу</a>\\n\\n\"\n        f\"🗺 <b>Тур:</b> {trip_title} ({duration})\\n\"\n        f\"💺 <b>Місце:</b> {seat_title}\\n\"\n        f\"💵 <b>Сума до оплати:</b> <b>{total_cost}€</b> (тур: {base_price}€, вибір місця: +{seat_fee}€)\\n\"\n        f\"📍 <b>Посадка:</b> Саарбрюккен Hbf\\n\"\n        f\"💳 <b>Передоплата:</b> {'БЕЗ ПЕРЕДОПЛАТИ (оплата при посадці)' if duration == '1 день' else 'Готель (потрібна передоплата)'}\"\n    )\n\n    if settings.ADMIN_ID and settings.ADMIN_ID != 0:\n        try:\n            await bot.send_message(\n                chat_id=settings.ADMIN_ID,\n                text=admin_notification,\n                parse_mode=\"HTML\"\n            )\n        except Exception as e:\n            logger.error(\"Не вдалося відправити заявку адміну: %s\", e)\n"
   },
   {
-    name: 'handlers/games.py',
-    path: 'handlers/games.py',
-    language: 'python',
-    description: 'Інтерактивні ігри в чаті: Гео-Детектив (із видачею Картки Пріоритету), квіз Правда/Неправда та проведення вікторин у групі.',
-    content: `import logging
-import random
-from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from config import settings
-
-logger = logging.getLogger(__name__)
-router = Router(name="games_router")
-
-@router.callback_query(F.data == "cb_games")
-async def process_games_main(callback: CallbackQuery):
-    text = (
-        "🎮 <b>Інтерактивні ігри та вікторини клубу SVOI</b> 🏆\\n\\n"
-        "Нудьгуєте дорогою на роботу чи ввечері? Беріть участь в іграх, перевіряйте інтуїцію "
-        "та отримуйте бонуси для ваших майбутніх поїздок!\\n\\n"
-        "• 🕵️ <b>Гра «Гео-Детектив»:</b> вгадайте незвичайну локацію та отримайте <b>Картку Пріоритету (+5€ вибір місця)</b>!\\n"
-        "• 🧠 <b>Квіз «Правда чи Неправда»:</b> 3 дивовижні факти про європейські країни.\\n"
-        "• 🎁 <b>Розіграші квитків:</b> як бот проводить конкурси у групі Telegram."
-    )
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🕵️ Гра «Гео-Детектив»", callback_data="cb_game_geo")],
-            [InlineKeyboardButton(text="🧠 Вікторина «Правда чи Неправда»", callback_data="cb_game_quiz")],
-            [InlineKeyboardButton(text="🎁 Розіграші у групі SVOI", callback_data="cb_game_group_info")],
-            [InlineKeyboardButton(text="🔙 Головне меню", callback_data="cb_back")]
-        ]
-    )
-    if callback.message:
-        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
-`
+    "name": "handlers/faq.py",
+    "path": "handlers/faq.py",
+    "language": "python",
+    "description": "Розділ частих запитань та відповідей (FAQ).",
+    "content": "import logging\nfrom aiogram import Router, F\nfrom aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton\nfrom aiogram.exceptions import TelegramBadRequest\n\ntry:\n    from bot_code.keyboards.inline import get_faq_keyboard, get_back_keyboard\nexcept ModuleNotFoundError:\n    from keyboards.inline import get_faq_keyboard, get_back_keyboard\n\nlogger = logging.getLogger(__name__)\nrouter = Router(name=\"faq_router\")\n\nFAQ_MAIN_TEXT = (\n    \"❓ <b>Часті питання про поїздки клубу SVOI (FAQ)</b> 💡\\n\\n\"\n    \"Зібрали для вас детальні відповіді на найпопулярніші питання про формат наших подорожей, \"\n    \"оплату, маршрути та час на локаціях:\\n\\n\"\n    \"👇 <i>Натисніть на запитання, яке вас цікавить:</i>\"\n)\n\n@router.callback_query(F.data == \"cb_faq\")\nasync def process_faq_main(callback: CallbackQuery):\n    \"\"\"Головний екран розділу FAQ\"\"\"\n    await callback.answer()\n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=FAQ_MAIN_TEXT,\n                reply_markup=get_faq_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data == \"cb_faq_walking\")\nasync def process_faq_walking(callback: CallbackQuery):\n    \"\"\"Як гуляємо по локаціях\"\"\"\n    await callback.answer()\n    text = (\n        \"🚶 <b>Як ми гуляємо на локаціях?</b>\\n\\n\"\n        \"Ми цінуємо баланс між цікавою пізнавальною програмою та вашим особистим відпочинком:\\n\\n\"\n        \"1. <b>Вступна прогулянка:</b> Після прибуття ми разом проходимося ключовими визначними пам'ятками міста/локації, \"\n        \"показуємо найкращі ракурси для фото, ділимося цікавими фактами та корисними лайфхаками.\\n\\n\"\n        \"2. <b>Вільний час:</b> Ви не прив'язані жорстко до групи з парасолькою! У вас є можливість погуляти \"\n        \"у власному темпі, завітати до музею, посидіти в затишній кав'ярні, спробувати місцеву кухню або зайнятися шопінгом.\\n\\n\"\n        \"3. <b>Гайди та зв'язок:</b> Організатор завжди на зв'язку в спільному чаті поїздки та ділиться точками на карті (найкращі заклади, сувеніри, туалети).\"\n    )\n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"🔙 До списку питань\", callback_data=\"cb_faq\")],\n            [InlineKeyboardButton(text=\"🏠 Головне меню\", callback_data=\"cb_back\")]\n        ]\n    )\n    if callback.message:\n        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_faq_time\")\nasync def process_faq_time(callback: CallbackQuery):\n    \"\"\"Скільки часу на локаціях\"\"\"\n    await callback.answer()\n    text = (\n        \"⏱ <b>Скільки часу ми проводимо на локаціях?</b>\\n\\n\"\n        \"• В одноденних турах (Париж, Амстердам, Брюгге тощо) на саме місто або ключовий об'єкт \"\n        \"виділяється <b>від 5 до 8 годин чистого часу</b> без урахування дороги.\\n\\n\"\n        \"• У комбінованих маршрутах (наприклад, Етрета + Париж або 3 країни за 1 день) час ділиться: \"\n        \"2.5–3.5 години на першій локації (скелі/природа) та 4–5 годин в основному місті.\\n\\n\"\n        \"• У дводенних та триденних турах (Мон-Сен-Мішель, Лазурове узбережжя) темп більш розмірений, \"\n        \"із заселенням у готель та вечірньою прогулянкою.\"\n    )\n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"🔙 До списку питань\", callback_data=\"cb_faq\")],\n            [InlineKeyboardButton(text=\"🏠 Головне меню\", callback_data=\"cb_back\")]\n        ]\n    )\n    if callback.message:\n        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_faq_payment\")\nasync def process_faq_payment(callback: CallbackQuery):\n    \"\"\"Коли і як відбувається оплата\"\"\"\n    await callback.answer()\n    text = (\n        \"💳 <b>Коли та як відбувається оплата?</b>\\n\\n\"\n        \"1. <b>Бронювання місця:</b> Ви залишаєте заявку в боті або пишете менеджеру. \"\n        \"На одноденні тури ми працюємо <b>БЕЗ ПЕРЕДОПЛАТИ</b> — оплата при посадці в мінівен!\\n\\n\"\n        \"2. <b>Багатоденні тури:</b> Невелика передоплата потрібна лише для кількаденних турів для фіксації готелю.\\n\\n\"\n        \"3. <b>Способи оплати:</b>\\n\"\n        \"• Банківський переказ SEPA / IBAN (Німеччина та вся Європа)\\n\"\n        \"• PayPal\\n\"\n        \"• Готівка в євро при посадці\\n\\n\"\n        \"4. <b>Гарантія повернення:</b> При скасуванні більш ніж за 72 години до виїзду дата переноситься або бронь скасовується без штрафів.\"\n    )\n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"🔙 До списку питань\", callback_data=\"cb_faq\")],\n            [InlineKeyboardButton(text=\"🏠 Головне меню\", callback_data=\"cb_back\")]\n        ]\n    )\n    if callback.message:\n        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_faq_seats\")\nasync def process_faq_seats(callback: CallbackQuery):\n    \"\"\"Як регулюються сидіння\"\"\"\n    await callback.answer()\n    text = (\n        \"💺 <b>Як влаштовані та регулюються сидіння в мінівені?</b>\\n\\n\"\n        \"• У мінівені Opel Vivaro встановлені зручні анатомічні сидіння з індивідуальними ременями безпеки.\\n\"\n        \"• <b>Регулювання:</b> Спинки пасажирських сидінь відкидаються назад для відпочинку та сну в дорозі.\\n\"\n        \"• <b>Простір для ніг:</b> Збільшена відстань між рядами дозволяє витягнути ноги навіть людям високого зросту.\\n\"\n        \"• <b>Вибір місця:</b> Під час бронювання ви можете зафіксувати конкретне крісло за <b>5€</b> \"\n        \"(наприклад, попереду біля водія або біля вікна), або зайняти будь-яке вільне безкоштовно (0€).\"\n    )\n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"🔙 До списку питань\", callback_data=\"cb_faq\")],\n            [InlineKeyboardButton(text=\"🏠 Головне меню\", callback_data=\"cb_back\")]\n        ]\n    )\n    if callback.message:\n        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_faq_choose\")\nasync def process_faq_choose(callback: CallbackQuery):\n    \"\"\"Як обрати тур новачку\"\"\"\n    await callback.answer()\n    text = (\n        \"🎯 <b>Як новачку обрати свій перший тур?</b>\\n\\n\"\n        \"• <b>Якщо хочеться казки та архітектури:</b> Брюгге (110€) або Ельзас + Страсбург (80€) — ідеальні затишні поїздки одного дня.\\n\"\n        \"• <b>Якщо хочеться світової класики:</b> Париж (120€) або Амстердам (120€) — насичена програма з круїзами на панорамних човнах.\\n\"\n        \"• <b>Якщо любите гори та природу:</b> Швейцарія (Рейнський водоспад + Цюрих або долина водоспадів Лаутербруннен) — 120€.\\n\"\n        \"• <b>Якщо хочеться максимум країн за 1 день:</b> Ліхтенштейн (Ліхтенштейн + Австрія + Швейцарія) — 120€.\\n\\n\"\n        \"Напишіть нашому менеджеру @SVOI_travel_admin — ми з радістю підкажемо, який тур найкраще підійде під ваші дати та побажання!\"\n    )\n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"🔙 До списку питань\", callback_data=\"cb_faq\")],\n            [InlineKeyboardButton(text=\"🗺 Відкрити каталог поїздок\", callback_data=\"cb_trips\")],\n            [InlineKeyboardButton(text=\"🏠 Головне меню\", callback_data=\"cb_back\")]\n        ]\n    )\n    if callback.message:\n        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode=\"HTML\")\n"
   },
   {
-    name: '.env',
-    path: '.env',
-    language: 'ini',
-    description: 'Файл змінних оточення з токеном, контактами та ID адміна.',
-    content: `BOT_TOKEN=8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM
-ADMIN_ID=8450153980
-MANAGER_USERNAME=SVOI_travel_admin
-BOT_USERNAME=Svoi_TravelEU_bot
-CHANNEL_URL=https://t.me/+Flt_2r6vi3U4ZDg6
-GROUP_URL=https://t.me/+J50liyDUHPgzYTQy
-`
+    "name": "handlers/games.py",
+    "path": "handlers/games.py",
+    "language": "python",
+    "description": "Інтерактивні гео-квести та вікторини з секретними гайдами.",
+    "content": "import logging\nimport random\nfrom aiogram import Router, F\nfrom aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton\nfrom aiogram.exceptions import TelegramBadRequest\n\ntry:\n    from bot_code.keyboards.inline import get_games_keyboard, get_back_keyboard\n    from bot_code.config import settings\nexcept ModuleNotFoundError:\n    from keyboards.inline import get_games_keyboard, get_back_keyboard\n    from config import settings\n\nlogger = logging.getLogger(__name__)\nrouter = Router(name=\"games_router\")\n\n# База локацій для гри «Гео-Детектив»\nGEO_QUESTS = [\n    {\n        \"id\": \"etretat\",\n        \"question\": \"🕵️ <b>Гео-Детектив #1: Де зроблено це фото?</b>\\n\\n\"\n                    \"«Білосніжні алебастрові арки, висічені хвилями Атлантичного океану, \"\n                    \"що надихали Клода Моне та письменника Моріса Леблана на історії про Арсена Люпена».\",\n        \"options\": [\n            (\"🇫🇷 Етрета (Нормандія, Франція)\", True),\n            (\"🇮🇹 Узбережжя Амальфі (Італія)\", False),\n            (\"🇬🇧 Білі скелі Дувра (Англія)\", False),\n            (\"🇵🇹 Мис Рока (Португалія)\", False),\n        ],\n        \"fact\": \"Це знамениті скелі <b>Етрета</b> в Нормандії! Ми відвідуємо цю локацію в турі «Етрета + Париж».\",\n        \"secret_guide\": \"🎁 <b>Секретний гайд по Етрета:</b> Найкращий вид на захід сонця відкривається зі стежки біля каплиці Notre-Dame de la Garde, а найсвіжіші устриці подають прямо внизу біля човнових доків всього за 1.5€ за штуку!\"\n    },\n    {\n        \"id\": \"aare\",\n        \"question\": \"🕵️ <b>Гео-Детектив #2: Що це за містична ущелина?</b>\\n\\n\"\n                    \"«Глибокий каньйон з бірюзовою льодовиковою водою, дерев'яними містками вздовж прямовисних скель \"\n                    \"та гротами, що надихнув Толкіна на створення ельфійського Рівенделла».\",\n        \"options\": [\n            (\"🇨🇭 Ущелина Аарешлюхт (Швейцарія)\", True),\n            (\"🇦🇹 Ущелина Ліхтенштайнкламм (Австрія)\", False),\n            (\"🇸🇮 Ущелина Вінтгар (Словенія)\", False),\n            (\"🇩🇪 Бастай (Саксонська Швейцарія)\", False),\n        ],\n        \"fact\": \"Це чарівна <b>ущелина річки Ааре</b> в Бернських Альпах! Ми відвідуємо її в турі «Ааре + Лаутербруннен + Берн».\",\n        \"secret_guide\": \"🎁 <b>Секретний гайд:</b> В ущелині завжди приємна прохолода навіть у літню спеку (+12°C). Не забудьте легку вітрівку! А за 10 хвилин від виходу знаходиться кафе з легендарним швейцарським десертом безе.\"\n    },\n    {\n        \"id\": \"bruges\",\n        \"question\": \"🕵️ <b>Гео-Детектив #3: У якому казковому місті цей міст?</b>\\n\\n\"\n                    \"«Старовинний кам'яний міст над каналом, де плавають білі лебеді, а в повітрі \"\n                    \"пахне гарячим бельгійським шоколадом та запашними вафлями».\",\n        \"options\": [\n            (\"🇧🇪 Брюгге (Бельгія)\", True),\n            (\"🇳🇱 Амстердам (Нідерланди)\", False),\n            (\"🇫🇷 Кольмар (Франція)\", False),\n            (\"🇩🇪 Бамберг (Німеччина)\", False),\n        ],\n        \"fact\": \"Це середньовічний <b>Брюгге</b> біля Озера Кохання (Minnewater)! Ми їдемо сюди в турі вихідного дня за 110€.\",\n        \"secret_guide\": \"🎁 <b>Секретний гайд:</b> Скуштуйте бельгійське пиво 'Brugse Zot' в історичній броварні De Halve Maan — під містом прокладено єдиний у світі пивопровід завдовжки 3 км!\"\n    }\n]\n\n# Квіз: Правда чи Неправда\nQUIZ_QUESTIONS = [\n    {\n        \"id\": \"q1\",\n        \"question\": \"🧠 <b>Правда чи Неправда #1 (Швейцарія):</b>\\n\\n\"\n                    \"Чи правда, що у Швейцарії законом заборонено володіти лише однією морською свинкою?\",\n        \"answer\": True,\n        \"explanation\": \"<b>Це ПРАВДА!</b> 🐹 У Швейцарії діє суворий закон про захист тварин: морські свинки визнані соціальними істотами, які страждають від самотності. За законом їх можна тримати лише парами!\"\n    },\n    {\n        \"id\": \"q2\",\n        \"question\": \"🧠 <b>Правда чи Неправда #2 (Париж, Франція):</b>\\n\\n\"\n                    \"Чи правда, що Ейфелеву вежу спочатку планували розібрати через 20 років після спорудження?\",\n        \"answer\": True,\n        \"explanation\": \"<b>Це ПРАВДА!</b> 🗼 Вежу збудували як тимчасову вхідну арку для Всесвітньої виставки 1889 року і мали демонтувати у 1909 році. Її врятував винахід радіо — верхівку вежі почали використовувати як велетенську радіоантену!\"\n    },\n    {\n        \"id\": \"q3\",\n        \"question\": \"🧠 <b>Правда чи Неправда #3 (Ліхтенштейн):</b>\\n\\n\"\n                    \"Чи правда, що всю державу Ліхтенштейн можна було офіційно орендувати на добу через Airbnb?\",\n        \"answer\": True,\n        \"explanation\": \"<b>Це ПРАВДА!</b> 🏰 У 2011 році князівство Ліхтенштейн спільно з Airbnb запустило акцію: за $70,000 на добу компанія до 150 осіб могла 'орендувати країну', отримати символічний ключ від держави та дегустувати вино в погребі правлячого князя!\"\n    }\n]\n\n@router.callback_query(F.data == \"cb_games\")\nasync def process_games_main(callback: CallbackQuery):\n    \"\"\"Головний екран розділу ігор та вікторин\"\"\"\n    await callback.answer()\n    text = (\n        \"🎮 <b>Інтерактивні ігри та вікторини туристичного клубу SVOI</b> 🏆\\n\\n\"\n        \"Нудьгуєте дорогою на роботу чи ввечері? Беріть участь в іграх, перевіряйте інтуїцію \"\n        \"та отримуйте приємні бонуси для ваших майбутніх поїздок!\\n\\n\"\n        \"✨ <b>Доступні активності:</b>\\n\"\n        \"• 🕵️ <b>Гра «Гео-Детектив»:</b> вгадайте незвичайну локацію з наших маршрутів за деталями та отримайте <b>Картку Пріоритету (+5€ вибір місця)</b> або секретний гайд!\\n\"\n        \"• 🧠 <b>Квіз «Правда чи Неправда»:</b> 3 дивовижні факти про європейські країни, які вас точно здивують.\\n\"\n        \"• 🎁 <b>Розіграші квитків:</b> як бот проводить вікторини та конкурси просто в нашому Telegram-чаті.\\n\\n\"\n        \"👇 <i>Оберіть гру:</i>\"\n    )\n    if callback.message:\n        await callback.message.edit_text(text=text, reply_markup=get_games_keyboard(), parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_game_geo\")\nasync def process_game_geo_start(callback: CallbackQuery):\n    \"\"\"Старт гри Гео-Детектив\"\"\"\n    await callback.answer()\n    quest = random.choice(GEO_QUESTS)\n    \n    buttons = []\n    for opt_title, is_correct in quest[\"options\"]:\n        cb = f\"cb_geocheck_{quest['id']}_{1 if is_correct else 0}\"\n        buttons.append([InlineKeyboardButton(text=opt_title, callback_data=cb)])\n    buttons.append([InlineKeyboardButton(text=\"🔙 До вибору ігор\", callback_data=\"cb_games\")])\n    \n    if callback.message:\n        await callback.message.edit_text(\n            text=f\"{quest['question']}\\n\\n<i>Оберіть правильну відповідь:</i>\",\n            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),\n            parse_mode=\"HTML\"\n        )\n\n@router.callback_query(F.data.startswith(\"cb_geocheck_\"))\nasync def process_geocheck(callback: CallbackQuery):\n    \"\"\"Перевірка відповіді в Гео-Детективі\"\"\"\n    await callback.answer()\n    parts = callback.data.split(\"_\")\n    quest_id = parts[2]\n    is_correct = parts[3] == \"1\"\n    \n    quest = next((q for q in GEO_QUESTS if q[\"id\"] == quest_id), GEO_QUESTS[0])\n    \n    if is_correct:\n        promo_code = f\"PRIORITY-{random.randint(100, 999)}\"\n        text = (\n            \"🎉 <b>БРАВО! ВИ СПРАВЖНІЙ ГЕО-ДЕТЕКТИВ!</b> 🏆\\n\\n\"\n            f\"{quest['fact']}\\n\\n\"\n            f\"{quest['secret_guide']}\\n\\n\"\n            f\"🎁 <b>Ваш бонус: КАРТКА ПРІОРИТЕТУ</b>\\n\"\n            f\"Промокод: <code>{promo_code}</code>\\n\"\n            f\"Дає право <b>безкоштовно обрати будь-яке місце в мінівені (економія 5€)</b> або знижку 10% на ваш перший тур!\\n\"\n            f\"<i>Просто надішліть промокод нашому менеджеру @{settings.MANAGER_USERNAME.lstrip('@')} при бронюванні.</i>\"\n        )\n    else:\n        text = (\n            \"Ой, не зовсім так! 🔍\\n\\n\"\n            f\"Правильна відповідь: {quest['fact']}\\n\\n\"\n            \"Але не засмучуйтесь, ви можете спробувати вгадати наступну локацію!\"\n        )\n    \n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"🔄 Зіграти ще раз\", callback_data=\"cb_game_geo\")],\n            [InlineKeyboardButton(text=\"🗺 Обрати тур у це місто\", callback_data=\"cb_trips\")],\n            [InlineKeyboardButton(text=\"🔙 Меню ігор\", callback_data=\"cb_games\")]\n        ]\n    )\n    if callback.message:\n        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_game_quiz\")\nasync def process_quiz_start(callback: CallbackQuery):\n    \"\"\"Старт квізу Правда чи Неправда\"\"\"\n    await callback.answer()\n    q = random.choice(QUIZ_QUESTIONS)\n    \n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [\n                InlineKeyboardButton(text=\"👍 ПРАВДА\", callback_data=f\"cb_qcheck_{q['id']}_1\"),\n                InlineKeyboardButton(text=\"👎 НЕПРАВДА\", callback_data=f\"cb_qcheck_{q['id']}_0\")\n            ],\n            [InlineKeyboardButton(text=\"🔙 Меню ігор\", callback_data=\"cb_games\")]\n        ]\n    )\n    if callback.message:\n        await callback.message.edit_text(\n            text=f\"{q['question']}\\n\\n<i>Як ви вважаєте?</i>\",\n            reply_markup=kb,\n            parse_mode=\"HTML\"\n        )\n\n@router.callback_query(F.data.startswith(\"cb_qcheck_\"))\nasync def process_quiz_check(callback: CallbackQuery):\n    \"\"\"Перевірка відповіді у квізі\"\"\"\n    await callback.answer()\n    parts = callback.data.split(\"_\")\n    q_id = parts[2]\n    user_choice = parts[3] == \"1\"\n    \n    q = next((item for item in QUIZ_QUESTIONS if item[\"id\"] == q_id), QUIZ_QUESTIONS[0])\n    correct = (user_choice == q[\"answer\"])\n    \n    result_title = \"🎉 <b>У яблучко! Ви абсолютно праві!</b>\" if correct else \"😮 <b>Несподівано! Ви здивуєтеся:</b>\"\n    text = (\n        f\"{result_title}\\n\\n\"\n        f\"{q['explanation']}\\n\\n\"\n        f\"Такі дивовижні факти та історії ми розповідаємо під час наших поїздок! Приєднуйтесь!\"\n    )\n    \n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"🎲 Наступний факт\", callback_data=\"cb_game_quiz\")],\n            [InlineKeyboardButton(text=\"🗺 Розклад турів\", callback_data=\"cb_trips\")],\n            [InlineKeyboardButton(text=\"🔙 Меню ігор\", callback_data=\"cb_games\")]\n        ]\n    )\n    if callback.message:\n        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode=\"HTML\")\n\n@router.callback_query(F.data == \"cb_game_group_info\")\nasync def process_group_games_info(callback: CallbackQuery):\n    \"\"\"Інформація про вікторини та розіграші у групі Telegram\"\"\"\n    await callback.answer()\n    text = (\n        \"📢 <b>Вікторини та розіграші квитків просто у групі Telegram!</b> 🎟✨\\n\\n\"\n        \"<b>Чи може бот проводити квізи у групі?</b>\\n\"\n        \"👉 <b>ТАК!</b> Наш бот використовує офіційний механізм Telegram Quiz (<code>bot.send_poll(type='quiz')</code>).\\n\\n\"\n        \"🔥 <b>Як це працює у нашій групі SVOI:</b>\\n\"\n        \"1. <b>Квізи раз на 2–3 дні:</b> Бот публікує опитування з 1 правильною відповіддю. При правильному виборі користувач бачить святкове конфеті!\\n\"\n        \"2. <b>Розіграші квитків та призів:</b> Бот запускає допис із кнопкою «Взяти участь у розіграші». У призначений час бот автоматично обирає випадкового переможця зі списку учасників!\\n\"\n        \"3. <b>Призи:</b> Безкоштовне місце в поїздці, безкоштовний вибір будь-якого місця в авто (+5€) або знижка 15% на наступний тур!\\n\\n\"\n        \"Долучайтеся до нашої спільноти та не пропускайте активності:\"\n    )\n    kb = InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"💬 Перейти до групи мандрівників SVOI\", url=settings.GROUP_URL)],\n            [InlineKeyboardButton(text=\"📢 Наш офіційний канал\", url=settings.CHANNEL_URL)],\n            [InlineKeyboardButton(text=\"🔙 Назад до ігор\", callback_data=\"cb_games\")]\n        ]\n    )\n    if callback.message:\n        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode=\"HTML\")\n"
   },
   {
-    name: 'Dockerfile',
-    path: 'Dockerfile',
-    language: 'dockerfile',
-    description: 'Docker образ для контейнеризації та швидкого розгортання.',
-    content: `FROM python:3.11-slim
-WORKDIR /app
-ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-CMD ["python", "bot.py"]
-`
+    "name": "handlers/feedback.py",
+    "path": "handlers/feedback.py",
+    "language": "python",
+    "description": "Збір відгуків та побажань від туристів.",
+    "content": "import logging\nfrom aiogram import Router, F, Bot\nfrom aiogram.types import CallbackQuery, Message\nfrom aiogram.fsm.context import FSMContext\nfrom aiogram.exceptions import TelegramBadRequest\n\ntry:\n    from bot_code.states.states import FeedbackState\n    from bot_code.keyboards.inline import get_cancel_feedback_keyboard, get_back_keyboard\n    from bot_code.config import settings\nexcept ModuleNotFoundError:\n    from states.states import FeedbackState\n    from keyboards.inline import get_cancel_feedback_keyboard, get_back_keyboard\n    from config import settings\n\nlogger = logging.getLogger(__name__)\nrouter = Router(name=\"feedback_router\")\n\n@router.callback_query(F.data == \"cb_feedback\")\nasync def process_feedback_start(callback: CallbackQuery, state: FSMContext):\n    \"\"\"Активує стан FSM (FeedbackState.waiting_for_text)\"\"\"\n    await callback.answer()\n    await state.set_state(FeedbackState.waiting_for_text)\n    \n    text = (\n        \"✍️ <b>Залишити відгук або побажання</b> 💌\\n\\n\"\n        \"Ми постійно вдосконалюємо наші маршрути та сервіс. Напишіть, будь ласка, у відповідному повідомленні:\\n\"\n        \"• Ваші враження від минулої поїздки\\n\"\n        \"• Куди б ви хотіли поїхати наступного разу (нові міста/країни)\\n\"\n        \"• Будь-які пропозиції щодо покращення клубу SVOI\\n\\n\"\n        \"<i>Надішліть ваш текст просто в цей чат або натисніть кнопку «Скасувати введення»:</i>\"\n    )\n    \n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=text,\n                reply_markup=get_cancel_feedback_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.callback_query(F.data == \"cb_cancel_feedback\")\nasync def process_cancel_feedback(callback: CallbackQuery, state: FSMContext):\n    \"\"\"Скасування надсилання відгуку\"\"\"\n    await callback.answer(\"Введення скасовано\")\n    await state.clear()\n    \n    try:\n        from bot_code.handlers.menu import MAIN_MENU_TEXT\n        from bot_code.keyboards.inline import get_main_menu_keyboard\n    except ModuleNotFoundError:\n        from handlers.menu import MAIN_MENU_TEXT\n        from keyboards.inline import get_main_menu_keyboard\n    \n    try:\n        if callback.message:\n            await callback.message.edit_text(\n                text=MAIN_MENU_TEXT,\n                reply_markup=get_main_menu_keyboard(),\n                parse_mode=\"HTML\"\n            )\n    except TelegramBadRequest:\n        pass\n\n@router.message(FeedbackState.waiting_for_text)\nasync def process_feedback_received(message: Message, state: FSMContext, bot: Bot):\n    \"\"\"\n    Бот ловить текст, зберігає його, дякує користувачеві та \n    автоматично пересилає повідомлення адміністратору (ADMIN_ID).\n    Скидає стан.\n    \"\"\"\n    feedback_text = message.text or message.caption or \"(Вкладення/медіа)\"\n    user = message.from_user\n    \n    user_mention = f\"@{user.username}\" if user and user.username else \"Без юзернейму\"\n    user_id = user.id if user else 0\n    full_name = user.full_name if user else \"Користувач\"\n    \n    # Скидання стану\n    await state.clear()\n    \n    # Дякуємо користувачеві\n    thanks_text = (\n        \"❤️ <b>Дякуємо за ваше звернення!</b>\\n\\n\"\n        \"Ваш відгук/побажання успішно передано керівництву клубу SVOI. \"\n        \"Ми уважно вивчаємо кожне повідомлення та робимо наші поїздки ще душевнішими та яскравішими!\\n\\n\"\n        \"До зустрічі на борту нашого Opel Vivaro VIP! 🚐✨\"\n    )\n    await message.answer(\n        text=thanks_text,\n        reply_markup=get_back_keyboard(),\n        parse_mode=\"HTML\"\n    )\n    \n    # Формуємо звіт для адміністратора\n    admin_notification = (\n        \"🔔 <b>НОВЕ ПОБАЖАННЯ / ВІДГУК SVOI TRAVEL</b>\\n\\n\"\n        f\"👤 <b>Відправник:</b> {full_name} ({user_mention})\\n\"\n        f\"🆔 <b>User ID:</b> <code>{user_id}</code>\\n\"\n        f\"💬 <b>Текст повідомлення:</b>\\n\\n{feedback_text}\"\n    )\n    \n    # Пересилання адміністратору (ADMIN_ID)\n    if settings.ADMIN_ID and settings.ADMIN_ID != 0:\n        try:\n            await bot.send_message(\n                chat_id=settings.ADMIN_ID,\n                text=admin_notification,\n                parse_mode=\"HTML\"\n            )\n        except Exception as e:\n            logger.error(\"Не вдалося відправити повідомлення адміну %s: %s\", settings.ADMIN_ID, e)\n"
   },
   {
-    name: 'docker-compose.yml',
-    path: 'docker-compose.yml',
-    language: 'yaml',
-    description: 'Docker Compose файл для запуску бота однією командою.',
-    content: `version: '3.8'
-
-services:
-  svoi_bot:
-    build: .
-    container_name: svoi_travel_bot
-    restart: unless-stopped
-    env_file:
-      - .env
-`
+    "name": "keyboards/__init__.py",
+    "path": "keyboards/__init__.py",
+    "language": "python",
+    "description": "Пакет клавіатур бота.",
+    "content": "# SVOI Travel - Keyboards package\n"
   },
   {
-    name: 'README.md',
-    path: 'README.md',
-    language: 'markdown',
-    description: 'Інструкція зі швидкого запуску, тестування та розгортання бота.',
-    content: `# 🌍 Telegram-бот туристичного клубу SVOI Travel (aiogram 3.x)
-
-Офіційний production-ready бот для європейського туристичного клубу **SVOI** (@Svoi_TravelEU_bot).
-
-## 🚀 Можливості
-- 🧭 **Інтерактивне головне меню** без спаму повідомленнями.
-- 🗺 **Каталог турів Європою** (Париж, Нормандія/Етрета, Швейцарія, Прага тощо).
-- 💺 **Вибір місць:** 1-й ряд (2 місця поруч з водієм), 2-й ряд (3 місця), 3-й ряд (3 місця).
-- 🚐 **Автопарк:** Opel Vivaro комфортне авто з усіма зручностями.
-- 📍 **Точки збору:** забір та розвезення за адресою (Саарланд, Трір, Люксембург), підсадка по дорозі від 4 осіб.
-- 💳 **Умови:** 0% передоплати на одноденні поїздки, медстраховка для осіб без ВНЖ, багаж 10 кг + ручна поклажа.
-
-## 🧪 Покрокова інструкція: Тестування в Telegram
-
-### Крок 1: Підготовка середовища
-\`\`\`bash
-# macOS / Linux
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# Windows PowerShell
-python -m venv venv
-.\\venv\\Scripts\\activate
-pip install -r requirements.txt
-\`\`\`
-
-### Крок 2: Перевірка .env
-Вкажіть у \`.env\` токен \`8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM\` та \`ADMIN_ID=8450153980\`.
-
-### Крок 3: Запуск
-\`\`\`bash
-python bot.py
-\`\`\`
-Відкрийте Telegram та надішліть боту \`/start\`.
-`
+    "name": "keyboards/inline.py",
+    "path": "keyboards/inline.py",
+    "language": "python",
+    "description": "Інлайн-клавіатури бота (меню, схема салону, кнопки дій).",
+    "content": "from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton\ntry:\n    from bot_code.data.trips import TRIPS_CATALOG\n    from bot_code.config import settings\nexcept ModuleNotFoundError:\n    from data.trips import TRIPS_CATALOG\n    from config import settings\n\ndef get_main_menu_keyboard() -> InlineKeyboardMarkup:\n    \"\"\"\n    Головне меню бота SVOI Travel\n    Кнопки розташовані ергономічно по 1-2 в ряд\n    \"\"\"\n    manager_url = f\"https://t.me/{settings.MANAGER_USERNAME.lstrip('@')}\"\n    \n    keyboard = [\n        [\n            InlineKeyboardButton(text=\"🚀 Відкрити Mini App (Зоряне небо & 3D)\", callback_data=\"cb_open_miniapp\")\n        ],\n        [\n            InlineKeyboardButton(text=\"🗺 Поїздки\", callback_data=\"cb_trips\"),\n            InlineKeyboardButton(text=\"💺 Забронювати місце\", callback_data=\"cb_book\")\n        ],\n        [\n            InlineKeyboardButton(text=\"❓ Часті питання (FAQ)\", callback_data=\"cb_faq\"),\n            InlineKeyboardButton(text=\"🎮 Ігри та вікторини\", callback_data=\"cb_games\")\n        ],\n        [\n            InlineKeyboardButton(text=\"🚐 Фото авто\", callback_data=\"cb_car\"),\n            InlineKeyboardButton(text=\"📍 Точки збору\", callback_data=\"cb_meeting\")\n        ],\n        [\n            InlineKeyboardButton(text=\"📜 Умови поїздок\", callback_data=\"cb_terms\"),\n            InlineKeyboardButton(text=\"🤝 Стати партнером\", callback_data=\"cb_partner\")\n        ],\n        [\n            InlineKeyboardButton(text=\"✍️ Залишити побажання / відгук\", callback_data=\"cb_feedback\")\n        ],\n        [\n            InlineKeyboardButton(text=\"🆘 Підтримка (Менеджер)\", url=manager_url),\n            InlineKeyboardButton(text=\"📢 Наш Канал\", url=settings.CHANNEL_URL)\n        ],\n        [\n            InlineKeyboardButton(text=\"📢 Керування каналом (/channel)\", callback_data=\"cb_adm_channel_menu\")\n        ]\n    ]\n    return InlineKeyboardMarkup(inline_keyboard=keyboard)\n\ndef get_back_keyboard() -> InlineKeyboardMarkup:\n    \"\"\"Кнопка повернення до головного меню\"\"\"\n    return InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"🔙 Назад до меню\", callback_data=\"cb_back\")]\n        ]\n    )\n\ndef get_trips_keyboard() -> InlineKeyboardMarkup:\n    \"\"\"Список усіх доступних напрямків з цінами у стовпчик\"\"\"\n    buttons = []\n    for trip_id, trip in TRIPS_CATALOG.items():\n        text = f\"📍 {trip['short_title']} — {trip['price']}{trip['currency']}\"\n        buttons.append([InlineKeyboardButton(text=text, callback_data=f\"cb_trip_{trip_id}\")])\n    \n    buttons.append([InlineKeyboardButton(text=\"🔙 Назад до меню\", callback_data=\"cb_back\")])\n    return InlineKeyboardMarkup(inline_keyboard=buttons)\n\ndef get_trip_detail_keyboard(trip_id: str) -> InlineKeyboardMarkup:\n    \"\"\"Клавіатура для картки туру з бронюванням та поверненням\"\"\"\n    keyboard = [\n        [\n            InlineKeyboardButton(\n                text=\"💺 Забронювати цей тур\", \n                callback_data=f\"cb_book_target_{trip_id}\"\n            )\n        ],\n        [\n            InlineKeyboardButton(text=\"🗺 Інші напрямки\", callback_data=\"cb_trips\"),\n            InlineKeyboardButton(text=\"🔙 Головне меню\", callback_data=\"cb_back\")\n        ]\n    ]\n    return InlineKeyboardMarkup(inline_keyboard=keyboard)\n\ndef get_seats_keyboard(trip_id: str = \"general\") -> InlineKeyboardMarkup:\n    \"\"\"\n    Клавіатура вибору місця в салоні Opel Vivaro (8 пасажирських місць):\n    1-й ряд (поруч із водієм): 2 місця\n    2-й ряд: 3 місця\n    3-й ряд: 3 місця\n    Інтерактивні плашки по порядку.\n    Фіксація будь-якого конкретного місця — 5€, без вибору (вільна посадка) — 0€\n    \"\"\"\n    keyboard = [\n        [\n            InlineKeyboardButton(\n                text=\"💺 Місце 1 (поруч з водієм) — 5€\", \n                callback_data=f\"cb_seat_1_{trip_id}\"\n            ),\n            InlineKeyboardButton(\n                text=\"💺 Місце 2 (водій, вікно) — 5€\", \n                callback_data=f\"cb_seat_2_{trip_id}\"\n            )\n        ],\n        [\n            InlineKeyboardButton(\n                text=\"💺 Місце 3 (2-й ряд, вікно) — 5€\", \n                callback_data=f\"cb_seat_3_{trip_id}\"\n            ),\n            InlineKeyboardButton(\n                text=\"💺 Місце 4 (2-й ряд, центр) — 5€\", \n                callback_data=f\"cb_seat_4_{trip_id}\"\n            ),\n            InlineKeyboardButton(\n                text=\"💺 Місце 5 (2-й ряд, вікно) — 5€\", \n                callback_data=f\"cb_seat_5_{trip_id}\"\n            )\n        ],\n        [\n            InlineKeyboardButton(\n                text=\"💺 Місце 6 (3-й ряд, вікно) — 5€\", \n                callback_data=f\"cb_seat_6_{trip_id}\"\n            ),\n            InlineKeyboardButton(\n                text=\"💺 Місце 7 (3-й ряд, центр) — 5€\", \n                callback_data=f\"cb_seat_7_{trip_id}\"\n            ),\n            InlineKeyboardButton(\n                text=\"💺 Місце 8 (3-й ряд, вікно) — 5€\", \n                callback_data=f\"cb_seat_8_{trip_id}\"\n            )\n        ],\n        [\n            InlineKeyboardButton(\n                text=\"🎲 Без вибору місця (вільна посадка) — 0€\", \n                callback_data=f\"cb_seat_none_{trip_id}\"\n            )\n        ],\n        [\n            InlineKeyboardButton(text=\"💬 Написати менеджеру особисто\", url=f\"https://t.me/{settings.MANAGER_USERNAME.lstrip('@')}\")\n        ],\n        [\n            InlineKeyboardButton(text=\"🔙 Назад до меню\", callback_data=\"cb_back\")\n        ]\n    ]\n    return InlineKeyboardMarkup(inline_keyboard=keyboard)\n\ndef get_faq_keyboard() -> InlineKeyboardMarkup:\n    \"\"\"Клавіатура розділу частих запитань\"\"\"\n    faq_post_url = \"https://t.me/c/3876884115/5\"\n    keyboard = [\n        [\n            InlineKeyboardButton(text=\"💳 Коли оплата? (Без передоплати)\", callback_data=\"cb_faq_payment\"),\n            InlineKeyboardButton(text=\"⏱ Скільки часу на локаціях?\", callback_data=\"cb_faq_time\")\n        ],\n        [\n            InlineKeyboardButton(text=\"🎯 Розмірений vs темп: як обрати тур?\", callback_data=\"cb_faq_choose\"),\n            InlineKeyboardButton(text=\"💺 Схема місць (2+3+3) та регулювання\", callback_data=\"cb_faq_seats\")\n        ],\n        [\n            InlineKeyboardButton(text=\"🚶 Як ми гуляємо на локаціях?\", callback_data=\"cb_faq_walking\")\n        ],\n        [\n            InlineKeyboardButton(text=\"📌 Читати тему FAQ у Telegram\", url=faq_post_url)\n        ],\n        [\n            InlineKeyboardButton(text=\"🔙 Назад до меню\", callback_data=\"cb_back\")\n        ]\n    ]\n    return InlineKeyboardMarkup(inline_keyboard=keyboard)\n\ndef get_games_keyboard() -> InlineKeyboardMarkup:\n    \"\"\"Клавіатура інтерактивних ігор та вікторин\"\"\"\n    keyboard = [\n        [\n            InlineKeyboardButton(text=\"🕵️ Гра «Гео-Детектив»\", callback_data=\"cb_game_geo\")\n        ],\n        [\n            InlineKeyboardButton(text=\"🧠 Вікторина «Правда чи Неправда»\", callback_data=\"cb_game_quiz\")\n        ],\n        [\n            InlineKeyboardButton(text=\"🎁 Розіграші та вікторини у групі\", callback_data=\"cb_game_group_info\")\n        ],\n        [\n            InlineKeyboardButton(text=\"🔙 Назад до меню\", callback_data=\"cb_back\")\n        ]\n    ]\n    return InlineKeyboardMarkup(inline_keyboard=keyboard)\n\ndef get_cancel_feedback_keyboard() -> InlineKeyboardMarkup:\n    \"\"\"Клавіатура для скасування введення відгуку/побажання\"\"\"\n    return InlineKeyboardMarkup(\n        inline_keyboard=[\n            [InlineKeyboardButton(text=\"❌ Скасувати введення\", callback_data=\"cb_cancel_feedback\")]\n        ]\n    )\n"
+  },
+  {
+    "name": "states/__init__.py",
+    "path": "states/__init__.py",
+    "language": "python",
+    "description": "Пакет FSM станів.",
+    "content": "# SVOI Travel - FSM States package\nfrom .states import BookingState, FeedbackState\n\n__all__ = [\"BookingState\", \"FeedbackState\"]\n"
+  },
+  {
+    "name": "states/states.py",
+    "path": "states/states.py",
+    "language": "python",
+    "description": "Стани FSM для бронювання та відгуків.",
+    "content": "from aiogram.fsm.state import State, StatesGroup\n\nclass FeedbackState(StatesGroup):\n    waiting_for_text = State()\n\nclass BookingState(StatesGroup):\n    choosing_trip = State()\n    choosing_seat = State()\n    waiting_for_contact = State()\n    confirmation = State()\n"
+  },
+  {
+    "name": ".env",
+    "path": ".env",
+    "language": "dockerfile",
+    "description": "Приклад конфігураційного файлу змінних оточення.",
+    "content": "BOT_TOKEN=8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM\nADMIN_ID=8450153980\nMANAGER_USERNAME=SVOI_travel_admin\nBOT_USERNAME=Svoi_TravelEU_bot\nCHANNEL_URL=https://t.me/+Flt_2r6vi3U4ZDg6\nGROUP_URL=https://t.me/+J50liyDUHPgzYTQy\nPORT=10000\n"
+  },
+  {
+    "name": "Dockerfile",
+    "path": "Dockerfile",
+    "language": "dockerfile",
+    "description": "Docker-контейнер для автономного розгортання бота.",
+    "content": "FROM python:3.11-slim\n\nWORKDIR /app\n\n# Отключение буферизации вывода Python для мгновенного появления логов\nENV PYTHONUNBUFFERED=1 \\\n    PYTHONDONTWRITEBYTECODE=1 \\\n    PYTHONPATH=/app\n\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\nCOPY . .\n\nCMD [\"python\", \"bot.py\"]\n"
+  },
+  {
+    "name": "docker-compose.yml",
+    "path": "docker-compose.yml",
+    "language": "yaml",
+    "description": "Конфігурація Docker Compose для запуску в один клік.",
+    "content": "version: '3.8'\n\nservices:\n  svoi_bot:\n    build: .\n    container_name: svoi_travel_bot\n    restart: unless-stopped\n    env_file:\n      - .env\n    volumes:\n      - ./logs:/app/logs\n"
+  },
+  {
+    "name": "README.md",
+    "path": "README.md",
+    "language": "markdown",
+    "description": "Повна інструкція з розгортання на Render.com, VPS та локально.",
+    "content": "# 🌍 Telegram-бот туристичного клубу SVOI Travel (aiogram 3.x)\n\nОфіційний production-ready бот для європейського туристичного клубу **SVOI** (@Svoi_TravelEU_bot).\n\n## 🚀 Можливості\n- 🧭 **Інтерактивне головне меню** зі зручною навігацією без спаму повідомленнями (`edit_message_text` + `callback.answer()`).\n- 🗺 **Каталог 14 турів Європою** (Париж, Нормандія/Етрета, Амстердам, Брюгге, Нойшванштайн, Ліхтенштейн, Лазурове узбережжя, Швейцарія, Прага тощо) з докладними програмами та цінами.\n- 💺 **Вибір місць у салоні:** 1-й ряд (2 місця поруч з водієм), 2-й ряд (3 місця), 3-й ряд (3 місця). Фіксація обраного місця (+5€), вільна посадка (0€).\n- 🚐 **Презентація автопарку:** мінівен Opel Vivaro (8 місць), регульовані крісла, клімат-контроль, USB-порти.\n- 📍 **Точки збору & Логістика:** забір і розвезення прямо за адресою (Саарланд, Трір, Люксембург), підсадка по дорозі від 4 осіб, точний час напередодні ввечері та одноденна група для зв'язку з водієм.\n- 💳 **Умови подорожей:** 0% передоплати на всі одноденні тури (оплата при посадці), передоплата тільки на багатоденні тури під готелі, медстраховка, багаж 10 кг + ручна поклажа.\n- 🎮 **Ігри та квізи в дорозі:** «Гео-Детектив», вікторина «Правда чи Неправда» з бонусною Карткою Пріоритету (+5€ до вибору місця).\n- ✍️ **FSM-збір відгуків та побажань** (`FeedbackState.waiting_for_text`) з автоматичним надсиланням у приватні повідомлення адміністратора (`ADMIN_ID`).\n\n---\n\n## 🧪 Швидкий запуск на локальному комп'ютері (Windows / macOS / Linux)\n\n1. **Перейдіть у папку з ботом:**\n```bash\ncd bot_code\n```\n\n2. **Створіть та активуйте віртуальне середовище:**\n```bash\n# macOS / Linux:\npython3 -m venv venv\nsource venv/bin/activate\n\n# Windows (PowerShell):\npython -m venv venv\n.\\venv\\Scripts\\activate\n```\n\n3. **Встановіть залежності:**\n```bash\npip install -r requirements.txt\n```\n\n4. **Перевірте налаштування в `.env`:**\n```ini\nBOT_TOKEN=8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM\nADMIN_ID=8450153980\nMANAGER_USERNAME=SVOI_travel_admin\nBOT_USERNAME=Svoi_TravelEU_bot\nCHANNEL_URL=https://t.me/+Flt_2r6vi3U4ZDg6\nGROUP_URL=https://t.me/+J50liyDUHPgzYTQy\n```\n\n5. **Запустіть бота:**\n```bash\npython bot.py\n```\n\nПісля повідомлення:\n`✅ Успішне підключення: SVOI | Поїздки по Європі (@Svoi_TravelEU_bot)` — відкрийте бота в Telegram і надішліть `/start`.\n\n---\n\n## 🛠 Розгортання на сервері (Render.com / VPS)\n\n### Варіант 1: Render.com\n1. Створіть новий **Web Service** або **Background Worker**.\n2. Вкажіть Root Directory: `bot_code`.\n3. Runtime: **Python 3**.\n4. Build Command: `pip install -r requirements.txt`.\n5. Start Command: `python bot.py`.\n6. В Environment Variables додайте:\n   - `BOT_TOKEN` = `8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM`\n   - `ADMIN_ID` = `8450153980`\n   - `PORT` = `10000` (для Web Service health check)\n\n### Варіант 2: Docker\n```bash\ndocker compose up -d --build\n```\n"
   }
 ];
