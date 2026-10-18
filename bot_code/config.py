@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     BOT_USERNAME: str = Field(default="Svoi_TravelEU_bot")
     CHANNEL_URL: str = Field(default="https://t.me/+Flt_2r6vi3U4ZDg6")
     GROUP_URL: str = Field(default="https://t.me/+J50liyDUHPgzYTQy")
+    # URL для відкриття Telegram Mini App (SvoiMiniApp з 3D салоном)
+    MINI_APP_URL: str = Field(default="https://ais-pre-5nen67xjgzawt525obtchj-694072480718.europe-west1.run.app")
+    # ID каналу або @юзернейм для прямої публікації повідомлень ботом
+    CHANNEL_CHAT_ID: str = Field(default="@svoi_traveleu", description="ID каналу (-100...) або @username каналу для публікацій")
 
     model_config = SettingsConfigDict(
         env_file=".env",

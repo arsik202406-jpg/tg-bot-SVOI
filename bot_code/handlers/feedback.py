@@ -81,6 +81,21 @@ async def process_feedback_received(message: Message, state: FSMContext, bot: Bo
     # Скидання стану
     await state.clear()
     
+    try:
+        from bot_code.data.trips import REVIEWS_DATA
+    except ModuleNotFoundError:
+        from data.trips import REVIEWS_DATA
+
+    REVIEWS_DATA.insert(0, {
+        "id": f"rev-{len(REVIEWS_DATA)+1}",
+        "author": full_name,
+        "city": "Клієнт клубу",
+        "trip": "Тур SVOI Travel",
+        "rating": 5,
+        "date": "Нещодавно",
+        "text": feedback_text[:200]
+    })
+    
     # Дякуємо користувачеві
     thanks_text = (
         "❤️ <b>Дякуємо за ваше звернення!</b>\n\n"

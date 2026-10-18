@@ -2,6 +2,7 @@ import logging
 from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
 try:
@@ -10,8 +11,11 @@ try:
         get_back_keyboard,
         get_seats_keyboard,
         get_faq_keyboard,
-        get_games_keyboard
+        get_games_keyboard,
+        get_reviews_keyboard,
+        get_custom_trip_keyboard
     )
+    from bot_code.data.trips import REVIEWS_DATA, CUSTOM_TRIP_INFO
     from bot_code.config import settings
 except ModuleNotFoundError:
     from keyboards.inline import (
@@ -19,8 +23,11 @@ except ModuleNotFoundError:
         get_back_keyboard,
         get_seats_keyboard,
         get_faq_keyboard,
-        get_games_keyboard
+        get_games_keyboard,
+        get_reviews_keyboard,
+        get_custom_trip_keyboard
     )
+    from data.trips import REVIEWS_DATA, CUSTOM_TRIP_INFO
     from config import settings
 
 logger = logging.getLogger(__name__)
@@ -31,31 +38,33 @@ MAIN_MENU_TEXT = (
     "Ми організовуємо душевні та продумані поїздки найкрасивішими куточками Європи "
     "на комфортабельному мінівені Opel Vivaro без стресу, поспіху та мовних бар'єрів!\n\n"
     "✨ <b>Чому обирають SVOI:</b>\n"
-    "• 🚐 <i>Комфорт у дорозі:</i> просторий 8-місний мінівен (2 місця поруч з водієм, 3 у 2-му та 3 у 3-му ряду)\n"
+    "• 🚐 <i>Комфорт у дорозі:</i> просторий 8-місний мінівен з клімат-контролем та зоряним LED-небом\n"
     "• 💳 <i>Чесні умови:</i> працюємо <b>без передоплати</b> на одноденні поїздки!\n"
-    "• 📍 <i>Зручний старт:</i> відправлення із Саарбрюккена + підсадка за маршрутом\n"
+    "• 📍 <i>Зручний старт:</i> адресний збір (Door-to-Door) по Саарланду, Тріру та Люксембургу\n"
     "• 👥 <i>Маленькі душевні групи</i> (до 8 осіб)\n\n"
-    "👇 <b>Оберіть потрібний розділ у меню:</b>"
+    "👇 <b>Оберіть потрібний розділ нижче:</b>"
 )
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    """Обробник команди /start"""
+    """Обробник команди /start з персоналізованим меню"""
+    user_id = message.from_user.id if message.from_user else None
     await message.answer(
         text=MAIN_MENU_TEXT,
-        reply_markup=get_main_menu_keyboard(),
+        reply_markup=get_main_menu_keyboard(user_id=user_id),
         parse_mode="HTML"
     )
 
 @router.callback_query(F.data == "cb_back")
 async def process_back_to_menu(callback: CallbackQuery):
-    """Повернення до головного меню без дублювання повідомлень (через edit_text)"""
+    """Повернення до головного меню з урахуванням прав адміна"""
     await callback.answer()
+    user_id = callback.from_user.id if callback.from_user else None
     try:
         if callback.message:
             await callback.message.edit_text(
                 text=MAIN_MENU_TEXT,
-                reply_markup=get_main_menu_keyboard(),
+                reply_markup=get_main_menu_keyboard(user_id=user_id),
                 parse_mode="HTML"
             )
     except TelegramBadRequest as e:
@@ -316,3 +325,53 @@ async def process_games_menu(callback: CallbackQuery):
         "👇 <i>Оберіть активність:</i>"
     )
     await callback.message.edit_text(text=games_text, reply_markup=get_games_keyboard(), parse_mode="HTML")
+
+@router.callback_query(F.data == "cb_reviews")
+async def process_reviews_menu(callback: CallbackQuery):
+    """Розділ відгуків туристів клубу SVOI"""
+    await callback.answer()
+    blocks = []
+    for r in REVIEWS_DATA:
+        stars = "⭐" * r["rating"]
+        blocks.append(
+            f"<b>{r['author']}</b> ({r['city']}) — <i>{r['trip']}</i>\n"
+            f"{stars} <b>{r['rating']}/5</b> ({r['date']})\n"
+            f"«{r['text']}»"
+        )
+    
+    text = (
+        "⭐ <b>Відгуки туристів клубу SVOI Travel</b> 💬✨\n\n"
+        "Реальні відгуки наших мандрівників про поїздки, атмосферу та комфорт Opel Vivaro:\n\n"
+        + "\n\n───────────────\n\n".join(blocks) +
+        "\n\n👇 <i>Ви також можете поділитися своїми враженнями від минулих турів:</i>"
+    )
+    await callback.message.edit_text(text=text, reply_markup=get_reviews_keyboard(), parse_mode="HTML")
+
+@router.callback_query(F.data == "cb_custom_trip")
+async def process_custom_trip(callback: CallbackQuery):
+    """Розділ індивідуального виїзду для компаній від 5 до 8 осіб"""
+    await callback.answer()
+    text = (
+        CUSTOM_TRIP_INFO["description"] + "\n\n"
+        "👇 <i>Натисніть кнопку нижче, щоб обговорити ваш напрямок та зручну дату з менеджером:</i>"
+    )
+    await callback.message.edit_text(text=text, reply_markup=get_custom_trip_keyboard(), parse_mode="HTML")
+
+@router.message(~F.web_app_data)
+async def auto_greeting_handler(message: Message, state: FSMContext):
+    """
+    Автоматичне привітання будь-якого клієнта:
+    Навіть без натискання /start будь-яке повідомлення чи дія в чаті відкриває вітання та меню!
+    Якщо клієнт зараз перебуває у стані FSM (вводить відгук чи налаштування), не перебиваємо його.
+    """
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+
+    user_id = message.from_user.id if message.from_user else None
+    await message.answer(
+        text=MAIN_MENU_TEXT,
+        reply_markup=get_main_menu_keyboard(user_id=user_id),
+        parse_mode="HTML"
+    )
+

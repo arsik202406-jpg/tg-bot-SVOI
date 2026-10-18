@@ -30,6 +30,26 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showMiniAppModal, setShowMiniAppModal] = useState(false);
   const [giveawayParticipantsCount, setGiveawayParticipantsCount] = useState(14);
+  const [freeSeatsMap, setFreeSeatsMap] = useState<Record<string, number>>({
+    paris: 8,
+    amsterdam: 6,
+    brugge: 5,
+    strasbourg_colmar: 7,
+    etretat_paris: 6,
+    neuschwanstein: 4,
+    disneyland: 8,
+    normandy: 5,
+    switzerland_combo: 6,
+    luxembourg_vianden: 7,
+    reims_champagne: 6,
+    prague: 5,
+    alsace_strasbourg: 6,
+    como_milan: 3
+  });
+  const [waitlist, setWaitlist] = useState<Array<{ id: string; name: string; handle: string; trip: string; seats: number; date: string }>>([
+    { id: 'wl-101', name: 'Олександр Т.', handle: '@alex_traveler', trip: 'Париж', seats: 2, date: 'Найближча субота' },
+    { id: 'wl-102', name: 'Катерина М.', handle: '@kate_munich', trip: 'Озеро Комо + Мілан', seats: 3, date: 'Наступні вихідні' }
+  ]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Helper to apply dynamic colored borders and glow based on button type
@@ -98,7 +118,21 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         : 'bg-purple-950/35 hover:bg-purple-900/50 text-purple-200 hover:text-white border border-purple-500/70 hover:border-purple-400 font-medium shadow-sm';
     }
 
-    // 7. Feedback / Wishes
+    // 7. Reviews
+    if (data === 'cb_reviews' || text.includes('Відгуки')) {
+      return styleMode === 'neon'
+        ? 'bg-amber-950/50 hover:bg-amber-900/70 active:bg-amber-800/80 text-amber-100 hover:text-white border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.4)] font-semibold'
+        : 'bg-amber-950/35 hover:bg-amber-900/50 text-amber-200 border border-amber-500/70 font-semibold shadow-sm';
+    }
+
+    // 7.5. Custom individual trip
+    if (data === 'cb_custom_trip' || text.includes('Індивідуальний')) {
+      return styleMode === 'neon'
+        ? 'bg-indigo-950/50 hover:bg-indigo-900/70 active:bg-indigo-800/80 text-indigo-100 hover:text-white border-2 border-indigo-400 hover:border-indigo-300 shadow-[0_0_14px_rgba(129,140,248,0.4)] font-semibold'
+        : 'bg-indigo-950/35 hover:bg-indigo-900/50 text-indigo-200 border border-indigo-500/70 font-semibold shadow-sm';
+    }
+
+    // 8. Feedback / Wishes
     if (data === 'cb_feedback' || data.includes('feedback') || text.includes('відгук') || text.includes('побажання')) {
       return styleMode === 'neon'
         ? 'bg-rose-950/50 hover:bg-rose-900/70 active:bg-rose-800/80 text-rose-100 hover:text-white border-2 border-rose-400 hover:border-rose-300 shadow-[0_0_14px_rgba(251,113,133,0.4)] font-medium'
@@ -167,33 +201,26 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
   const getMainKeyboard = (): InlineBtn[][] => [
     [
-      { text: '🚀 Відкрити Mini App (Зоряне небо & 3D)', callbackData: 'cb_open_miniapp' }
+      { text: '🚀 SVOI Mini App (Салон 3D & 14 турів) 🌌', callbackData: 'cb_open_miniapp' }
     ],
     [
-      { text: '🗺 Поїздки', callbackData: 'cb_trips' },
-      { text: '💺 Забронювати місце', callbackData: 'cb_book' }
+      { text: '🗺 Поїздки та дати', callbackData: 'cb_trips' },
+      { text: '💺 Забронювати', callbackData: 'cb_book' }
     ],
     [
-      { text: '❓ Часті питання (FAQ)', callbackData: 'cb_faq' },
-      { text: '🎮 Ігри та вікторини', callbackData: 'cb_games' }
+      { text: '⭐ Відгуки туристів', callbackData: 'cb_reviews' },
+      { text: '❓ Часті питання (FAQ)', callbackData: 'cb_faq' }
     ],
     [
-      { text: '🚐 Фото авто', callbackData: 'cb_car' },
-      { text: '📍 Точки збору', callbackData: 'cb_meeting' }
+      { text: '🚐 Індивідуальний виїзд (5-8 осіб)', callbackData: 'cb_custom_trip' }
     ],
     [
-      { text: '📜 Умови поїздок', callbackData: 'cb_terms' },
-      { text: '🤝 Стати партнером', callbackData: 'cb_partner' }
-    ],
-    [
-      { text: '✍️ Залишити побажання / відгук', callbackData: 'cb_feedback' }
-    ],
-    [
-      { text: '🆘 Підтримка (Менеджер)', url: MANAGER_URL },
+      { text: '💬 Менеджер', url: MANAGER_URL },
       { text: '📢 Наш Канал', url: CHANNEL_URL }
     ],
     [
-      { text: '📢 Керування каналом (/channel)', callbackData: 'cb_adm_channel_menu' }
+      { text: '👑 Керування каналом (/channel)', callbackData: 'cb_adm_channel_menu' },
+      { text: '📋 Лист очікування', callbackData: 'cb_adm_waitlist' }
     ]
   ];
 
@@ -442,11 +469,19 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     }
 
     if (data === 'cb_trips') {
-      const tripsKeyboard: InlineBtn[][] = TRIPS_LIST.map((trip) => [
-        {
-          text: `📍 ${trip.shortTitle} — ${trip.price}€`,
-          callbackData: `cb_trip_${trip.id}`
-        }
+      const tripsKeyboard: InlineBtn[][] = TRIPS_LIST.map((trip, idx) => {
+        const free = freeSeatsMap[trip.id] ?? 5;
+        const seatsLabel = free > 0 ? `${free} м.` : 'Аншлаг';
+        const cleanTitle = (trip.shortTitle || trip.title).split('(')[0].trim();
+        return [
+          {
+            text: `${idx + 1}. ${cleanTitle} — ${trip.price}€ [${seatsLabel}]`,
+            callbackData: `cb_trip_${trip.id}`
+          }
+        ];
+      });
+      tripsKeyboard.push([
+        { text: '🚐 Індивідуальний виїзд (5-8 осіб)', callbackData: 'cb_custom_trip' }
       ]);
       tripsKeyboard.push([
         { text: '🔙 Назад до меню', callbackData: 'cb_back' }
@@ -456,7 +491,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         `🗺 <b>Актуальні напрямки та розклад турів SVOI</b> 🇪🇺✨\n\n` +
         `Усі поїздки здійснюються із <b>Саарбрюккена / Саарланду</b> (із забором за адресою та підсадкою по дорозі) ` +
         `на комфортабельному мінівені Opel Vivaro.\n\n` +
-        `👇 <i>Натисніть на напрямок для перегляду програми та бронювання:</i>`;
+        `👇 <i>Натисніть на напрямок для перегляду програми, лічильника місць та бронювання:</i>`;
 
       editLastBotMessage(headerText, tripsKeyboard);
       return;
@@ -467,26 +502,175 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       const trip = TRIPS_LIST.find((t) => t.id === tripId);
       if (!trip) return;
 
+      const freeSeats = freeSeatsMap[trip.id] ?? 5;
+      const seatsBadge = freeSeats > 4 
+        ? `🟢 <b>Вільних місць: ${freeSeats} із 8</b>`
+        : freeSeats > 0 
+          ? `🟡 <b>Залишилося лише ${freeSeats} місця!</b>`
+          : `🔴 <b>Усі 8 місць зайняті (доступний лист очікування)</b>`;
+
       const detailText = 
         `✨ <b>${trip.title}</b> (${trip.duration})\n` +
         `🏷 <b>Статус:</b> ${trip.badge}\n` +
         `💵 <b>Вартість:</b> ${trip.price}€\n\n` +
         `📍 <b>Програма та головні враження:</b>\n` +
         `${trip.description}\n\n` +
+        `📊 <b>Статус заповнення рейсу:</b>\n• ${seatsBadge}\n\n` +
         `🚩 <b>Збір пасажирів:</b> За адресою (Саарланд, Трір, Люксембург) + підсадка по дорозі\n` +
-        `🚐 <b>Трансфер:</b> Opel Vivaro комфортне авто з усіма зручностями.`;
+        `🚐 <b>Трансфер:</b> Opel Vivaro комфортне авто з усіма зручностями.\n\n` +
+        `👑 <i>(Панель адміна: ви можете змінювати лічильник вільних місць кнопкою нижче)</i>`;
 
-      const keyboard: InlineBtn[][] = [
-        [
-          { text: '💺 Забронювати цей тур', callbackData: `cb_book_target_${trip.id}` }
-        ],
-        [
-          { text: '🗺 Усі напрямки', callbackData: 'cb_trips' },
-          { text: '🔙 Головне меню', callbackData: 'cb_back' }
-        ]
-      ];
+      const keyboard: InlineBtn[][] = [];
+      if (freeSeats > 0) {
+        keyboard.push([
+          { text: `💺 Забронювати (${freeSeats} вільних місць)`, callbackData: `cb_book_target_${trip.id}` }
+        ]);
+      } else {
+        keyboard.push([
+          { text: `📋 Лист очікування (місць немає)`, callbackData: `cb_waitlist_add_${trip.id}` }
+        ]);
+      }
+
+      keyboard.push([
+        { text: '📋 Лист очікування', callbackData: `cb_waitlist_add_${trip.id}` },
+        { text: '🚐 5-8 осіб', callbackData: 'cb_custom_trip' }
+      ]);
+
+      keyboard.push([
+        { text: `⚙️ Змінити місця (${freeSeats}/8) [Адмін]`, callbackData: `cb_adm_seats_${trip.id}` }
+      ]);
+
+      keyboard.push([
+        { text: '🗺 Інші тури', callbackData: 'cb_trips' },
+        { text: '🔙 Меню', callbackData: 'cb_back' }
+      ]);
 
       editLastBotMessage(detailText, keyboard, trip.image);
+      return;
+    }
+
+    if (data.startsWith('cb_adm_seats_')) {
+      const tripId = data.replace('cb_adm_seats_', '');
+      const trip = TRIPS_LIST.find((t) => t.id === tripId);
+      const currentFree = freeSeatsMap[tripId] ?? 5;
+      const text = 
+        `⚙️ <b>Керування місцями: ${trip?.shortTitle || tripId}</b>\n\n` +
+        `Поточна кількість вільних місць: <b>${currentFree} із 8</b>\n\n` +
+        `Оберіть нове значення (від 0 до 8):`;
+
+      const keyboard: InlineBtn[][] = [
+        [0, 1, 2, 3, 4].map(n => ({ text: `${n}`, callbackData: `cb_set_seats_${tripId}_${n}` })),
+        [5, 6, 7, 8].map(n => ({ text: `${n}`, callbackData: `cb_set_seats_${tripId}_${n}` })),
+        [{ text: '🔙 Повернутися до туру', callbackData: `cb_trip_${tripId}` }]
+      ];
+
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
+    if (data.startsWith('cb_set_seats_')) {
+      const parts = data.split('_');
+      const tripId = parts[3];
+      const count = parseInt(parts[4], 10);
+      setFreeSeatsMap(prev => ({ ...prev, [tripId]: count }));
+      showToast(`✅ Встановлено ${count} вільних місць!`);
+      const trip = TRIPS_LIST.find((t) => t.id === tripId);
+      if (trip) {
+        const fakeBtn: InlineBtn = { text: 'Тур', callbackData: `cb_trip_${tripId}` };
+        handleCallbackClick(fakeBtn);
+      }
+      return;
+    }
+
+    if (data.startsWith('cb_waitlist_add_')) {
+      const tripId = data.replace('cb_waitlist_add_', '');
+      const trip = TRIPS_LIST.find((t) => t.id === tripId);
+      const newEntry = {
+        id: `wl-${Date.now()}`,
+        name: 'Ви (Тестовий турист)',
+        handle: '@guest_user',
+        trip: trip?.shortTitle || tripId,
+        seats: 1,
+        date: 'Найближчий рейс'
+      };
+      setWaitlist(prev => [newEntry, ...prev]);
+      showToast('📋 Заявку додано до листа очікування!');
+      const confirmText = 
+        `✅ <b>Ви успішно додані до листа очікування!</b> 📋✨\n\n` +
+        `Тур: <b>${trip?.title || 'Обраний тур'}</b>\n` +
+        `Як тільки звільниться місце або відкриється додатковий рейс — менеджер клубу SVOI миттєво напише вам!`;
+      const keyboard: InlineBtn[][] = [
+        [{ text: '🗺 Інші напрямки', callbackData: 'cb_trips' }],
+        [{ text: '🔙 Головне меню', callbackData: 'cb_back' }]
+      ];
+      editLastBotMessage(confirmText, keyboard);
+      return;
+    }
+
+    if (data === 'cb_reviews') {
+      const reviewsText = 
+        `⭐ <b>Відгуки туристів клубу SVOI Travel</b> 💬✨\n\n` +
+        `Реальні відгуки наших мандрівників про поїздки, атмосферу та комфорт Opel Vivaro:\n\n` +
+        `<b>Олена К.</b> (Саарбрюккен) — <i>Париж (Версаль + яхта)</i>\n` +
+        `⭐⭐⭐⭐⭐ <b>5/5</b> (12.10.2026)\n` +
+        `«Неймовірна поїздка! Організація на висоті: забрали прямо біля будинку, мінівен дуже м'який і зручний, зоряне небо в салоні створило казку!»\n\n` +
+        `───────────────\n\n` +
+        `<b>Михайло В.</b> (Трір) — <i>Брюгге (Бельгія)</i>\n` +
+        `⭐⭐⭐⭐⭐ <b>5/5</b> (05.10.2026)\n` +
+        `«Найкращий формат подорожей: маленька група, без метушні великих автобусів. Вільного часу було достатньо!»\n\n` +
+        `───────────────\n\n` +
+        `<b>Ірина М.</b> (Люксембург) — <i>Озеро Комо + Мілан</i>\n` +
+        `⭐⭐⭐⭐⭐ <b>5/5</b> (28.09.2026)\n` +
+        `«Два дні італійського щастя! Дуже сподобалося VIP-місце біля водія — панорамний огляд просто вражаючий!»\n\n` +
+        `👇 <i>Ви також можете поділитися своїми враженнями від минулих турів:</i>`;
+
+      const keyboard: InlineBtn[][] = [
+        [{ text: '✍️ Залишити свій відгук', callbackData: 'cb_feedback' }],
+        [{ text: '🔙 Головне меню', callbackData: 'cb_back' }]
+      ];
+      editLastBotMessage(reviewsText, keyboard);
+      return;
+    }
+
+    if (data === 'cb_custom_trip') {
+      const customText = 
+        `👑 <b>Ексклюзивна поїздка лише для вашої родини чи друзів!</b> 🚐✨\n\n` +
+        `Повний комфортабельний мінівен Opel Vivaro (до 8 пасажирів) з персональним водієм у вашому повному розпорядженні.\n\n` +
+        `✨ <b>Переваги індивідуального виїзду:</b>\n` +
+        `• 📅 <b>Будь-яка зручна дата</b> на ваш вибір (будні або вихідні)\n` +
+        `• 📍 <b>Адресний забір від вашого під'їзду</b> (Door-to-Door)\n` +
+        `• 🗺 <b>Гнучкий маршрут:</b> можливість змінити зупинки, заїхати у бажаний ресторан або виноробню\n` +
+        `• 👥 Тільки ви та ваші близькі — жодних сторонніх попутників!\n` +
+        `• 💶 Фіксована вартість за все авто (від 550€ за весь бус на день залежно від кілометражу)\n\n` +
+        `👇 <i>Натисніть кнопку нижче, щоб обговорити ваш напрямок та зручну дату з менеджером:</i>`;
+
+      const keyboard: InlineBtn[][] = [
+        [{ text: '💬 Обговорити індивідуальний виїзд', url: `${MANAGER_URL}?text=Доброго+дня!+Цікавить+індивідуальний+виїзд` }],
+        [{ text: '🗺 Обрати тур з розкладу', callbackData: 'cb_trips' }],
+        [{ text: '🔙 Головне меню', callbackData: 'cb_back' }]
+      ];
+      editLastBotMessage(customText, keyboard);
+      return;
+    }
+
+    if (data === 'cb_adm_waitlist') {
+      const lines = waitlist.map((item, idx) => 
+        `<b>#${idx + 1} | ${item.trip}</b>\n` +
+        `👤 Клієнт: <b>${item.name}</b> (${item.handle})\n` +
+        `💺 Місць: <b>${item.seats}</b> | Бажана дата: <i>${item.date}</i>\n` +
+        `Статус: 🟡 <b>очікує</b>`
+      );
+      const waitlistText = 
+        `📋 <b>Лист очікування пасажирів (SVOI Waitlist)</b>\n\n` +
+        (lines.length > 0 ? lines.join('\n\n────────────────\n\n') : '<i>Лист очікування порожній.</i>') +
+        `\n\n💡 <i>Коли звільняється місце або відкриється додатковий рейс — зв\'яжіться з туристом для підтвердження броні!</i>`;
+
+      const keyboard: InlineBtn[][] = [
+        [{ text: '💬 Написати клієнту', url: MANAGER_URL }],
+        [{ text: '🔙 До панелі каналу', callbackData: 'cb_adm_channel_menu' }],
+        [{ text: '🏠 Головне меню', callbackData: 'cb_back' }]
+      ];
+      editLastBotMessage(waitlistText, keyboard);
       return;
     }
 
@@ -644,31 +828,31 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       const faqText = 
         `❓ <b>Часті питання про поїздки клубу SVOI (FAQ)</b> 💡\n\n` +
         `Зібрали для вас детальні відповіді на найважливіші питання:\n\n` +
-        `• 💳 Оплата: <b>працюємо без передоплати на одноденні поїздки</b>!\n` +
-        `• 📍 Точки збору: <b>забираємо за адресою</b> (Саарланд, Трір, Люксембург)!\n` +
-        `• ⏱ Маршрути та таймінг: приклади комбінованих турів\n` +
-        `• 🎯 Як обрати тур: розмірені прогулянки vs. активний темп\n` +
-        `• 💺 Салон Opel Vivaro: 8 місць (2 спереду, 3 у 2-му та 3 у 3-му ряду)\n\n` +
-        `👇 <i>Натисніть на питання для подробиць:</i>`;
+        `• 📍 <b>Точки збору:</b> адресний забір (Door-to-Door) по Саарланду, Тріру та Люксембургу!\n` +
+        `• 💳 <b>Оплата:</b> працюємо БЕЗ ПЕРЕДОПЛАТИ на всі одноденні поїздки!\n` +
+        `• 🚐 <b>Комфорт буса:</b> Opel Vivaro з кліматом, USB та зоряним LED-небом\n` +
+        `• ⏱ <b>Таймінг:</b> від 5 до 8 годин вільного часу на локаціях без поспіху!\n\n` +
+        `👇 <i>Оберіть потрібну тему нижче:</i>`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '📍 Точки збору: звідки забираєте?', callbackData: 'cb_faq_pickup' },
-          { text: '💳 Коли оплата? (Без передоплати)', callbackData: 'cb_faq_payment' }
+          { text: '📍 Точки збору (Door-to-Door)', callbackData: 'cb_meeting' },
+          { text: '📜 Умови поїздок & 0% передоплати', callbackData: 'cb_terms' }
+        ],
+        [
+          { text: '🚐 Фото та комфорт Opel Vivaro', callbackData: 'cb_car' },
+          { text: '🤝 Стати партнером клубу', callbackData: 'cb_partner' }
         ],
         [
           { text: '⏱ Скільки часу на локаціях?', callbackData: 'cb_faq_time' },
-          { text: '🎯 Розмірений vs темп: як обрати тур?', callbackData: 'cb_faq_choose' }
+          { text: '🚶 Як гуляємо на екскурсіях?', callbackData: 'cb_faq_walking' }
         ],
         [
-          { text: '💺 Схема місць (2+3+3) та регулювання', callbackData: 'cb_faq_seats' },
-          { text: '🚶 Як ми гуляємо на локаціях?', callbackData: 'cb_faq_walking' }
+          { text: '🎮 Ігри та гео-вікторини', callbackData: 'cb_games' },
+          { text: '✍️ Залишити побажання', callbackData: 'cb_feedback' }
         ],
         [
-          { text: '📌 Читати тему в каналі (FAQ)', url: 'https://t.me/c/3876884115/5' }
-        ],
-        [
-          { text: '🔙 Головне меню', callbackData: 'cb_back' }
+          { text: '🔙 Повернутися в головне меню', callbackData: 'cb_back' }
         ]
       ];
 

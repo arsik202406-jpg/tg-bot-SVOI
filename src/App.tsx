@@ -17,7 +17,14 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<AppTab>('simulator');
+  const isTgWebApp = typeof window !== 'undefined' && Boolean(
+    (window as any).Telegram?.WebApp?.initData ||
+    window.location.search.includes('tgWebApp') ||
+    window.location.search.includes('miniapp') ||
+    window.location.hash.includes('tgWebAppData')
+  );
+
+  const [activeTab, setActiveTab] = useState<AppTab>(isTgWebApp ? 'miniapp' : 'simulator');
   const [showCarModal, setShowCarModal] = useState(false);
 
   // Initial demo leads to showcase CRM functionality right away
@@ -77,6 +84,17 @@ export default function App() {
       prev.map((lead) => (lead.id === id ? { ...lead, status } : lead))
     );
   };
+
+  // If opened directly as a Telegram Mini App inside Telegram, render clean full-screen view
+  if (isTgWebApp) {
+    return (
+      <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
+        <main className="flex-1 w-full max-w-xl mx-auto">
+          <SvoiMiniApp onNewLead={handleNewLead} />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">

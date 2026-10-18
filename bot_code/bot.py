@@ -67,14 +67,15 @@ async def main():
     # Ініціалізація диспетчера з пам'яттю станів FSM
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Підключення модульних роутерів
-    dp.include_router(menu.router)
-    dp.include_router(trips.router)
-    dp.include_router(feedback.router)
+    # Підключення модульних роутерів:
+    # Спочатку FSM та спеціальні обробники, потім загальне меню
     dp.include_router(booking.router)
+    dp.include_router(feedback.router)
+    dp.include_router(channel.router)
+    dp.include_router(trips.router)
     dp.include_router(faq.router)
     dp.include_router(games.router)
-    dp.include_router(channel.router)
+    dp.include_router(menu.router)
 
     try:
         token = settings.BOT_TOKEN.strip() if settings.BOT_TOKEN else ""
@@ -96,10 +97,46 @@ async def main():
         # Отримуємо інформацію про бота для перевірки авторизації
         bot_info = await bot.get_me()
         logger.info("✅ Успішне підключення до Telegram API: %s (@%s)", bot_info.first_name, bot_info.username)
+        
+        # Налаштовуємо нативну кнопку Mini App внизу меню чату поруч із полем вводу
+        try:
+            from aiogram.types import MenuButtonWebApp, WebAppInfo
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="🚀 SVOI Mini App",
+                    web_app=WebAppInfo(url=settings.MINI_APP_URL)
+                )
+            )
+            logger.info("📱 Нативну кнопку MenuButtonWebApp успішно зареєстровано в Telegram!")
+        except Exception as e:
+            logger.warning("Попередження при налаштуванні MenuButtonWebApp: %s", e)
+
+        # Автоматичне вітання та опис бота до натискання СТАРТ
+        try:
+            await bot.set_my_description(
+                description=(
+                    "🌟 Ласкаво просимо до туристичного клубу SVOI! 🇪🇺🚐\n\n"
+                    "Ми організовуємо душевні поїздки Європою із Саарбрюккена на 8-місному Opel Vivaro VIP.\n"
+                    "• 14 авторських напрямків (Париж, Брюгге, Амстердам, Комо)\n"
+                    "• 0% передоплати на одноденні поїздки\n"
+                    "• Забір від дверей (Door-to-Door)\n\n"
+                    "👇 Натисніть «СТАРТ» або відкрийте кнопку меню «🚀 SVOI Mini App» нижче!"
+                )
+            )
+            await bot.set_my_short_description(
+                short_description="🚐 Туристичний клуб SVOI: 14 турів Європою із Саарбрюккена. 3D салон, розіграші та бронь 0%."
+            )
+            logger.info("📝 Опис бота та пре-привітання успішно оновлено!")
+        except Exception as e:
+            logger.warning("Попередження при налаштуванні опису: %s", e)
+
         logger.info("📡 Бот очікує на вхідні повідомлення та команди у Telegram...")
 
-        # Запуск long polling
-        await dp.start_polling(bot)
+        # Запуск long polling із підтримкою my_chat_member для авто-прив'язки каналу
+        await dp.start_polling(
+            bot,
+            allowed_updates=["message", "callback_query", "my_chat_member", "chat_member", "poll"]
+        )
     except Exception as e:
         logger.critical("❌ Критична помилка під час роботи бота: %s", e, exc_info=True)
         # Якщо сталася помилка конфлікту або авторизації, виводимо зрозумілу підказку

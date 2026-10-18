@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Sparkles, Armchair, Compass, Clock, MapPin, 
   Check, CheckCircle2, ChevronRight, User, Phone, 
@@ -131,6 +131,65 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       return true;
     });
   }, [filterDuration]);
+
+  // Native Telegram WebApp SDK initialization and auto-detection
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
+        const tg = (window as any).Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        if (tg.enableClosingConfirmation) {
+          tg.enableClosingConfirmation();
+        }
+        if (tg.setHeaderColor) {
+          tg.setHeaderColor('#070b14');
+        }
+        if (tg.setBackgroundColor) {
+          tg.setBackgroundColor('#070b14');
+        }
+        // Autofill user profile from Telegram context
+        const user = tg.initDataUnsafe?.user;
+        if (user) {
+          if (user.first_name) {
+            setPassengerName(`${user.first_name}${user.last_name ? ' ' + user.last_name : ''}`);
+          }
+          if (user.username) {
+            setPassengerHandle(`@${user.username}`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Telegram WebApp init warning', e);
+    }
+  }, []);
+
+  // Sync Telegram native BackButton
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.BackButton) {
+        const backBtn = (window as any).Telegram.WebApp.BackButton;
+        if (activeStep !== 'tours') {
+          backBtn.show();
+          const handleBack = () => {
+            if (activeStep === 'checkout') {
+              setActiveStep('seats');
+            } else {
+              setActiveStep('tours');
+            }
+          };
+          backBtn.onClick(handleBack);
+          return () => {
+            backBtn.offClick(handleBack);
+          };
+        } else {
+          backBtn.hide();
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  }, [activeStep]);
 
   // Pricing calculations
   const basePrice = selectedTrip.price;

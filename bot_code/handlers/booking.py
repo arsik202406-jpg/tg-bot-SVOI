@@ -1,8 +1,9 @@
+import json
 import logging
 import random
 from urllib.parse import quote
 from aiogram import Router, F, Bot
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
@@ -147,3 +148,53 @@ async def process_seat_chosen(callback: CallbackQuery, state: FSMContext, bot: B
             )
         except Exception as e:
             logger.error("Не вдалося відправити заявку адміну: %s", e)
+
+@router.message(F.web_app_data)
+async def process_web_app_data(message: Message, bot: Bot):
+    """
+    Обробник даних, переданих із Telegram Mini App через Telegram.WebApp.sendData()
+    """
+    try:
+        raw_data = message.web_app_data.data if message.web_app_data else "{}"
+        data = json.loads(raw_data)
+        user = message.from_user
+        trip_title = data.get("trip", "Тур SVOI Travel")
+        seat_name = data.get("seat", "Вільна посадка")
+        total_price = data.get("total", 0)
+        code = data.get("code", f"SVOI-MINI-{random.randint(1000, 9999)}")
+        user_name = user.full_name if user else "Клієнт"
+        user_mention = f"@{user.username}" if user and user.username else "без юзернейму"
+
+        # 1. Відповідь клієнту в чат бота
+        confirm_text = (
+            "🎉 <b>ЗАЯВКУ З MINI APP УСПІШНО ПРИЙНЯТО!</b> 🌌✨\n\n"
+            f"🏷 Номер замовлення: <code>{code}</code>\n"
+            f"🗺 Обраний тур: <b>{trip_title}</b>\n"
+            f"💺 Місце в салоні: <b>{seat_name}</b>\n"
+            f"💵 До сплати при посадці: <b>{total_price}€</b> (0% передоплати!)\n\n"
+            "Менеджер клубу SVOI вже зафіксував бронь та напише вам за день увечері перед виїздом з точним часом посадки!"
+        )
+        user_markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Написати менеджеру", url=f"https://t.me/{settings.MANAGER_USERNAME.lstrip('@')}")],
+                [InlineKeyboardButton(text="🗺 Інші тури", callback_data="cb_trips"), InlineKeyboardButton(text="🔙 Головне меню", callback_data="cb_back")]
+            ]
+        )
+        await message.answer(confirm_text, reply_markup=user_markup, parse_mode="HTML")
+
+        # 2. Сповіщення адміністратору
+        admin_text = (
+            "🚨 <b>НОВЕ БРОНЮВАННЯ ЧЕРЕЗ TELEGRAM MINI APP!</b> 📱\n\n"
+            f"🏷 Код замовлення: <code>{code}</code>\n"
+            f"👤 Клієнт: <b>{user_name}</b> ({user_mention})\n"
+            f"🆔 Telegram ID: <code>{user.id if user else 0}</code>\n"
+            f"🗺 Напрямок: <b>{trip_title}</b>\n"
+            f"💺 Місце: <b>{seat_name}</b>\n"
+            f"💰 Сума: <b>{total_price}€</b>\n"
+            "💳 <b>0% передоплати</b> (оплата водієві при посадці)"
+        )
+        if settings.ADMIN_ID and settings.ADMIN_ID != 0:
+            await bot.send_message(chat_id=settings.ADMIN_ID, text=admin_text, parse_mode="HTML")
+    except Exception as e:
+        logger.error("Помилка обробки web_app_data: %s", e)
+
