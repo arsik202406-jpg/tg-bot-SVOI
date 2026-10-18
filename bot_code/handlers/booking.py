@@ -19,99 +19,98 @@ logger = logging.getLogger(__name__)
 router = Router(name="booking_router")
 
 SEAT_DESCRIPTIONS = {
-    "1": "💺 Место 1 (1-й ряд, рядом с водителем, центр)",
-    "2": "💺 Место 2 (1-й ряд, рядом с водителем, окно)",
-    "3": "💺 Место 3 (2-й ряд, у окна слева)",
-    "4": "💺 Место 4 (2-й ряд, центр)",
-    "5": "💺 Место 5 (2-й ряд, у окна справа)",
-    "6": "💺 Место 6 (3-й ряд, у окна слева)",
-    "7": "💺 Место 7 (3-й ряд, центр)",
-    "8": "💺 Место 8 (3-й ряд, у окна справа)",
-    "none": "🎲 Без выбора места (свободная посадка)"
+    "1": "💺 Місце 1 (1-й ряд, поруч з водієм, центр)",
+    "2": "💺 Місце 2 (1-й ряд, поруч з водієм, вікно)",
+    "3": "💺 Місце 3 (2-й ряд, біля вікна ліворуч)",
+    "4": "💺 Місце 4 (2-й ряд, центр)",
+    "5": "💺 Місце 5 (2-й ряд, біля вікна праворуч)",
+    "6": "💺 Місце 6 (3-й ряд, біля вікна ліворуч)",
+    "7": "💺 Місце 7 (3-й ряд, центр)",
+    "8": "💺 Місце 8 (3-й ряд, біля вікна праворуч)",
+    "none": "🎲 Без вибору місця (вільна посадка)"
 }
 
 def generate_booking_code() -> str:
-    """Генерирует номер брони в формате SVOI-XXXX"""
+    """Генерує номер броні у форматі SVOI-XXXX"""
     return f"SVOI-{random.randint(1000, 9999)}"
 
 @router.callback_query(F.data.startswith("cb_seat_"))
 async def process_seat_chosen(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """
-    Система бронирования с выбором интерактивного места по порядку (всего 8 мест):
-    1-й ряд: 2 места рядом с водителем
-    2-й ряд: 3 места
-    3-й ряд: 3 места
-    Фиксация конкретного места — 5€, свободная посадка — 0€.
-    Бронь БЕЗ ПРЕДОПЛАТЫ на однодневные туры (оплата при посадке).
-    Предоплата только при поездках на несколько дней для отелей.
+    Система бронювання з вибором місця по порядку (всього 8 місць):
+    1-й ряд: 2 місця поруч з водієм
+    2-й ряд: 3 місця
+    3-й ряд: 3 місця
+    Фіксація конкретного місця — 5€, вільна посадка — 0€.
+    Бронь БЕЗ ПЕРЕДОПЛАТИ на одноденні тури (оплата при посадці).
+    Передоплата лише для кількаденних турів для готелів.
     """
     await callback.answer()
     parts = callback.data.split("_")
-    # cb_seat_{seat_id}_{trip_id}
     seat_id = parts[2] if len(parts) > 2 else "none"
     trip_id = parts[3] if len(parts) > 3 else "general"
 
-    seat_title = SEAT_DESCRIPTIONS.get(seat_id, "🎲 Свободная посадка")
+    seat_title = SEAT_DESCRIPTIONS.get(seat_id, "🎲 Вільна посадка")
     seat_fee = 0 if seat_id == "none" else 5
 
     trip = TRIPS_CATALOG.get(trip_id)
-    trip_title = trip["title"] if trip else "Индивидуальный европейский маршрут"
+    trip_title = trip["title"] if trip else "Індивідуальний європейський маршрут"
     duration = trip["duration"] if trip else "1 день"
     base_price = trip["price"] if trip else 120
     total_cost = base_price + seat_fee
     booking_code = generate_booking_code()
 
     user = callback.from_user
-    user_name = user.full_name if user else "Уважаемый путешественник"
-    user_mention = f"@{user.username}" if user and user.username else "Без юзернейма"
+    user_name = user.full_name if user else "Шановний мандрівник"
+    user_mention = f"@{user.username}" if user and user.username else "Без юзернейму"
     user_id = user.id if user else 0
 
-    # Ссылка на менеджера с предзаполненным текстом
-    manager_message = f"Здравствуйте! Мой номер брони: #{booking_code}. Тур: {trip_title}, место: {seat_title}, к оплате: {total_cost}€."
+    # Посилання на менеджера із заповненим текстом
+    manager_message = f"Вітаю! Мій номер броні: #{booking_code}. Тур: {trip_title}, місце: {seat_title}, до оплати: {total_cost}€."
     manager_url = f"https://t.me/{settings.MANAGER_USERNAME.lstrip('@')}?text={quote(manager_message)}"
 
     payment_note = (
-        "🔥 <b>Бронь БЕЗ ПРЕДОПЛАТЫ!</b> Полная оплата производится при посадке в минивэн.\n\n"
+        "🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Повна оплата здійснюється при посадці в мінівен.\n\n"
         if duration == "1 день" else
-        "🏨 <i>Предоплата требуется только для фиксации номеров в отеле.</i>\n\n"
+        "🏨 <i>Передоплата потрібна лише для фіксації номерів у готелі.</i>\n\n"
     )
 
-    # 1. Персонализированное подтверждение для туриста
+    # 1. Персоналізоване підтвердження для туриста
     confirmation_text = (
-        f"🎉 <b>ПОДТВЕРЖДЕНИЕ БРОНИРОВАНИЯ #{booking_code}</b>\n\n"
-        f"Здравствуйте, <b>{user_name}</b>! Ваша заявка в туристический клуб <b>SVOI</b> успешно зафиксирована.\n\n"
-        f"📋 <b>Детали поездки:</b>\n"
-        f"• 🗺 <b>Направление:</b> {trip_title}\n"
-        f"• ⏱ <b>Длительность:</b> {duration}\n"
-        f"• 🚐 <b>Транспорт:</b> Минивэн Opel Vivaro (8 пассажирских мест, кондиционер)\n"
-        f"• 💺 <b>Выбранное место:</b> {seat_title}\n"
-        f"• 📍 <b>Точка сбора:</b> Саарбрюккен Hbf (или подсадка по пути)\n\n"
-        f"🧾 <b>Расчет стоимости:</b>\n"
-        f"• Базовый билет тура: <b>{base_price}€</b>\n"
-        f"• Выбор конкретного места: <b>+{seat_fee}€</b>\n"
+        f"🎉 <b>ПІДТВЕРДЖЕННЯ БРОНЮВАННЯ #{booking_code}</b>\n\n"
+        f"Вітаємо, <b>{user_name}</b>! Вашу заявку в туристичний клуб <b>SVOI</b> успішно зафіксовано.\n\n"
+        f"📋 <b>Деталі поїздки:</b>\n"
+        f"• 🗺 <b>Напрямок:</b> {trip_title}\n"
+        f"• ⏱ <b>Тривалість:</b> {duration}\n"
+        f"• 🚐 <b>Транспорт:</b> Мінівен Opel Vivaro (8 пасажирських місць, клімат-контроль)\n"
+        f"• 💺 <b>Обране місце:</b> {seat_title}\n"
+        f"• 📍 <b>Точка збору:</b> Саарбрюккен Hbf (або підсадка за маршрутом)\n\n"
+        f"🧾 <b>Розрахунок вартості:</b>\n"
+        f"• Базовий квиток туру: <b>{base_price}€</b>\n"
+        f"• Вибір конкретного місця: <b>+{seat_fee}€</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"💳 <b>ИТОГО К ОПЛАТЕ: {total_cost}€</b>\n"
+        f"💳 <b>РАЗОМ ДО ОПЛАТИ: {total_cost}€</b>\n"
         f"{payment_note}"
-        f"📌 <b>Условия поездки:</b>\n"
-        f"✓ Загранпаспорт + действующий ВНЖ / шенгенская виза\n"
-        f"✓ <b>Мед. страховка</b> (обязательна для людей без ВНЖ в Европе)\n"
-        f"✓ <b>Багаж:</b> 10 кг при дальних поездках + ручная кладь в салон\n\n"
-        f"👉 <b>Следующий шаг:</b> Нажмите кнопку ниже для отправки данных менеджеру "
+        f"📌 <b>Умови поїздки:</b>\n"
+        f"✓ Закордонний паспорт + дійсний ВНЖ / шенгенська віза\n"
+        f"✓ <b>Мед. страховка</b> (обов'язкова для людей без ВНЖ в Європі)\n"
+        f"✓ <b>Багаж:</b> 10 кг при далеких поїздках + ручна поклажа в салон\n\n"
+        f"👉 <b>Наступний крок:</b> Натисніть кнопку нижче для відправлення даних менеджеру "
         f"@{settings.MANAGER_USERNAME.lstrip('@')} в Telegram:"
     )
 
     user_markup = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="💬 Отправить бронь менеджеру в Telegram", url=manager_url)
+                InlineKeyboardButton(text="💬 Надіслати бронь менеджеру в Telegram", url=manager_url)
             ],
             [
-                InlineKeyboardButton(text="📍 Точки сбора", callback_data="cb_meeting"),
-                InlineKeyboardButton(text="❓ Частые вопросы (FAQ)", callback_data="cb_faq")
+                InlineKeyboardButton(text="📍 Точки збору", callback_data="cb_meeting"),
+                InlineKeyboardButton(text="❓ Часті питання (FAQ)", callback_data="cb_faq")
             ],
             [
-                InlineKeyboardButton(text="🗺 Другие туры", callback_data="cb_trips"),
-                InlineKeyboardButton(text="🔙 Главное меню", callback_data="cb_back")
+                InlineKeyboardButton(text="🗺 Інші тури", callback_data="cb_trips"),
+                InlineKeyboardButton(text="🔙 Головне меню", callback_data="cb_back")
             ]
         ]
     )
@@ -124,19 +123,19 @@ async def process_seat_chosen(callback: CallbackQuery, state: FSMContext, bot: B
                 parse_mode="HTML"
             )
     except TelegramBadRequest as e:
-        logger.warning("Ошибка обновления брони: %s", e)
+        logger.warning("Помилка оновлення броні: %s", e)
 
-    # 2. Уведомление администратору
+    # 2. Сповіщення адміністратору
     admin_notification = (
-        f"🚨 <b>НОВАЯ ЗАЯВКА НА БРОНИРОВАНИЕ #{booking_code}</b> 🚨\n\n"
+        f"🚨 <b>НОВА ЗАЯВКА НА БРОНЮВАННЯ #{booking_code}</b> 🚨\n\n"
         f"👤 <b>Турист:</b> {user_name} ({user_mention})\n"
         f"🆔 <b>Telegram ID:</b> <code>{user_id}</code>\n"
-        f"🔗 <b>Контакт:</b> <a href=\"tg://user?id={user_id}\">Написать туристу</a>\n\n"
+        f"🔗 <b>Контакт:</b> <a href=\"tg://user?id={user_id}\">Написати туристу</a>\n\n"
         f"🗺 <b>Тур:</b> {trip_title} ({duration})\n"
-        f"💺 <b>Место:</b> {seat_title}\n"
-        f"💵 <b>Сумма к оплате:</b> <b>{total_cost}€</b> (тур: {base_price}€, выбор места: +{seat_fee}€)\n"
+        f"💺 <b>Місце:</b> {seat_title}\n"
+        f"💵 <b>Сума до оплати:</b> <b>{total_cost}€</b> (тур: {base_price}€, вибір місця: +{seat_fee}€)\n"
         f"📍 <b>Посадка:</b> Саарбрюккен Hbf\n"
-        f"💳 <b>Предоплата:</b> {'БЕЗ ПРЕДОПЛАТЫ (оплата при посадке)' if duration == '1 день' else 'Отель (требуется предоплата)'}"
+        f"💳 <b>Передоплата:</b> {'БЕЗ ПЕРЕДОПЛАТИ (оплата при посадці)' if duration == '1 день' else 'Готель (потрібна передоплата)'}"
     )
 
     if settings.ADMIN_ID and settings.ADMIN_ID != 0:
@@ -147,6 +146,4 @@ async def process_seat_chosen(callback: CallbackQuery, state: FSMContext, bot: B
                 parse_mode="HTML"
             )
         except Exception as e:
-            logger.error("Не удалось уведомить админа: %s", e)
-
-    await state.clear()
+            logger.error("Не вдалося відправити заявку адміну: %s", e)

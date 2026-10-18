@@ -18,17 +18,17 @@ router = Router(name="feedback_router")
 
 @router.callback_query(F.data == "cb_feedback")
 async def process_feedback_start(callback: CallbackQuery, state: FSMContext):
-    """Активирует состояние FSM (FeedbackState.waiting_for_text)"""
+    """Активує стан FSM (FeedbackState.waiting_for_text)"""
     await callback.answer()
     await state.set_state(FeedbackState.waiting_for_text)
     
     text = (
-        "✍️ <b>Оставить отзыв или пожелание</b> 💌\n\n"
-        "Мы постоянно улучшаем наши маршруты и сервис. Напишите, пожалуйста, в ответном сообщении:\n"
-        "• Ваши впечатления от прошедшей поездки\n"
-        "• Куда бы вы хотели поехать в следующий раз (новые города/страны)\n"
-        "• Любые предложения по улучшению клуба SVOI\n\n"
-        "<i>Отправьте ваш текст прямо в этот чат или нажмите кнопку «Отмена»:</i>"
+        "✍️ <b>Залишити відгук або побажання</b> 💌\n\n"
+        "Ми постійно вдосконалюємо наші маршрути та сервіс. Напишіть, будь ласка, у відповідному повідомленні:\n"
+        "• Ваші враження від минулої поїздки\n"
+        "• Куди б ви хотіли поїхати наступного разу (нові міста/країни)\n"
+        "• Будь-які пропозиції щодо покращення клубу SVOI\n\n"
+        "<i>Надішліть ваш текст просто в цей чат або натисніть кнопку «Скасувати введення»:</i>"
     )
     
     try:
@@ -43,8 +43,8 @@ async def process_feedback_start(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "cb_cancel_feedback")
 async def process_cancel_feedback(callback: CallbackQuery, state: FSMContext):
-    """Отмена отправки отзыва"""
-    await callback.answer("Ввод отменен")
+    """Скасування надсилання відгуку"""
+    await callback.answer("Введення скасовано")
     await state.clear()
     
     from bot_code.handlers.menu import MAIN_MENU_TEXT
@@ -63,27 +63,26 @@ async def process_cancel_feedback(callback: CallbackQuery, state: FSMContext):
 @router.message(FeedbackState.waiting_for_text)
 async def process_feedback_received(message: Message, state: FSMContext, bot: Bot):
     """
-    Бот ловит текст, сохраняет его, благодарит пользователя и 
-    автоматически пересылает сообщение администратору (ADMIN_ID), 
-    указывая @username и user_id отправителя.
-    Сбрасывает состояние.
+    Бот ловить текст, зберігає його, дякує користувачеві та 
+    автоматично пересилає повідомлення адміністратору (ADMIN_ID).
+    Скидає стан.
     """
-    feedback_text = message.text or message.caption or "(Вложение/медиа)"
+    feedback_text = message.text or message.caption or "(Вкладення/медіа)"
     user = message.from_user
     
-    user_mention = f"@{user.username}" if user and user.username else "Без юзернейма"
+    user_mention = f"@{user.username}" if user and user.username else "Без юзернейму"
     user_id = user.id if user else 0
-    full_name = user.full_name if user else "Пользователь"
+    full_name = user.full_name if user else "Користувач"
     
-    # Сброс состояния
+    # Скидання стану
     await state.clear()
     
-    # Благодарим пользователя
+    # Дякуємо користувачеві
     thanks_text = (
-        "❤️ <b>Спасибо за ваше обращение!</b>\n\n"
-        "Ваш отзыв/пожелание успешно передано руководству клуба SVOI. "
-        "Мы внимательно изучаем каждое сообщение и делаем наши поездки еще душевнее и ярче!\n\n"
-        "До встречи на борту нашего Opel Vivaro VIP! 🚐✨"
+        "❤️ <b>Дякуємо за ваше звернення!</b>\n\n"
+        "Ваш відгук/побажання успішно передано керівництву клубу SVOI. "
+        "Ми уважно вивчаємо кожне повідомлення та робимо наші поїздки ще душевнішими та яскравішими!\n\n"
+        "До зустрічі на борту нашого Opel Vivaro VIP! 🚐✨"
     )
     await message.answer(
         text=thanks_text,
@@ -91,15 +90,15 @@ async def process_feedback_received(message: Message, state: FSMContext, bot: Bo
         parse_mode="HTML"
     )
     
-    # Формируем отчет для администратора
+    # Формуємо звіт для адміністратора
     admin_notification = (
-        "🔔 <b>НОВОЕ ПОЖЕЛАНИЕ / ОТЗЫВ SVOI TRAVEL</b>\n\n"
-        f"👤 <b>Отправитель:</b> {full_name} ({user_mention})\n"
+        "🔔 <b>НОВЕ ПОБАЖАННЯ / ВІДГУК SVOI TRAVEL</b>\n\n"
+        f"👤 <b>Відправник:</b> {full_name} ({user_mention})\n"
         f"🆔 <b>User ID:</b> <code>{user_id}</code>\n"
-        f"💬 <b>Текст сообщения:</b>\n\n{feedback_text}"
+        f"💬 <b>Текст повідомлення:</b>\n\n{feedback_text}"
     )
     
-    # Пересылка администратору (ADMIN_ID)
+    # Пересилання адміністратору (ADMIN_ID)
     if settings.ADMIN_ID and settings.ADMIN_ID != 0:
         try:
             await bot.send_message(
@@ -108,9 +107,4 @@ async def process_feedback_received(message: Message, state: FSMContext, bot: Bo
                 parse_mode="HTML"
             )
         except Exception as e:
-            logger.error("Не удалось отправить сообщение админу %s: %s", settings.ADMIN_ID, e)
-    else:
-        logger.info(
-            "ADMIN_ID не настроен в .env. Сообщение от %s (%s): %s",
-            user_id, user_mention, feedback_text
-        )
+            logger.error("Не вдалося відправити повідомлення адміну %s: %s", settings.ADMIN_ID, e)

@@ -18,103 +18,103 @@ const GEO_QUESTS: GeoQuest[] = [
   {
     id: 'etretat',
     image: 'https://images.unsplash.com/photo-1589802829985-817e51171b92?auto=format&fit=crop&w=1200&q=80',
-    title: 'Белоснежные алебастровые арки над бурлящей Атлантикой',
-    clue: '«Природные меловые ворота Porte d\'Aval и острая скала-игла, вдохновлявшие Клода Моне и писателя Мориса Леблана на легенды об Арсене Люпене».',
+    title: 'Білосніжні алебастрові арки над бурхливою Атлантикою',
+    clue: '«Природні крейдяні ворота Porte d\'Aval та гостра скеля-голка, що надихали Клода Моне та письменника Моріса Леблана на легенди про Арсена Люпена».',
     options: [
-      { label: '🇫🇷 Скалы Этрета (Нормандия, Франция)', isCorrect: true },
-      { label: '🇮🇹 Побережье Амальфи (Италия)', isCorrect: false },
-      { label: '🇬🇧 Белые скалы Дувра (Англия)', isCorrect: false },
-      { label: '🇵🇹 Мыс Рока (Португалия)', isCorrect: false },
+      { label: '🇫🇷 Скелі Етрета (Нормандія, Франція)', isCorrect: true },
+      { label: '🇮🇹 Узбережжя Амальфі (Італія)', isCorrect: false },
+      { label: '🇬🇧 Білі скелі Дувра (Англія)', isCorrect: false },
+      { label: '🇵🇹 Мис Рока (Португалія)', isCorrect: false },
     ],
-    fact: 'Это подлинные скалы Этрета в Нормандии! Мы посещаем эту локацию в нашем комбинированном туре «Этрета + Париж» (5 часов на скалах + 2–3 часа в Париже).',
-    secretGuide: 'Секретный гайд SVOI: Самый потрясающий панорамный вид открывается с тропы у часовни Notre-Dame de la Garde, а свежие нормандские устрицы с лимоном продаются прямо на набережной у рыбаков!'
+    fact: 'Це знамениті скелі Етрета в Нормандії! Ми відвідуємо цю локацію в нашому комбінованому турі «Етрета + Париж» (5 годин на скелях + 2–3 години в Парижі).',
+    secretGuide: 'Секретний гайд SVOI: Найбільш приголомшливий панорамний вид відкривається зі стежки біля каплиці Notre-Dame de la Garde, а свіжі нормандські устриці з лимоном продаються прямо на набережній біля рибалок всього від 1.5€!'
   },
   {
     id: 'aare',
     image: 'https://images.unsplash.com/photo-1531210157546-0335e7d52ff8?auto=format&fit=crop&w=1200&q=80',
-    title: 'Бирюзовое ледниковое ущелье с деревянными мостками',
-    clue: '«Глубокий каньон глубиной до 200 метров с ледяной водой нереального лазурного цвета, пробитый рекой сквозь скальный массив за тысячи лет».',
+    title: 'Бірюзова льодовикова ущелина з дерев\'яними містками',
+    clue: '«Глибокий каньйон завглибшки до 200 метрів з крижаною водою неймовірного лазурового кольору, пробитий річкою крізь скельний масив за тисячоліття».',
     options: [
-      { label: '🇨🇭 Ущелье реки Ааре / Аарешлюхт (Швейцария)', isCorrect: true },
-      { label: '🇦🇹 Лихтенштейнкламм (Австрия)', isCorrect: false },
-      { label: '🇸🇮 Ущелье Винтгар (Словения)', isCorrect: false },
-      { label: '🇩🇪 Бастай (Германия)', isCorrect: false },
+      { label: '🇨🇭 Ущелина річки Ааре / Аарешлюхт (Швейцарія)', isCorrect: true },
+      { label: '🇦🇹 Ліхтенштайнкламм (Австрія)', isCorrect: false },
+      { label: '🇸🇮 Ущелина Вінтгар (Словенія)', isCorrect: false },
+      { label: '🇩🇪 Бастай (Німеччина)', isCorrect: false },
     ],
-    fact: 'Это знаменитое ущелье Аарешлюхт (Aareschlucht) в Швейцарии! В нашем комбо-туре по Швейцарии мы проводим здесь 2 часа среди отвесных скал и кристальной воды.',
-    secretGuide: 'Секретный гайд SVOI: В ущелье всегда прохладно (+12°C даже в жаркий июль). Возьмите легкую кофту, а на выходе в Майрингене обязательно попробуйте швейцарскую меренгу с густыми альпийскими сливками!'
+    fact: 'Це знаменита ущелина Аарешлюхт (Aareschlucht) у Швейцарії! У нашому комбо-турі по Швейцарії ми проводимо тут 2 години серед прямовисних скель та кришталевої води.',
+    secretGuide: 'Секретний гайд SVOI: В ущелині завжди приємна прохолода (+12°C навіть у спеку). Візьміть легку вітрівку, а на виході в Майрінгені обов\'язково скуштуйте швейцарську меренгу з густими альпійськими вершками!'
   },
   {
     id: 'lauterbrunnen',
     image: 'https://images.unsplash.com/photo-1573843981267-be1999ff37cd?auto=format&fit=crop&w=1200&q=80',
-    title: 'Альпийская долина водопадов и деревянных шале',
-    clue: '«Живописная долина 72 водопадов, где 300-метровый водопад Штауббах срывается прямо за крышами старинных деревянных домиков на фоне ледников».',
+    title: 'Альпійська долина водоспадів та дерев\'яних шале',
+    clue: '«Мальовнича долина 72 водоспадів, де 300-метровий водоспад Штауббах зривається просто за дахами старовинних дерев\'яних будиночків на тлі льодовиків».',
     options: [
-      { label: '🇨🇭 Лаутербруннен (Бернские Альпы, Швейцария)', isCorrect: true },
-      { label: '🇦🇹 Гальштат (Австрия)', isCorrect: false },
-      { label: '🇮🇹 Доломитовые Альпы (Италия)', isCorrect: false },
-      { label: '🇳🇴 Флом (Норвегия)', isCorrect: false },
+      { label: '🇨🇭 Лаутербруннен (Бернські Альпи, Швейцарія)', isCorrect: true },
+      { label: '🇦🇹 Гальштат (Австрія)', isCorrect: false },
+      { label: '🇮🇹 Доломітові Альпи (Італія)', isCorrect: false },
+      { label: '🇳🇴 Флом (Норвегія)', isCorrect: false },
     ],
-    fact: 'Это легендарный Лаутербруннен! В нашем швейцарском туре мы выделяем целых 3 часа, чтобы прогуляться под водопадом и надышаться чистейшим горным воздухом.',
-    secretGuide: 'Секретный гайд SVOI: Зайдите на тропу, ведущую прямо за водяную завесу водопада Штауббах — оттуда открывается лучший вид на всю долину и альпийские пики Эйгер, Мёнх и Юнгфрау!'
+    fact: 'Це легендарний Лаутербруннен! У нашому швейцарському турі ми виділяємо 3 години, щоб прогулятися під водоспадом та подихати найчистішим гірським повітрям.',
+    secretGuide: 'Секретний гайд SVOI: Пройдіть стежкою просто за водяну завісу водоспаду Штауббах — звідти відкривається найкращий вид на всю долину та піки Ейгер, Менх та Юнгфрау!'
   },
   {
     id: 'bruges',
     image: 'https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?auto=format&fit=crop&w=1200&q=80',
-    title: 'Старинная набережная Роз, каналы и пряничные дома',
-    clue: '«Сказочный средневековый город, где мощеные улочки обвивают тихие каналы с белыми лебедями, а в воздухе пахнет шоколадом и горячими вафлями».',
+    title: 'Старовинна набережна Троянд, канали та пряникові будинки',
+    clue: '«Казкове середньовічне місто, де бруковані вулички обвивають тихі канали з білими лебедями, а в повітрі пахне шоколадом і гарячими вафлями».',
     options: [
-      { label: '🇧🇪 Брюгге (Бельгия)', isCorrect: true },
-      { label: '🇳🇱 Амстердам (Нидерланды)', isCorrect: false },
-      { label: '🇫🇷 Кольмар (Франция)', isCorrect: false },
-      { label: '🇩🇪 Ротенбург-об-дер-Таубер (Германия)', isCorrect: false },
+      { label: '🇧🇪 Брюгге (Бельгія)', isCorrect: true },
+      { label: '🇳🇱 Амстердам (Нідерланди)', isCorrect: false },
+      { label: '🇫🇷 Кольмар (Франція)', isCorrect: false },
+      { label: '🇩🇪 Ротенбург-об-дер-Таубер (Німеччина)', isCorrect: false },
     ],
-    fact: 'Это всемирно известная набережная Rozenhoedkaai в Брюгге! Наш размеренный тур выходного дня за 110€ позволяет спокойно погулять по городу 6–7 часов.',
-    secretGuide: 'Секретный гайд SVOI: В старинной пивоварне De Halve Maan под мостовыми города проложен настоящий подземный пивопровод! А за лучшими шоколадными трюфелями ручной работы загляните в лавку The Chocolate Line.'
+    fact: 'Це всесвітньо відома набережна Rozenhoedkaai у Брюгге! Наш розмірений тур вихідного дня за 110€ дозволяє спокійно погуляти містом 6–7 годин.',
+    secretGuide: 'Секретний гайд SVOI: У старовинній броварні De Halve Maan під бруківкою міста прокладено справжній підземний пивопровід завдовжки 3 км! А за найкращими шоколадними трюфелями ручної роботи завітайте до крамниці The Chocolate Line.'
   },
   {
     id: 'neuschwanstein',
     image: 'https://images.unsplash.com/photo-1534351590666-13e3e96b5017?auto=format&fit=crop&w=1200&q=80',
-    title: 'Белокаменный замок-сказка среди заснеженных баварских пиков',
-    clue: '«Романтический рыцарский замок короля Людвига II, послуживший прообразом замка Спящей Красавицы на логотипе студии Walt Disney».',
+    title: 'Білокам\'яний замок-казка серед засніжених баварських піків',
+    clue: '«Романтичний лицарський замок короля Людвіга II, що послужив прообразом замку Сплячої Красуні на логотипі кіностудії Walt Disney».',
     options: [
-      { label: '🇩🇪 Замок Нойшванштайн (Бавария, Германия)', isCorrect: true },
-      { label: '🇦🇹 Замок Хоэнзальцбург (Австрия)', isCorrect: false },
-      { label: '🇨🇭 Замок Шильон (Швейцария)', isCorrect: false },
-      { label: '🇫🇷 Замок Шамбор (Франция)', isCorrect: false },
+      { label: '🇩🇪 Замок Нойшванштайн (Баварія, Німеччина)', isCorrect: true },
+      { label: '🇦🇹 Замок Хоензальцбург (Австрія)', isCorrect: false },
+      { label: '🇨🇭 Замок Шильйон (Швейцарія)', isCorrect: false },
+      { label: '🇫🇷 Замок Шамбор (Франція)', isCorrect: false },
     ],
-    fact: 'Это замок Нойшванштайн в Баварских Альпах! Мы едем сюда в размеренном туре за 120€ с подъемом на смотровой мост Мариенбрюке и прогулкой у озера Альпзее.',
-    secretGuide: 'Секретный гайд SVOI: Лучшие фотографии получаются с подвесного моста Marienbrücke над ущельем Поллат. Обязательно захватите свежий баварский брецель внизу у озера!'
+    fact: 'Це замок Нойшванштайн у Баварських Альпах! Ми їдемо сюди в розміреному турі за 120€ з підйомом на оглядовий міст Марієнбрюке та прогулянкою біля озера Альпзее.',
+    secretGuide: 'Секретний гайд SVOI: Найкращі фотографії виходять із підвісного моста Marienbrücke над ущелиною Поллат. Обов\'язково скуштуйте свіжий баварський брецель внизу біля озера!'
   }
 ];
 
 const QUIZ_ITEMS = [
   {
     id: 'q1',
-    country: '🇨🇭 Швейцария',
-    question: 'Правда ли, что в Швейцарии законом запрещено иметь только одну морскую свинку?',
+    country: '🇨🇭 Швейцарія',
+    question: 'Чи правда, що у Швейцарії законом заборонено володіти лише однією морською свинкою?',
     isTrue: true,
-    explanation: 'Это чистая правда! Закон о защите животных признает морских свинок социальными существами, страдающими в одиночестве. Их разрешено заводить только парами.'
+    explanation: 'Це чиста правда! Закон про захист тварин визнає морських свинок соціальними істотами, які страждають від самотності. Їх дозволено тримати лише парами.'
   },
   {
     id: 'q2',
-    country: '🇫🇷 Франция (Париж & Этрета)',
-    question: 'Правда ли, что в скалах Этрета писатель Морис Леблан спрятал сокровища королей Франции?',
+    country: '🇫🇷 Франція (Париж & Етрета)',
+    question: 'Чи правда, що у скелях Етрета письменник Моріс Леблан сховав скарби королів Франції?',
     isTrue: true,
-    explanation: 'Правда! По сюжету всемирно известного романа об Арсене Люпене, внутри полой скалы-иглы (L\'Aiguille Creuse) в Этрета находилось тайное хранилище сокровищ французской короны.'
+    explanation: 'Правда! За сюжетом всесвітньо відомого роману про Арсена Люпена, всередині порожнистої скелі-голки (L\'Aiguille Creuse) в Етрета знаходилася таємна схованка скарбів французької корони.'
   },
   {
     id: 'q3',
-    country: '🇱🇮 Лихтенштейн (3 страны за 1 день)',
-    question: 'Правда ли, что целое государство Лихтенштейн с княжеским замком однажды можно было арендовать на сутки?',
+    country: '🇱🇮 Ліхтенштейн (3 країни за 1 день)',
+    question: 'Чи правда, що всю державу Ліхтенштейн із княжим замком одного разу можна було орендувати на добу?',
     isTrue: true,
-    explanation: 'Правда! В 2011 году княжество Лихтенштейн запустило акцию: за $70,000 в сутки компания до 150 человек могла символически арендовать всё государство с ключами от города.'
+    explanation: 'Правда! У 2011 році князівство Ліхтенштейн запустило акцію: за $70,000 на добу компанія до 150 осіб могла символічно орендувати всю державу з ключами від міста та дегустацією вин.'
   },
   {
     id: 'q4',
-    country: '🇧🇪 Бельгия (Брюгге)',
-    question: 'Правда ли, что в Брюгге под средневековыми мостовыми проложен действующий подземный пивопровод?',
+    country: '🇧🇪 Бельгія (Брюгге)',
+    question: 'Чи правда, що у Брюгге під середньовічною бруківкою прокладено діючий підземний пивопровід?',
     isTrue: true,
-    explanation: 'Правда! В 2016 году пивоварня De Halve Maan проложила под землей более 3 километров полиэтиленовых труб, чтобы доставлять до 4000 литров пенного напитка в час прямо на завод розлива без грузовиков!'
+    explanation: 'Правда! У 2016 році броварня De Halve Maan проклала під землею понад 3 кілометри поліетиленових труб, щоб доставляти до 4000 літрів пінного напою на годину просто на завод розливу без вантажівок!'
   }
 ];
 
@@ -132,10 +132,10 @@ export const GamesHub: React.FC = () => {
 
   // Group Giveaway Simulator
   const [raffleParticipants, setRaffleParticipants] = useState([
-    { name: 'Елена К.', handle: '@elena_de' },
-    { name: 'Михаил В.', handle: '@mike_travel' },
+    { name: 'Олена К.', handle: '@elena_de' },
+    { name: 'Михайло В.', handle: '@mike_travel' },
     { name: 'Ольга С.', handle: '@olga_st' },
-    { name: 'Дмитрий Р.', handle: '@dima_de' },
+    { name: 'Дмитро Р.', handle: '@dima_de' },
     { name: 'Анна М.', handle: '@anna_travel' },
   ]);
   const [raffleWinner, setRaffleWinner] = useState<string | null>(null);
@@ -185,10 +185,10 @@ export const GamesHub: React.FC = () => {
             </span>
             <div>
               <h2 className="text-xl font-bold text-white tracking-wide">
-                Игры & Геймификация в чате
+                Ігри & Гейміфікація в чаті
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Актуальные фото маршрутов: Этрета, ущелье Ааре, Лаутербруннен, Брюгге и Нойшванштайн
+                Актуальні фото маршрутів: Етрета, ущелина Ааре, Лаутербруннен, Брюгге та Нойшванштайн
               </p>
             </div>
           </div>
@@ -217,7 +217,7 @@ export const GamesHub: React.FC = () => {
             }`}
           >
             <HelpCircle className="w-3.5 h-3.5" />
-            Правда или Ложь ({QUIZ_ITEMS.length})
+            Правда чи Неправда ({QUIZ_ITEMS.length})
           </button>
 
           <button
@@ -229,7 +229,7 @@ export const GamesHub: React.FC = () => {
             }`}
           >
             <Gift className="w-3.5 h-3.5" />
-            Розыгрыши в группе
+            Розіграші в групі
           </button>
         </div>
       </div>
@@ -247,7 +247,7 @@ export const GamesHub: React.FC = () => {
               />
               <div className="absolute top-3 left-3 bg-slate-950/80 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
                 <Compass className="w-3.5 h-3.5" />
-                Локация #{geoIndex + 1} из {GEO_QUESTS.length}
+                Локація #{geoIndex + 1} з {GEO_QUESTS.length}
               </div>
 
               {/* Quick Carousel Thumbnails */}
@@ -277,7 +277,7 @@ export const GamesHub: React.FC = () => {
 
               <div className="pt-2">
                 <div className="text-xs font-semibold text-slate-400 mb-2">
-                  Кто первый угадает, где сделан этот снимок?
+                  Хто перший вгадає, де зроблено цей знімок?
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {currentGeo.options.map((opt, idx) => {
@@ -312,7 +312,7 @@ export const GamesHub: React.FC = () => {
               <div className="p-5 bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-950 border border-amber-500/40 rounded-2xl space-y-3 shadow-xl animate-fade-in">
                 <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
                   <Trophy className="w-5 h-5 text-amber-400" />
-                  <span>В точку! Вы выиграли Карту Приоритета!</span>
+                  <span>У яблучко! Ви виграли Картку Пріоритету!</span>
                 </div>
 
                 <p className="text-xs text-slate-300 leading-relaxed">{currentGeo.fact}</p>
@@ -322,16 +322,16 @@ export const GamesHub: React.FC = () => {
 
                 <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/30 flex items-center justify-between">
                   <div>
-                    <span className="text-[10px] text-slate-400 block">Бонусный промокод (+5€ к месту):</span>
+                    <span className="text-[10px] text-slate-400 block">Бонусний промокод (+5€ до вибору місця):</span>
                     <span className="font-mono text-xs font-bold text-amber-300">PRIORITY-SVOI5</span>
                   </div>
                   <a
-                    href="https://t.me/SVOI_travel_admin?text=Здравствуйте! Я отгадал локацию в Гео-Детективе. Мой промокод PRIORITY-SVOI5 на бесплатный выбор места!"
+                    href="https://t.me/SVOI_travel_admin?text=Вітаю! Я відгадав локацію в Гео-Детективі. Мій промокод PRIORITY-SVOI5 на безкоштовний вибір місця!"
                     target="_blank"
                     rel="noreferrer"
                     className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all"
                   >
-                    Активировать
+                    Активувати
                   </a>
                 </div>
 
@@ -340,7 +340,7 @@ export const GamesHub: React.FC = () => {
                   className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-all flex items-center justify-center gap-1.5"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Следующая загадка
+                  Наступна загадка
                 </button>
               </div>
             )}
@@ -349,14 +349,14 @@ export const GamesHub: React.FC = () => {
               <div className="p-4 bg-red-950/30 border border-red-500/30 rounded-2xl text-xs text-red-200 space-y-2">
                 <p className="font-bold flex items-center gap-1.5">
                   <XCircle className="w-4 h-4 text-red-400" />
-                  Не совсем так, но вы были близки!
+                  Не зовсім так, але ви були дуже близькі!
                 </p>
                 <p className="text-slate-300">{currentGeo.fact}</p>
                 <button
                   onClick={handleNextGeo}
                   className="mt-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200"
                 >
-                  Попробовать другую локацию
+                  Спробувати іншу локацію
                 </button>
               </div>
             )}
@@ -365,17 +365,17 @@ export const GamesHub: React.FC = () => {
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 text-xs text-slate-300 space-y-3 shadow-xl">
               <div className="flex items-center gap-2 font-bold text-white text-sm">
                 <Flame className="w-4 h-4 text-orange-400" />
-                <span>Зачем эта игра вашему клубу?</span>
+                <span>Навіщо ця гра вашому клубу?</span>
               </div>
               <p className="text-slate-400 leading-relaxed">
-                В Европе люди часто едут в электричках или отдыхают вечерами. Актуальное красивое фото улочки, ущелья или замка с вопросом <b>«Кто первый угадает?»</b> мгновенно поднимает активность в комментариях!
+                У Європі люди часто їдуть в електричках або відпочивають вечорами. Красиве фото затишної вулички, каньйону або замку із запитанням <b>«Хто перший вгадає?»</b> миттєво підіймає активність у коментарях!
               </p>
               <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
-                <div className="font-semibold text-white">Приз без потери денег:</div>
+                <div className="font-semibold text-white">Приз без фінансових втрат:</div>
                 <div className="text-slate-400 leading-relaxed">
-                  • <b>«Карта Приоритета»</b>: бесплатный выбор любого места в минивэне (+5€ ценности).<br />
-                  • <b>Секретный гайд</b> по городу в личные сообщения.<br />
-                  • Скидка 10% на первую поездку.
+                  • <b>«Картка Пріоритету»</b>: безкоштовний вибір будь-якого місця в авто (+5€ цінності).<br />
+                  • <b>Секретний гайд</b> містом в особисті повідомлення.<br />
+                  • Знижка 10% на першу поїздку.
                 </div>
               </div>
             </div>
@@ -383,7 +383,7 @@ export const GamesHub: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: ПРАВДА ИЛИ ЛОЖЬ */}
+      {/* TAB 2: ПРАВДА ЧИ НЕПРАВДА */}
       {activeTab === 'quiz' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
@@ -392,7 +392,7 @@ export const GamesHub: React.FC = () => {
                 {currentQuiz.country}
               </span>
               <span className="text-xs text-slate-500 font-mono">
-                Вопрос #{quizIndex + 1} из {QUIZ_ITEMS.length}
+                Запитання #{quizIndex + 1} з {QUIZ_ITEMS.length}
               </span>
             </div>
 
@@ -426,7 +426,7 @@ export const GamesHub: React.FC = () => {
                     : 'bg-slate-950 hover:bg-slate-850 border-slate-700 text-white'
                 }`}
               >
-                👎 ЛОЖЬ
+                👎 НЕПРАВДА
               </button>
             </div>
 
@@ -435,23 +435,23 @@ export const GamesHub: React.FC = () => {
                 <div className="flex items-center gap-2">
                   {userQuizAnswer === currentQuiz.isTrue ? (
                     <span className="text-emerald-400 font-bold flex items-center gap-1.5 text-sm">
-                      <CheckCircle2 className="w-4 h-4" /> Вы абсолютно правы!
+                      <CheckCircle2 className="w-4 h-4" /> Ви абсолютно праві!
                     </span>
                   ) : (
                     <span className="text-amber-400 font-bold flex items-center gap-1.5 text-sm">
-                      <Sparkles className="w-4 h-4" /> Удивительный факт, но это так!
+                      <Sparkles className="w-4 h-4" /> Дивовижний факт, але це так!
                     </span>
                   )}
                 </div>
                 <p className="text-slate-300 leading-relaxed">{currentQuiz.explanation}</p>
 
                 <div className="pt-2 flex items-center justify-between">
-                  <span className="text-slate-500 text-[11px]">Оригинальные факты в поездках SVOI</span>
+                  <span className="text-slate-500 text-[11px]">Оригінальні факти в поїздках SVOI</span>
                   <button
                     onClick={handleNextQuiz}
                     className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all"
                   >
-                    Следующий факт
+                    Наступний факт
                   </button>
                 </div>
               </div>
@@ -461,37 +461,37 @@ export const GamesHub: React.FC = () => {
           <div className="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl text-xs space-y-3 text-slate-300">
             <h4 className="font-bold text-white text-sm flex items-center gap-1.5">
               <Share2 className="w-4 h-4 text-blue-400" />
-              Как публиковать викторину в группе?
+              Як публікувати вікторину в групі?
             </h4>
             <p className="text-slate-400 leading-relaxed">
-              В Telegram есть встроенный режим опросов <b>«Викторина» (Quiz Poll)</b>:
+              У Telegram є вбудований режим опитувань <b>«Вікторина» (Quiz Poll)</b>:
             </p>
             <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px] text-blue-300">
               <code>bot.send_poll(</code><br />
               <code>  chat_id='@group',</code><br />
-              <code>  question='Правда ли, что...',</code><br />
-              <code>  options=['👍 Правда', '👎 Ложь'],</code><br />
+              <code>  question='Чи правда, що...',</code><br />
+              <code>  options=['👍 Правда', '👎 Неправда'],</code><br />
               <code>  type='quiz', correct_option_id=0</code><br />
               <code>)</code>
             </div>
             <p className="text-slate-400">
-              При правильном ответе у участника прямо в Telegram взрывается праздничное конфетти!
+              При правильній відповіді у підписника прямо в Telegram вибухає святкове конфеті!
             </p>
           </div>
         </div>
       )}
 
-      {/* TAB 3: РОЗЫГРЫШИ В ГРУППЕ */}
+      {/* TAB 3: РОЗІГРАШІ В ГРУПІ */}
       {activeTab === 'giveaways' && (
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
             <div>
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Gift className="w-5 h-5 text-emerald-400" />
-                Может ли бот проводить викторины и розыгрыши билетов в группе?
+                Чи може бот проводити вікторини та розіграші квитків у групі?
               </h3>
               <p className="text-xs text-emerald-400 font-semibold mt-1">
-                👉 ДА! Бот официально поддерживает запуск викторин и автоматический выбор победителей
+                👉 ТАК! Бот офіційно підтримує запуск вікторин та автоматичний вибір переможців
               </p>
             </div>
 
@@ -501,7 +501,7 @@ export const GamesHub: React.FC = () => {
               className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-lg shadow-emerald-600/30 flex items-center gap-2 disabled:opacity-50"
             >
               <Gift className="w-4 h-4" />
-              {isDrawing ? 'Выбор победителя...' : 'Запустить демо-розыгрыш'}
+              {isDrawing ? 'Вибір переможця...' : 'Запустити демо-розіграш'}
             </button>
           </div>
 
@@ -509,22 +509,22 @@ export const GamesHub: React.FC = () => {
             {/* Simulation of Telegram Group Post */}
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
               <div className="text-xs font-semibold text-slate-400 flex items-center justify-between">
-                <span>Вид поста в группе @SVOI:</span>
-                <span className="text-emerald-400 text-[10px]">Кнопка инлайн</span>
+                <span>Вигляд допису в групі @SVOI:</span>
+                <span className="text-emerald-400 text-[10px]">Кнопка інлайн</span>
               </div>
 
               <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs">
-                <div className="font-bold text-white">🎟 РОЗЫГРЫШ БЕСПЛАТНОГО МЕСТА НА ТУР В ПАРИЖ!</div>
+                <div className="font-bold text-white">🎟 РОЗІГРАШ БЕЗКОШТОВНОГО МІСЦЯ НА ТУР ДО ПАРИЖА!</div>
                 <p className="text-slate-300">
-                  Друзья! В честь 500 участников клуба SVOI мы разыгрываем бесплатный выбор места (+5€) и скидку 15% на тур!
+                  Друзі! На честь 500 учасників клубу SVOI ми розігруємо безкоштовний вибір місця (+5€) та знижку 15% на тур!
                 </p>
                 <div className="text-slate-400 text-[11px]">
-                  Участников: <b>{raffleParticipants.length}</b> человек
+                  Учасників: <b>{raffleParticipants.length}</b> осіб
                 </div>
 
                 <div className="pt-2">
                   <button className="w-full py-2 bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-lg text-xs font-bold text-center">
-                    ✅ Я участвую в розыгрыше!
+                    ✅ Я беру участь у розіграші!
                   </button>
                 </div>
               </div>
@@ -533,7 +533,7 @@ export const GamesHub: React.FC = () => {
                 <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 animate-fade-in flex items-center gap-2">
                   <Trophy className="w-5 h-5 text-amber-400 shrink-0" />
                   <div>
-                    <span className="font-bold">Победитель определен:</span> {raffleWinner}! Поздравляем!
+                    <span className="font-bold">Переможця визначено:</span> {raffleWinner}! Вітаємо!
                   </div>
                 </div>
               )}
@@ -541,16 +541,16 @@ export const GamesHub: React.FC = () => {
 
             {/* Step by step logic for production */}
             <div className="space-y-3 text-xs text-slate-300">
-              <h4 className="font-bold text-white text-sm">Как бот проводит розыгрыши на сервере:</h4>
+              <h4 className="font-bold text-white text-sm">Як бот проводить розіграші на сервері:</h4>
               <div className="space-y-2">
                 <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800">
-                  <b>1. Создание розыгрыша:</b> Бот публикует сообщение с кнопкой <code>callback_data="participate_raffle"</code>.
+                  <b>1. Створення розіграшу:</b> Бот публікує повідомлення з кнопкою <code>callback_data="participate_raffle"</code>.
                 </div>
                 <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800">
-                  <b>2. Сбор участников:</b> При нажатии бот сохраняет ID и @username нажавшего в список без повторов.
+                  <b>2. Збір учасників:</b> При натисканні бот зберігає ID та @username користувача у список без повторів.
                 </div>
                 <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800">
-                  <b>3. Автоматический выбор:</b> Модуль случайного выбора (<code>random.choice</code>) в назначенное время определяет победителя и публикует пост с отметкой победителя!
+                  <b>3. Автоматичний вибір:</b> Модуль випадкового вибору (<code>random.choice</code>) у призначений час визначає переможця та публікує допис із відміткою переможця!
                 </div>
               </div>
 
@@ -561,7 +561,7 @@ export const GamesHub: React.FC = () => {
                   rel="noreferrer"
                   className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs flex items-center gap-1.5"
                 >
-                  <span>Перейти в группу SVOI</span>
+                  <span>Перейти до групи SVOI</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>

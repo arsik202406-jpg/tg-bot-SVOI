@@ -68,11 +68,11 @@ python bot.py
               aiogram 3.x Production Code
             </span>
             <h2 className="text-xl font-bold text-white tracking-wide">
-              Архитектура & Исходный код бота
+              Архітектура та вихідний код бота
             </h2>
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            Модульная структура: FSM машины состояний, роутеры, кастомные инлайн-клавиатуры и обработка ошибок
+            Модульна структура: FSM машини станів, роутери, кастомні інлайн-клавіатури та обробка помилок
           </p>
         </div>
 
@@ -86,7 +86,7 @@ python bot.py
             }`}
           >
             <FileCode2 className="w-4 h-4" />
-            Редактор файлов
+            Редактор файлів
           </button>
 
           <button
@@ -98,7 +98,7 @@ python bot.py
             }`}
           >
             <Play className="w-4 h-4 text-emerald-300" />
-            Как протестировать в Telegram
+            Як протестувати в Telegram
           </button>
 
           <button
@@ -110,7 +110,7 @@ python bot.py
             }`}
           >
             <Server className="w-4 h-4" />
-            Инструкция деплоя
+            Інструкція деплою
           </button>
 
           <button
@@ -119,7 +119,7 @@ python bot.py
             className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white transition-all shadow-lg shadow-amber-600/30 flex items-center gap-2 disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            {isZipping ? 'Упаковка архива...' : 'Скачать проект (.zip)'}
+            {isZipping ? 'Пакування архіву...' : 'Завантажити проєкт (.zip)'}
           </button>
         </div>
       </div>
@@ -131,7 +131,7 @@ python bot.py
           <div className="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-xl flex flex-col">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 pb-3 border-b border-slate-800">
               <FolderTree className="w-4 h-4 text-blue-400" />
-              <span>Файлы проекта (11)</span>
+              <span>Файли проєкту (11)</span>
             </div>
 
             <div className="mt-3 space-y-1 overflow-y-auto max-h-[600px] pr-1">
@@ -191,12 +191,12 @@ python bot.py
                 {copied ? (
                   <>
                     <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-400">Скопировано!</span>
+                    <span className="text-emerald-400">Скопійовано!</span>
                   </>
                 ) : (
                   <>
                     <Copy className="w-3.5 h-3.5" />
-                    <span>Скопировать код</span>
+                    <span>Скопіювати код</span>
                   </>
                 )}
               </button>
@@ -227,10 +227,10 @@ python bot.py
               </div>
               <div>
                 <h3 className="text-lg font-bold text-white">
-                  Пошаговая инструкция: Тестирование в реальном Telegram
+                  Покрокова інструкція: Тестування в реальному Telegram
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Как за 2 минуты запустить бота на компьютере или сервере и проверить все обновленные функции
+                  Як за 2 хвилини запустити бота на комп'ютері чи сервері та перевірити всі оновлені функції
                 </p>
               </div>
             </div>
@@ -242,7 +242,7 @@ python bot.py
                 rel="noreferrer"
                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1.5 shadow-md shadow-blue-600/30"
               >
-                Открыть @Svoi_TravelEU_bot
+                Відкрити @Svoi_TravelEU_bot
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
@@ -253,22 +253,22 @@ python bot.py
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-1.5 leading-relaxed">
               <div className="font-bold text-amber-300 flex items-center gap-2">
-                <span>⚠️ Важная информация о вебхуке Chatplace на @Svoi_TravelEU_bot</span>
+                <span>⚠️ Важлива інформація про вебхук Chatplace на @Svoi_TravelEU_bot</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 font-mono">
                   api.chatplace.io
                 </span>
               </div>
               <p className="text-slate-300">
-                В Telegram API к боту <b className="text-white">@Svoi_TravelEU_bot</b> в данный момент привязан webhook сервиса <b className="text-white">Chatplace</b>. 
-                В Telegram действует строгое правило: либо бот работает через Webhook (как Chatplace), либо через Long Polling (наш Python aiogram скрипт).
+                У Telegram API до бота <b className="text-white">@Svoi_TravelEU_bot</b> раніше міг бути прив'язаний вебхук сервісу <b className="text-white">Chatplace</b>. 
+                У Telegram діє суворе правило: або бот працює через Webhook (як Chatplace), або через Long Polling (наш Python aiogram скрипт). При запуску <code>bot.py</code> автоматично виконує <code>drop_pending_updates=True</code> та скидає старий вебхук!
               </p>
               <div className="pt-1 text-slate-300 flex flex-col sm:flex-row sm:items-center gap-3">
-                <span className="font-semibold text-white">Два варианта тестирования:</span>
+                <span className="font-semibold text-white">Два варіанти тестування:</span>
                 <span className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-emerald-300 font-medium">
-                  1. Безопасный: создать тестового бота в @BotFather
+                  1. Безпечний: створити тестового бота у @BotFather
                 </span>
                 <span className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-blue-300 font-medium">
-                  2. Прямой: запустить на текущем токене (скрипт сам сбросит старый вебхук)
+                  2. Прямий: запустити на поточному токені (скрипт сам скине старий вебхук)
                 </span>
               </div>
             </div>
@@ -282,13 +282,13 @@ python bot.py
                 <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
                   1
                 </span>
-                <h4 className="text-sm font-bold text-white">Скачайте и распакуйте архив</h4>
+                <h4 className="text-sm font-bold text-white">Завантажте та розпакуйте архів</h4>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Нажмите кнопку <b className="text-amber-400">«Скачать проект (.zip)»</b> выше в меню. Распакуйте архив в любую удобную папку на вашем компьютере (например, <code>svoi_bot</code>).
+                Натисніть кнопку <b className="text-amber-400">«Завантажити проєкт (.zip)»</b> вище в меню. Розпакуйте архів у будь-яку зручну папку на вашому комп'ютері (наприклад, <code>svoi_bot</code>).
               </p>
               <div className="text-[11px] text-slate-500 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
-                Внутри уже лежат все необходимые файлы: <code>bot.py</code>, роутеры, данные туров, логистика сбора и <code>run.sh</code>.
+                Усередині вже містяться всі необхідні файли: <code>bot.py</code>, роутери, дані турів, логістика збору та <code>run.sh</code>.
               </div>
             </div>
 
@@ -298,14 +298,14 @@ python bot.py
                 <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
                   2
                 </span>
-                <h4 className="text-sm font-bold text-white">Настройте файл .env</h4>
+                <h4 className="text-sm font-bold text-white">Налаштуйте файл .env</h4>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Откройте файл <code>.env</code> в блокноте или редакторе кода и проверьте параметры:
+                Відкрийте файл <code>.env</code> у блокноті чи редакторі коду та перевірте параметри:
               </p>
               <div className="bg-black/70 p-2.5 rounded-lg font-mono text-[11px] text-emerald-300 space-y-1">
-                <p>BOT_TOKEN=8969834514:AAGjza7gfBInTsGhnR4jVWvHQR0Hcx2Mnd4</p>
-                <p>ADMIN_ID=ВАШ_ТЕЛЕГРАМ_ID <span className="text-slate-500"># узнать в @userinfobot</span></p>
+                <p>BOT_TOKEN=8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM</p>
+                <p>ADMIN_ID=8450153980 <span className="text-slate-500"># ваш Telegram ID</span></p>
                 <p>MANAGER_USERNAME=SVOI_travel_admin</p>
               </div>
             </div>
@@ -316,13 +316,13 @@ python bot.py
                 <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
                   3
                 </span>
-                <h4 className="text-sm font-bold text-white">Установите библиотеки & запустите</h4>
+                <h4 className="text-sm font-bold text-white">Встановіть бібліотеки та запустіть</h4>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Откройте терминал (или командную строку / PowerShell) в этой папке и выполните:
+                Відкрийте термінал (або командний рядок / PowerShell) у цій папці та виконайте:
               </p>
               <div className="bg-black/70 p-2.5 rounded-lg font-mono text-[11px] text-blue-300 space-y-1">
-                <p className="text-slate-500"># macOS / Linux:</p>
+                <p className="text-slate-500"># macOS / Linux / Render:</p>
                 <p>python3 -m venv venv && source venv/bin/activate</p>
                 <p>pip install -r requirements.txt</p>
                 <p>python bot.py</p>
@@ -339,17 +339,17 @@ python bot.py
                 <span className="w-6 h-6 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
                   4
                 </span>
-                <h4 className="text-sm font-bold text-white">Проверьте бота в Telegram</h4>
+                <h4 className="text-sm font-bold text-white">Перевірте бота в Telegram</h4>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Когда в терминале появится надпись:
+                Коли в терміналі з'явиться напис:
                 <br />
-                <code className="text-emerald-400">✅ Успешное подключение: SVOI (@Svoi_TravelEU_bot)</code>
+                <code className="text-emerald-400">✅ Успішне підключення: SVOI Travel (@Svoi_TravelEU_bot)</code>
                 <br />
-                откройте Telegram и отправьте команду <b>/start</b>!
+                відкрийте Telegram і надішліть команду <b>/start</b>!
               </p>
               <div className="flex items-center gap-2 pt-1">
-                <span className="text-[11px] text-slate-400">Бот ожидает запросы и реагирует без задержек.</span>
+                <span className="text-[11px] text-slate-400">Бот очікує на запити і миттєво відповідає українською мовою.</span>
               </div>
             </div>
           </div>
@@ -358,35 +358,35 @@ python bot.py
           <div className="p-5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3.5">
             <div className="flex items-center gap-2 text-sm font-bold text-white">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>Чек-лист проверки обновленного функционала в боте:</span>
+              <span>Чек-лист перевірки оновленого функціоналу в боті:</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
               <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                <div className="font-semibold text-blue-300">💺 1. Интерактивный выбор мест</div>
+                <div className="font-semibold text-blue-300">💺 1. Інтерактивний вибір місць</div>
                 <p className="text-slate-400 text-[11px]">
-                  Проверьте плашки рядов: 1-й ряд (2 места рядом с водителем), 2-й ряд (3 места), 3-й ряд (3 места). Выберите место и убедитесь, что формируется ссылка на менеджера.
+                  Перевірте плашки рядів: 1-й ряд (2 місця поруч з водієм), 2-й ряд (3 місця), 3-й ряд (3 місця). Оберіть місце і переконайтеся, що формується пряме посилання на менеджера.
                 </p>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                <div className="font-semibold text-emerald-300">📍 2. Точки сбора и трансфер</div>
+                <div className="font-semibold text-emerald-300">📍 2. Точки збору та трансфер</div>
                 <p className="text-slate-400 text-[11px]">
-                  Кнопка «📍 Точки сбора»: адресный сбор (Саарланд, Трир, Люксембург), условия для других земель (4+ чел, не 1 день), время подачи вечером накануне и 1-дневная группа.
+                  Кнопка «📍 Точки збору»: адресний збір (Саарланд, Трір, Люксембург), умови для інших земель (4+ осіб, не 1 день), час подачі ввечері напередодні та 1-денна група.
                 </p>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                <div className="font-semibold text-amber-300">💳 3. Условия оплаты и багаж</div>
+                <div className="font-semibold text-amber-300">💳 3. Умови оплати та багаж</div>
                 <p className="text-slate-400 text-[11px]">
-                  Проверьте условия: <b>0% предоплаты на однодневные туры</b> (предоплата только для отелей), мед. страховка для лиц без ВНЖ в Европе, багаж 10 кг + ручная кладь.
+                  Перевірте умови: <b>0% передоплати на одноденні тури</b> (передоплата лише для готелів), мед. страхування для осіб без посвідки на проживання в Європі, багаж 10 кг + ручна поклажа.
                 </p>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                <div className="font-semibold text-purple-300">🎮 4. Игры, викторины и автопарк</div>
+                <div className="font-semibold text-purple-300">🎮 4. Ігри, вікторини та автопарк</div>
                 <p className="text-slate-400 text-[11px]">
-                  Кнопка «🚐 Автопарк»: Opel Vivaro комфортное авто со всеми удобствами (без приставки VIP). Викторины с актуальными фото европейских городов.
+                  Кнопка «🚐 Автопарк»: Opel Vivaro комфортне авто з усіма зручностями. Вікторини з актуальними фотографіями європейських міст.
                 </p>
               </div>
             </div>
@@ -400,52 +400,53 @@ python bot.py
               <Server className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">Инструкция по развертыванию на VPS / сервере</h3>
+              <h3 className="text-lg font-bold text-white">Інструкція з розгортання на Render / VPS / сервері</h3>
               <p className="text-xs text-slate-400">
-                Запуск на Ubuntu / Debian с автоматическим перезапуском через Systemd или Docker Compose
+                Запуск на Render (Python 3 Background Worker), Ubuntu / Debian через Systemd або Docker Compose
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Option A: Systemd */}
+            {/* Option A: Render.com */}
             <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
               <div className="flex items-center gap-2 text-sm font-bold text-blue-300">
                 <Terminal className="w-4 h-4" />
-                Способ 1: Автозапуск через Systemd (24/7)
+                Спосіб 1: Render.com (Background Worker)
               </div>
               <p className="text-xs text-slate-400">
-                Надежный способ для VPS (Hetzner, Timeweb, Selectel, DigitalOcean).
+                Швидкий та зручний запуск із GitHub з автоматичним рестартом 24/7.
               </p>
 
               <div className="bg-black/60 p-3 rounded-lg font-mono text-xs text-emerald-300 space-y-2 overflow-x-auto">
-                <p># 1. Подготовка и установка зависимостей</p>
-                <p className="text-slate-300">mkdir -p /opt/svoi_bot && cd /opt/svoi_bot</p>
-                <p className="text-slate-300">python3 -m venv venv</p>
-                <p className="text-slate-300">source venv/bin/activate</p>
-                <p className="text-slate-300">pip install -r requirements.txt</p>
-                <p className="mt-2 text-slate-400"># 2. Создание службы /etc/systemd/system/svoi_bot.service</p>
-                <p className="text-slate-300">sudo systemctl enable --now svoi_bot</p>
-                <p className="text-slate-300">sudo systemctl status svoi_bot</p>
+                <p># Налаштування сервісу на Render:</p>
+                <p className="text-slate-300">Type: Background Worker</p>
+                <p className="text-slate-300">Runtime: Python 3</p>
+                <p className="text-slate-300">Build Command: pip install -r requirements.txt</p>
+                <p className="text-slate-300">Start Command: python bot.py</p>
+                <p className="mt-2 text-slate-400"># Environment Variables (Змінні оточення):</p>
+                <p className="text-slate-300">BOT_TOKEN = 8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM</p>
+                <p className="text-slate-300">ADMIN_ID = 8450153980</p>
+                <p className="text-slate-300">MANAGER_USERNAME = SVOI_travel_admin</p>
               </div>
             </div>
 
-            {/* Option B: Docker */}
+            {/* Option B: Docker / VPS */}
             <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
               <div className="flex items-center gap-2 text-sm font-bold text-indigo-300">
                 <Layers className="w-4 h-4" />
-                Способ 2: Запуск в Docker Compose
+                Спосіб 2: Запуск у Docker Compose на VPS
               </div>
               <p className="text-xs text-slate-400">
-                Изолированный контейнер с готовым окружением и перезапуском при сбоях.
+                Ізольований контейнер із готовим оточенням і перезапуском при збоях.
               </p>
 
               <div className="bg-black/60 p-3 rounded-lg font-mono text-xs text-indigo-300 space-y-2 overflow-x-auto">
-                <p># 1. Сборка и фоновый запуск контейнера</p>
+                <p># 1. Збирання та фоновий запуск контейнера</p>
                 <p className="text-slate-300">docker compose up -d --build</p>
-                <p className="mt-2 text-slate-400"># 2. Просмотр логов в реальном времени</p>
+                <p className="mt-2 text-slate-400"># 2. Перегляд логів у реальному часі</p>
                 <p className="text-slate-300">docker compose logs -f</p>
-                <p className="mt-2 text-slate-400"># 3. Остановка</p>
+                <p className="mt-2 text-slate-400"># 3. Зупинка</p>
                 <p className="text-slate-300">docker compose down</p>
               </div>
             </div>
@@ -455,16 +456,16 @@ python bot.py
           <div className="p-4 bg-amber-950/20 border border-amber-500/30 rounded-xl text-xs text-amber-200 flex items-start gap-3">
             <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-white">Важные рекомендации для продакшена:</p>
+              <p className="font-semibold text-white">Важливі рекомендації для продакшену:</p>
               <ul className="list-disc list-inside mt-1 space-y-1 text-slate-300">
                 <li>
-                  Не забудьте указать ваш числовой <code>ADMIN_ID</code> в файле <code>.env</code>, чтобы получать все брони и отзывы клиентов.
+                  Не забудьте вказати ваш числовий <code>ADMIN_ID</code> (8450153980) у змінних оточення чи файлі <code>.env</code>, щоб отримувати всі бронювання та відгуки клієнтів.
                 </li>
                 <li>
-                  В коде уже реализован <code>await callback.answer()</code>, что защищает бота от бесконечного вращения значка загрузки в клиенте Telegram.
+                  У коді реалізовано <code>await callback.answer()</code>, що захищає бота від нескінченного обертання значка завантаження в клієнті Telegram.
                 </li>
                 <li>
-                  При переходе между меню используется <code>edit_text</code>, благодаря чему диалог не засоряется повторными сообщениями.
+                  При перемиканні між меню використовується <code>edit_text</code>, завдяки чому діалог не засмічується повторними повідомленнями.
                 </li>
               </ul>
             </div>

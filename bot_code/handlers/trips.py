@@ -25,15 +25,15 @@ logger = logging.getLogger(__name__)
 router = Router(name="trips_router")
 
 TRIPS_HEADER = (
-    "🗺 <b>Актуальные направления и расписание туров SVOI</b> 🇪🇺✨\n\n"
-    "Все поездки осуществляются из <b>Саарбрюккена</b> (с подсадкой по маршруту) "
-    "на комфортабельном VIP-минивэне Opel Vivaro.\n\n"
-    "👇 <i>Нажмите на направление, чтобы открыть подробную программу тура и забронировать:</i>"
+    "🗺 <b>Актуальні напрямки та розклад турів SVOI</b> 🇪🇺✨\n\n"
+    "Усі поїздки здійснюються із <b>Саарбрюккена</b> (з підсадкою за маршрутом) "
+    "на комфортабельному VIP-мінівені Opel Vivaro.\n\n"
+    "👇 <i>Натисніть на напрямок, щоб відкрити детальну програму туру та забронювати:</i>"
 )
 
 @router.callback_query(F.data == "cb_trips")
 async def process_trips_list(callback: CallbackQuery):
-    """Выводит список направлений с ценами в столбик"""
+    """Виводить список напрямків з цінами у стовпчик"""
     await callback.answer()
     try:
         if callback.message:
@@ -47,13 +47,13 @@ async def process_trips_list(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("cb_trip_"))
 async def process_trip_detail(callback: CallbackQuery):
-    """Выводит подробную карточку выбранного тура"""
+    """Виводить детальну картку обраного туру"""
     await callback.answer()
     trip_id = callback.data.replace("cb_trip_", "")
     
     trip = TRIPS_CATALOG.get(trip_id)
     if not trip:
-        await callback.answer("Тур не найден", show_alert=True)
+        await callback.answer("Тур не знайдено", show_alert=True)
         return
     
     try:
@@ -68,21 +68,21 @@ async def process_trip_detail(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("cb_book_target_"))
 async def process_book_target_trip(callback: CallbackQuery, state: FSMContext):
-    """Переход к выбору места и оформлению конкретного тура"""
+    """Перехід до вибору місця та оформлення конкретного туру"""
     await callback.answer()
     trip_id = callback.data.replace("cb_book_target_", "")
     trip = TRIPS_CATALOG.get(trip_id)
     
-    trip_title = trip["title"] if trip else "Выбранный тур"
+    trip_title = trip["title"] if trip else "Обраний тур"
     await state.update_data(trip_id=trip_id, trip_title=trip_title)
     await state.set_state(BookingState.choosing_seat)
     
     text = (
-        f"🎯 <b>Бронирование тура: {trip_title}</b>\n\n"
-        "Вы можете выбрать конкретное место в 8-местном минивэне Opel Vivaro:\n\n"
-        "💺 <b>Фиксированное место на выбор:</b> +5€\n"
-        "🎲 <b>Без выбора места (свободная посадка):</b> 0€\n\n"
-        "👇 <i>Выберите номер места в салоне:</i>"
+        f"🎯 <b>Бронювання туру: {trip_title}</b>\n\n"
+        "Ви можете обрати конкретне місце у 8-місному мінівені Opel Vivaro:\n\n"
+        "💺 <b>Фіксоване місце на вибір:</b> +5€\n"
+        "🎲 <b>Без вибору місця (вільна посадка):</b> 0€\n\n"
+        "👇 <i>Оберіть номер місця в салоні:</i>"
     )
     
     try:

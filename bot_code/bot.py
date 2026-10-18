@@ -19,10 +19,10 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 try:
     from bot_code.config import settings
-    from bot_code.handlers import menu, trips, feedback, booking, faq, games
+    from bot_code.handlers import menu, trips, feedback, booking, faq, games, channel
 except ModuleNotFoundError:
     from config import settings
-    from handlers import menu, trips, feedback, booking, faq, games
+    from handlers import menu, trips, feedback, booking, faq, games, channel
 
 # Настройка логирования
 logging.basicConfig(
@@ -77,6 +77,7 @@ async def main():
     dp.include_router(booking.router)
     dp.include_router(faq.router)
     dp.include_router(games.router)
+    dp.include_router(channel.router)
 
     try:
         # Удаляем старые вебхуки и накопившиеся апдейты
@@ -84,22 +85,22 @@ async def main():
         
         # Получаем информацию о боте для проверки авторизации
         bot_info = await bot.get_me()
-        logger.info("✅ Успешное подключение к Telegram API: %s (@%s)", bot_info.first_name, bot_info.username)
-        logger.info("📡 Бот ожидает входящие сообщения и нажатия кнопок...")
+        logger.info("✅ Успішне підключення до Telegram API: %s (@%s)", bot_info.first_name, bot_info.username)
+        logger.info("📡 Бот очікує на вхідні повідомлення та натискання кнопок...")
         
-        # Запускаем HTTP сервер здоровья для совместимости с Render Web Service
+        # Запускаємо HTTP сервер здоров'я для сумісності з Render Web Service
         await start_health_server()
 
         # Запуск long polling
         await dp.start_polling(bot)
     except Exception as e:
-        logger.critical("❌ Критическая ошибка при работе бота: %s", e, exc_info=True)
+        logger.critical("❌ Критична помилка під час роботи бота: %s", e, exc_info=True)
     finally:
-        logger.info("🛑 Остановка бота и закрытие сессии...")
+        logger.info("🛑 Зупинка бота та закриття сесії...")
         await bot.session.close()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Бот остановлен пользователем.")
+        logger.info("Бот зупинено користувачем.")

@@ -12,82 +12,82 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
     { 
       id: 'seat1', 
       number: 1,
-      name: 'Место 1 (рядом с водителем, центр)', 
-      shortName: 'Место 1 (центр)',
+      name: 'Місце 1 (поруч з водієм, центр)', 
+      shortName: 'Місце 1 (центр)',
       row: '1-й ряд', 
       price: 5,
-      position: 'Рядом с водителем',
-      note: 'Первый ряд, отличный обзор через лобовое стекло, удобно выходить.' 
+      position: 'Поруч з водієм',
+      note: 'Перший ряд, чудовий огляд крізь лобове скло, зручно виходити.' 
     },
     { 
       id: 'seat2', 
       number: 2,
-      name: 'Место 2 (рядом с водителем, у окна)', 
-      shortName: 'Место 2 (окно)',
+      name: 'Місце 2 (поруч з водієм, біля вікна)', 
+      shortName: 'Місце 2 (вікно)',
       row: '1-й ряд', 
       price: 5,
-      position: 'Рядом с водителем (окно)',
-      note: 'Панорамный вид через лобовое стекло и боковое окно справа. Любимое место фотографов!' 
+      position: 'Поруч з водієм (вікно)',
+      note: 'Панорамний вид крізь лобове скло та бічне вікно праворуч. Улюблене місце фотографів!' 
     },
     { 
       id: 'seat3', 
       number: 3,
-      name: 'Место 3 (2-й ряд, у окна слева)', 
-      shortName: 'Место 3 (окно слева)',
+      name: 'Місце 3 (2-й ряд, біля вікна ліворуч)', 
+      shortName: 'Місце 3 (вікно ліворуч)',
       row: '2-й ряд', 
       price: 5,
-      position: '2-й ряд слева',
-      note: 'Отличный обзор из бокового окна, много пространства для ног, откидная спинка.' 
+      position: '2-й ряд ліворуч',
+      note: 'Чудовий огляд з бічного вікна, багато простору для ніг, відкидна спинка.' 
     },
     { 
       id: 'seat4', 
       number: 4,
-      name: 'Место 4 (2-й ряд, по центру)', 
-      shortName: 'Место 4 (центр)',
+      name: 'Місце 4 (2-й ряд, по центру)', 
+      shortName: 'Місце 4 (центр)',
       row: '2-й ряд', 
       price: 5,
       position: '2-й ряд центр',
-      note: 'Удобное центральное кресло, мягкая посадка, отличный климат в середине салона.' 
+      note: 'Зручне центральне крісло, м\'яка посадка, оптимальний клімат посередині салону.' 
     },
     { 
       id: 'seat5', 
       number: 5,
-      name: 'Место 5 (2-й ряд, у окна справа)', 
-      shortName: 'Место 5 (окно справа)',
+      name: 'Місце 5 (2-й ряд, біля вікна праворуч)', 
+      shortName: 'Місце 5 (вікно праворуч)',
       row: '2-й ряд', 
       price: 5,
-      position: '2-й ряд справа',
-      note: 'У окна справа рядом со сдвижной дверью: быстрый и комфортный выход на остановках.' 
+      position: '2-й ряд праворуч',
+      note: 'Біля вікна праворуч біля зсувних дверей: швидкий і комфортний вихід на зупинках.' 
     },
     { 
       id: 'seat6', 
       number: 6,
-      name: 'Место 6 (3-й ряд, у окна слева)', 
-      shortName: 'Место 6 (окно слева)',
+      name: 'Місце 6 (3-й ряд, біля вікна ліворуч)', 
+      shortName: 'Місце 6 (вікно ліворуч)',
       row: '3-й ряд', 
       price: 5,
-      position: '3-й ряд слева',
-      note: 'Уединенный задний ряд у окна: очень комфортно вздремнуть в дальних поездках.' 
+      position: '3-й ряд ліворуч',
+      note: 'Затишний задній ряд біля вікна: дуже комфортно відпочити або подрімати в далеких поїздках.' 
     },
     { 
       id: 'seat7', 
       number: 7,
-      name: 'Место 7 (3-й ряд, по центру)', 
-      shortName: 'Место 7 (центр)',
+      name: 'Місце 7 (3-й ряд, по центру)', 
+      shortName: 'Місце 7 (центр)',
       row: '3-й ряд', 
       price: 5,
       position: '3-й ряд центр',
-      note: 'Просторный третий ряд, глубокие сиденья, уютно для спокойного путешествия.' 
+      note: 'Просторий третій ряд, глибокі сидіння, затишно для спокійної подорожі.' 
     },
     { 
       id: 'seat8', 
       number: 8,
-      name: 'Место 8 (3-й ряд, у окна справа)', 
-      shortName: 'Место 8 (окно справа)',
+      name: 'Місце 8 (3-й ряд, біля вікна праворуч)', 
+      shortName: 'Місце 8 (вікно праворуч)',
       row: '3-й ряд', 
       price: 5,
-      position: '3-й ряд справа',
-      note: 'Место у окна в 3-м ряду с мягким подлокотником и регулируемым наклоном спинки.' 
+      position: '3-й ряд праворуч',
+      note: 'Місце біля вікна в 3-му ряду з м\'яким підлокітником та регульованим нахилом спинки.' 
     },
   ];
 
@@ -98,7 +98,7 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
 
   const handleFreeSeatClick = () => {
     setSelectedSeat('seat_none');
-    onSelectSeat?.('Без выбора места (свободная посадка)', 0);
+    onSelectSeat?.('Без вибору місця (вільна посадка)', 0);
   };
 
   const getSelectedSeatObj = () => {
@@ -106,12 +106,12 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
       return {
         id: 'seat_none',
         number: 0,
-        name: 'Без выбора места (свободная посадка)',
-        shortName: 'Свободная посадка',
-        row: 'Любой ряд',
+        name: 'Без вибору місця (вільна посадка)',
+        shortName: 'Вільна посадка',
+        row: 'Будь-який ряд',
         price: 0,
-        position: 'Свободный выбор при посадке',
-        note: 'Вы сможете занять любое свободное место в минивэне при посадке без доплаты (0€).'
+        position: 'Вільний вибір при посадці',
+        note: 'Ви зможете зайняти будь-яке вільне місце в мінівені при посадці без доплати (0€).'
       };
     }
     return seats.find((s) => s.id === selectedSeat);
@@ -124,17 +124,17 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-              Минивэн Opel Vivaro • 8 пассажирских мест
+              Мінівен Opel Vivaro • 8 пасажирських місць
             </span>
-            <h3 className="text-xl font-bold text-white tracking-wide">Схема рассадки и выбор мест</h3>
+            <h3 className="text-xl font-bold text-white tracking-wide">Схема розсадки та вибір місць</h3>
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Рядом с водителем — 2 места • 2-й ряд — 3 места • 3-й ряд — 3 места. Интерактивные плашки по порядку.
+            Поруч із водієм — 2 місця • 2-й ряд — 3 місця • 3-й ряд — 3 місця. Інтерактивні плашки по порядку.
           </p>
         </div>
 
         <div className="text-xs bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
-          Выбор конкретного места: <b className="text-emerald-400">+5€</b> (без выбора: 0€)
+          Вибір конкретного місця: <b className="text-emerald-400">+5€</b> (без вибору: 0€)
         </div>
       </div>
 
@@ -146,9 +146,9 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
             {/* Header / Orientation */}
             <div className="flex items-center justify-between text-xs text-slate-400 pb-3 border-b border-slate-800/80 mb-4">
               <span className="flex items-center gap-1.5 font-medium text-blue-400">
-                <span>⬆️ Лобовое стекло / Направление движения</span>
+                <span>⬆️ Лобове скло / Напрямок руху</span>
               </span>
-              <span className="text-[11px] text-slate-500 font-mono">1 водитель + 8 мест</span>
+              <span className="text-[11px] text-slate-500 font-mono">1 водій + 8 місць</span>
             </div>
 
             {/* Interior Seat Layout Blueprint */}
@@ -156,13 +156,13 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
               {/* Row 1: Driver + 2 Passenger Seats */}
               <div>
                 <div className="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">
-                  1-й ряд (Водитель + 2 пассажирских места)
+                  1-й ряд (Водій + 2 пасажирських місця)
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {/* Driver seat */}
                   <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5 text-center text-xs opacity-60 flex flex-col items-center justify-center">
-                    <div className="text-slate-500 text-[10px]">Место шофёра</div>
-                    <div className="font-semibold text-slate-300 mt-0.5 text-xs">👨‍✈️ Водитель</div>
+                    <div className="text-slate-500 text-[10px]">Місце водія</div>
+                    <div className="font-semibold text-slate-300 mt-0.5 text-xs">👨‍✈️ Водій</div>
                     <span className="text-[9px] text-slate-500 mt-0.5">SVOI Tour</span>
                   </div>
 
@@ -179,8 +179,8 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                       <span className="text-[10px] text-emerald-400 font-bold">+5€</span>
                       <span className="text-[9px] text-slate-400">1-й ряд</span>
                     </div>
-                    <div className="font-bold my-1 text-xs text-white">Место 1</div>
-                    <div className="text-[9px] text-slate-300 truncate w-full text-center">Рядом с водителем</div>
+                    <div className="font-bold my-1 text-xs text-white">Місце 1</div>
+                    <div className="text-[9px] text-slate-300 truncate w-full text-center">Поруч з водієм</div>
                   </button>
 
                   {/* Seat 2: Window Next to Driver */}
@@ -196,8 +196,8 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                       <span className="text-[10px] text-emerald-400 font-bold">+5€</span>
                       <span className="text-[9px] text-slate-400">1-й ряд</span>
                     </div>
-                    <div className="font-bold my-1 text-xs text-white">Место 2</div>
-                    <div className="text-[9px] text-slate-300 truncate w-full text-center">У окна справа</div>
+                    <div className="font-bold my-1 text-xs text-white">Місце 2</div>
+                    <div className="text-[9px] text-slate-300 truncate w-full text-center">Біля вікна праворуч</div>
                   </button>
                 </div>
               </div>
@@ -205,7 +205,7 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
               {/* Row 2: 3 Passenger Seats */}
               <div>
                 <div className="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">
-                  2-й ряд (3 места)
+                  2-й ряд (3 місця)
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {[seats[2], seats[3], seats[4]].map((seat) => (
@@ -222,9 +222,9 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                         <span className="text-[10px] text-emerald-400 font-bold">+5€</span>
                         <span className="text-[9px] text-slate-400">{seat.row}</span>
                       </div>
-                      <div className="font-bold my-1 text-xs text-white">Место {seat.number}</div>
+                      <div className="font-bold my-1 text-xs text-white">Місце {seat.number}</div>
                       <div className="text-[9px] text-slate-300 truncate w-full text-center">
-                        {seat.number === 3 ? 'Окно слева' : seat.number === 4 ? 'Центр' : 'Окно справа'}
+                        {seat.number === 3 ? 'Вікно ліворуч' : seat.number === 4 ? 'Центр' : 'Вікно праворуч'}
                       </div>
                     </button>
                   ))}
@@ -234,7 +234,7 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
               {/* Row 3: 3 Passenger Seats */}
               <div>
                 <div className="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">
-                  3-й ряд (3 места)
+                  3-й ряд (3 місця)
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {[seats[5], seats[6], seats[7]].map((seat) => (
@@ -251,9 +251,9 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                         <span className="text-[10px] text-emerald-400 font-bold">+5€</span>
                         <span className="text-[9px] text-slate-400">{seat.row}</span>
                       </div>
-                      <div className="font-bold my-1 text-xs text-white">Место {seat.number}</div>
+                      <div className="font-bold my-1 text-xs text-white">Місце {seat.number}</div>
                       <div className="text-[9px] text-slate-300 truncate w-full text-center">
-                        {seat.number === 6 ? 'Окно слева' : seat.number === 7 ? 'Центр' : 'Окно справа'}
+                        {seat.number === 6 ? 'Вікно ліворуч' : seat.number === 7 ? 'Центр' : 'Вікно праворуч'}
                       </div>
                     </button>
                   ))}
@@ -264,7 +264,7 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
             {/* Luggage Area */}
             <div className="mt-4 pt-3 border-t border-slate-800/80 text-[11px] text-slate-400 text-center flex items-center justify-center gap-2 bg-slate-900/40 py-2.5 rounded-xl">
               <Luggage className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Багаж: <b>10 кг при дальних поездках</b> + ручная кладь в салон</span>
+              <span>Багаж: <b>10 кг при далеких поїздках</b> + ручна поклажа в салон</span>
             </div>
           </div>
         </div>
@@ -274,9 +274,9 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
           {/* Seat Selected Summary Card */}
           <div className="p-4 sm:p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-3 shadow-xl">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-slate-400 font-medium">Статус бронирования места:</span>
+              <span className="text-xs text-slate-400 font-medium">Статус бронювання місця:</span>
               <span className="text-xs font-bold text-emerald-400 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                {selectedSeat === 'seat_none' ? '0€ (свободная посадка)' : selectedSeat ? '+5€ к стоимости тура' : 'Место не выбрано'}
+                {selectedSeat === 'seat_none' ? '0€ (вільна посадка)' : selectedSeat ? '+5€ до вартості туру' : 'Місце не обрано'}
               </span>
             </div>
 
@@ -293,25 +293,25 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                 </p>
                 <div className="pt-2 flex flex-col sm:flex-row gap-2">
                   <a
-                    href={`https://t.me/SVOI_travel_admin?text=${encodeURIComponent(`Здравствуйте! Хочу забронировать ${getSelectedSeatObj()?.name} (${selectedSeat === 'seat_none' ? '0€' : '+5€'}).`)}`}
+                    href={`https://t.me/SVOI_travel_admin?text=${encodeURIComponent(`Вітаю! Хочу забронювати ${getSelectedSeatObj()?.name} (${selectedSeat === 'seat_none' ? '0€' : '+5€'}).`)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="flex-1 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-600/30"
                   >
-                    <span>Забронировать у менеджера в Telegram</span>
+                    <span>Забронювати у менеджера в Telegram</span>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                   <button
                     onClick={handleFreeSeatClick}
                     className="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs border border-slate-700 transition-colors"
                   >
-                    Сбросить выбор (0€)
+                    Скинути вибір (0€)
                   </button>
                 </div>
               </div>
             ) : (
               <div className="text-xs text-slate-400 py-4 text-center italic bg-slate-900/40 rounded-xl border border-dashed border-slate-800">
-                Нажмите на любую плашку ниже или на схему сидений слева, чтобы выбрать место
+                Натисніть на будь-яку плашку нижче або на схему сидінь ліворуч, щоб обрати місце
               </div>
             )}
           </div>
@@ -323,9 +323,9 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                 <Armchair className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-xs font-semibold text-white">8 мягких кресел</h4>
+                <h4 className="text-xs font-semibold text-white">8 зручних крісел</h4>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  Регулировка наклона спинки для сна и отдыха в пути.
+                  Регулювання нахилу спинки для відпочинку та сну в дорозі.
                 </p>
               </div>
             </div>
@@ -335,9 +335,9 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                 <Zap className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-xs font-semibold text-white">USB-порты зарядки</h4>
+                <h4 className="text-xs font-semibold text-white">USB-порти зарядки</h4>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  Быстрая зарядка смартфонов в дороге для ваших фото.
+                  Швидка зарядка смартфонів у дорозі для ваших фотографій.
                 </p>
               </div>
             </div>
@@ -347,9 +347,9 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                 <Snowflake className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-xs font-semibold text-white">Кондиционер & тепло</h4>
+                <h4 className="text-xs font-semibold text-white">Клімат та тепло</h4>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  Оптимальный климат салона в любое время года.
+                  Оптимальний мікроклімат салону в будь-яку пору року.
                 </p>
               </div>
             </div>
@@ -359,9 +359,9 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                 <ShieldCheck className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-xs font-semibold text-white">Без предоплаты</h4>
+                <h4 className="text-xs font-semibold text-white">Без передоплати</h4>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  На однодневные туры оплата только при посадке!
+                  На одноденні тури повна оплата тільки при посадці!
                 </p>
               </div>
             </div>
@@ -369,16 +369,16 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
         </div>
       </div>
 
-      {/* Интерактивные плашки по порядку (1 - 8 + Свободная посадка) */}
+      {/* Інтерактивні плашки по порядку (1 - 8 + Вільна посадка) */}
       <div className="pt-2">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
             <h4 className="text-sm font-bold text-white tracking-wide">
-              Интерактивные плашки мест по порядку (1 — 8):
+              Інтерактивні плашки місць по порядку (1 — 8):
             </h4>
           </div>
-          <span className="text-xs text-slate-400">Нажмите для быстрого выбора</span>
+          <span className="text-xs text-slate-400">Натисніть для швидкого вибору</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
@@ -407,7 +407,7 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                   </div>
 
                   <div className="text-xs font-bold text-white group-hover:text-blue-300 transition-colors">
-                    Место {seat.number}
+                    Місце {seat.number}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
                     {seat.position}
@@ -418,11 +418,11 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                   <span className="text-slate-500 truncate max-w-[130px]">{seat.note}</span>
                   {isSelected ? (
                     <span className="text-blue-400 font-bold flex items-center gap-1 shrink-0">
-                      <Check className="w-3 h-3" /> Выбрано
+                      <Check className="w-3 h-3" /> Обрано
                     </span>
                   ) : (
                     <span className="text-slate-400 group-hover:text-blue-400 transition-colors shrink-0">
-                      Выбрать →
+                      Обрати →
                     </span>
                   )}
                 </div>
@@ -444,7 +444,7 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                   selectedSeat === 'seat_none' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-300'
                 }`}>
-                  🎲 Свободная посадка
+                  🎲 Вільна посадка
                 </span>
                 <span className="text-[11px] font-bold text-emerald-400">
                   0€
@@ -452,22 +452,22 @@ export const MinivanVisualizer: React.FC<MinivanVisualizerProps> = ({ onSelectSe
               </div>
 
               <div className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">
-                Без выбора места
+                Без вибору місця
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5">
-                Любое свободное при посадке
+                Будь-яке вільне при посадці
               </div>
             </div>
 
             <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px]">
-              <span className="text-slate-500">Бесплатный вариант</span>
+              <span className="text-slate-500">Безкоштовний варіант</span>
               {selectedSeat === 'seat_none' ? (
                 <span className="text-emerald-400 font-bold flex items-center gap-1 shrink-0">
-                  <Check className="w-3 h-3" /> Выбрано
+                  <Check className="w-3 h-3" /> Обрано
                 </span>
               ) : (
                 <span className="text-slate-400 group-hover:text-emerald-400 transition-colors shrink-0">
-                  Выбрать →
+                  Обрати →
                 </span>
               )}
             </div>

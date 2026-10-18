@@ -1,10 +1,10 @@
 import React from 'react';
 import { 
   Bot, Code2, Users, Bus, Key, Send, ExternalLink, 
-  Sparkles, HelpCircle, Gamepad2 
+  Sparkles, HelpCircle, Gamepad2, Gift, Compass 
 } from 'lucide-react';
 
-export type AppTab = 'simulator' | 'games' | 'faq' | 'code' | 'leads' | 'minivan' | 'api';
+export type AppTab = 'simulator' | 'miniapp' | 'channel' | 'games' | 'faq' | 'code' | 'leads' | 'minivan' | 'api';
 
 interface HeaderProps {
   activeTab: AppTab;
@@ -19,7 +19,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, leadsCou
         <div className="flex items-center justify-between h-16">
           {/* Brand Logo & Name */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-amber-500 flex items-center justify-center text-white font-black text-sm tracking-tighter shadow-lg shadow-blue-500/20">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-600 to-amber-500 flex items-center justify-center text-white font-black text-sm tracking-tighter shadow-lg shadow-cyan-500/20">
               SVOI
             </div>
             <div>
@@ -27,18 +27,18 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, leadsCou
                 <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">
                   SVOI Travel
                 </h1>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                   aiogram 3.x
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 hidden sm:block">
-                Telegram Bot & European Tours
+                Telegram Bot, Mini App & Розіграші
               </p>
             </div>
           </div>
 
           {/* Center Navigation Tabs */}
-          <nav className="hidden lg:flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs">
+          <nav className="hidden xl:flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs">
             <button
               onClick={() => onTabChange('simulator')}
               className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
@@ -52,39 +52,51 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, leadsCou
             </button>
 
             <button
-              onClick={() => onTabChange('games')}
+              onClick={() => onTabChange('miniapp')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'miniapp'
+                  ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md shadow-cyan-600/30 border border-cyan-400/50'
+                  : 'text-cyan-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
+              <span>🚀 Mini App (Зоряне небо)</span>
+            </button>
+
+            <button
+              onClick={() => onTabChange('channel')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'channel'
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-md shadow-purple-600/30 border border-purple-400/50'
+                  : 'text-purple-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Gift className="w-3.5 h-3.5 text-purple-300" />
+              <span>🎁 Канал & Розіграші (/channel)</span>
+            </button>
+
+            <button
+              onClick={() => onTabChange('minivan')}
               className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === 'games'
+                activeTab === 'minivan'
                   ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Gamepad2 className="w-3.5 h-3.5 text-amber-300" />
-              Игры & Квизы
+              <Bus className="w-3.5 h-3.5" />
+              Салон Vivaro
             </button>
 
             <button
-              onClick={() => onTabChange('faq')}
+              onClick={() => onTabChange('games')}
               className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === 'faq'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                activeTab === 'games'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <HelpCircle className="w-3.5 h-3.5" />
-              Частые вопросы
-            </button>
-
-            <button
-              onClick={() => onTabChange('code')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === 'code'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Code2 className="w-3.5 h-3.5" />
-              Код Python
+              <Gamepad2 className="w-3.5 h-3.5 text-purple-300" />
+              Ігри & Квізи
             </button>
 
             <button
@@ -105,15 +117,15 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, leadsCou
             </button>
 
             <button
-              onClick={() => onTabChange('minivan')}
+              onClick={() => onTabChange('code')}
               className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === 'minivan'
+                activeTab === 'code'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Bus className="w-3.5 h-3.5" />
-              Схема авто (5€)
+              <Code2 className="w-3.5 h-3.5" />
+              Код Python
             </button>
 
             <button
@@ -135,9 +147,9 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, leadsCou
               href="https://t.me/Svoi_TravelEU_bot"
               target="_blank"
               rel="noreferrer"
-              className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-semibold transition-all flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm"
             >
-              <Send className="w-3 h-3 text-blue-400" />
+              <Send className="w-3 h-3 text-cyan-400" />
               <span className="hidden sm:inline">@Svoi_TravelEU_bot</span>
               <ExternalLink className="w-3 h-3 opacity-60" />
             </a>
@@ -145,30 +157,36 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, leadsCou
         </div>
 
         {/* Mobile Sub-Navigation Bar */}
-        <div className="flex lg:hidden overflow-x-auto py-2 border-t border-slate-800 gap-1 text-xs">
+        <div className="flex xl:hidden overflow-x-auto py-2 border-t border-slate-800 gap-1.5 text-xs scrollbar-none">
           <button
             onClick={() => onTabChange('simulator')}
-            className={`px-2.5 py-1 rounded-lg shrink-0 ${activeTab === 'simulator' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
+            className={`px-3 py-1 rounded-lg shrink-0 ${activeTab === 'simulator' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400'}`}
           >
             Симулятор
           </button>
           <button
+            onClick={() => onTabChange('miniapp')}
+            className={`px-3 py-1 rounded-lg shrink-0 font-bold ${activeTab === 'miniapp' ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-sm' : 'text-cyan-300'}`}
+          >
+            🚀 Mini App
+          </button>
+          <button
+            onClick={() => onTabChange('channel')}
+            className={`px-3 py-1 rounded-lg shrink-0 font-bold ${activeTab === 'channel' ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-sm' : 'text-purple-300'}`}
+          >
+            🎁 Канал & Розіграші
+          </button>
+          <button
+            onClick={() => onTabChange('minivan')}
+            className={`px-2.5 py-1 rounded-lg shrink-0 ${activeTab === 'minivan' ? 'bg-amber-600 text-white' : 'text-slate-400'}`}
+          >
+            🚐 Салон Vivaro
+          </button>
+          <button
             onClick={() => onTabChange('games')}
-            className={`px-2.5 py-1 rounded-lg shrink-0 ${activeTab === 'games' ? 'bg-amber-600 text-white' : 'text-slate-400'}`}
+            className={`px-2.5 py-1 rounded-lg shrink-0 ${activeTab === 'games' ? 'bg-purple-600 text-white' : 'text-slate-400'}`}
           >
-            🎮 Игры & Квизы
-          </button>
-          <button
-            onClick={() => onTabChange('faq')}
-            className={`px-2.5 py-1 rounded-lg shrink-0 ${activeTab === 'faq' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
-          >
-            ❓ FAQ
-          </button>
-          <button
-            onClick={() => onTabChange('code')}
-            className={`px-2.5 py-1 rounded-lg shrink-0 ${activeTab === 'code' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
-          >
-            Код Python
+            🎮 Ігри
           </button>
           <button
             onClick={() => onTabChange('leads')}
@@ -177,10 +195,16 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, leadsCou
             Заявки ({leadsCount})
           </button>
           <button
-            onClick={() => onTabChange('minivan')}
-            className={`px-2.5 py-1 rounded-lg shrink-0 ${activeTab === 'minivan' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
+            onClick={() => onTabChange('code')}
+            className={`px-2.5 py-1 rounded-lg shrink-0 ${activeTab === 'code' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
           >
-            Места (5€)
+            Код Python
+          </button>
+          <button
+            onClick={() => onTabChange('faq')}
+            className={`px-2.5 py-1 rounded-lg shrink-0 ${activeTab === 'faq' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
+          >
+            FAQ
           </button>
           <button
             onClick={() => onTabChange('api')}

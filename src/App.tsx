@@ -7,6 +7,8 @@ import { MinivanVisualizer } from './components/MinivanVisualizer';
 import { TelegramApiTester } from './components/TelegramApiTester';
 import { GamesHub } from './components/GamesHub';
 import { FaqSection } from './components/FaqSection';
+import { SvoiMiniApp } from './components/SvoiMiniApp';
+import { ChannelAdminDesk } from './components/ChannelAdminDesk';
 import { TRIPS_LIST, MEETING_STOPS, PICKUP_LOGISTICS } from './data/tripsData';
 import { LeadItem } from './types';
 import { 
@@ -24,14 +26,14 @@ export default function App() {
       id: 'lead-1',
       type: 'booking',
       bookingCode: 'SVOI-7842',
-      tripTitle: 'Париж (Версаль + яхта + Эйфелева башня)',
+      tripTitle: 'Париж (Версаль + яхта + Ейфелева вежа)',
       duration: '1 день',
-      seatType: 'Место 2 (1-й ряд у окна рядом с водителем, +5€)',
+      seatType: 'Місце 2 (1-й ряд біля вікна поруч з водієм, +5€)',
       basePrice: 120,
       seatFee: 5,
       totalCost: 125,
-      meetingPoint: 'По адресу: Саарбрюккен',
-      userName: 'Елена К.',
+      meetingPoint: 'За адресою: Саарбрюккен',
+      userName: 'Олена К.',
       userHandle: '@elena_de_voyage',
       userId: 541829012,
       timestamp: '16.10.2026, 14:10',
@@ -41,14 +43,14 @@ export default function App() {
       id: 'lead-2',
       type: 'booking',
       bookingCode: 'SVOI-5193',
-      tripTitle: 'Лазурный берег (3 дня: Ницца, Монако, Канны)',
-      duration: '3 дня',
-      seatType: 'Место 3 (2-й ряд у окна слева, +5€)',
+      tripTitle: 'Лазурове узбережжя (3 дні: Ніцца, Монако, Канни)',
+      duration: '3 дні',
+      seatType: 'Місце 3 (2-й ряд біля вікна ліворуч, +5€)',
       basePrice: 440,
       seatFee: 5,
       totalCost: 445,
-      meetingPoint: 'По адресу: Люксембург',
-      userName: 'Михаил В.',
+      meetingPoint: 'За адресою: Люксембург',
+      userName: 'Михайло В.',
       userHandle: '@mike_traveler',
       userId: 781923401,
       timestamp: '16.10.2026, 12:45',
@@ -60,7 +62,7 @@ export default function App() {
       userName: 'Ольга С.',
       userHandle: '@olga_st',
       userId: 629104819,
-      text: 'Были в туре в Брюгге на прошлых выходных. Впечатления невероятные! Комфортный салон Opel Vivaro и забота организаторов сделали дорогу абсолютно незаметной. Хотелось бы тур в Норвегию!',
+      text: 'Були в турі до Брюгге минулих вихідних. Враження неймовірні! Комфортний салон Opel Vivaro та турбота організаторів зробили дорогу абсолютно непомітною. Хотілося б тур до Норвегії!',
       timestamp: '15.10.2026, 19:20',
       status: 'confirmed'
     }
@@ -108,8 +110,8 @@ export default function App() {
                       TG
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-white">Параметры запуска бота</h3>
-                      <p className="text-[11px] text-slate-400">Туристический клуб SVOI</p>
+                      <h3 className="text-sm font-bold text-white">Параметри запуску бота</h3>
+                      <p className="text-[11px] text-slate-400">Туристичний клуб SVOI</p>
                     </div>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
@@ -158,14 +160,14 @@ export default function App() {
                   </div>
 
                   <div className="p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80">
-                    <span className="text-slate-400 block text-[10px]">Группа клуба:</span>
+                    <span className="text-slate-400 block text-[10px]">Група клубу:</span>
                     <a
                       href="https://t.me/+J50liyDUHPgzYTQy"
                       target="_blank"
                       rel="noreferrer"
                       className="font-medium text-purple-300 hover:underline flex items-center gap-1"
                     >
-                      t.me/Чат поездок
+                      t.me/Чат поїздок
                       <ExternalLink className="w-2.5 h-2.5" />
                     </a>
                   </div>
@@ -181,7 +183,7 @@ export default function App() {
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div className="flex items-center gap-2">
                     <Compass className="w-4 h-4 text-blue-400" />
-                    <h3 className="text-sm font-bold text-white">Каталог 14 туров в боте</h3>
+                    <h3 className="text-sm font-bold text-white">Каталог 14 турів у боті</h3>
                   </div>
                   <span className="text-[10px] text-slate-400">Старт: Саарбрюккен Hbf</span>
                 </div>
@@ -209,27 +211,27 @@ export default function App() {
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-amber-400" />
-                    <h3 className="text-sm font-bold text-white">Точки сбора (cb_meeting)</h3>
+                    <h3 className="text-sm font-bold text-white">Точки збору (cb_meeting)</h3>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    По адресу
+                    За адресою
                   </span>
                 </div>
 
                 {/* Primary Address Pickup Badge */}
                 <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-800/60 text-xs">
                   <div className="flex items-center gap-1.5 font-bold text-blue-300 text-xs">
-                    <span>🏡 Саарланд, Трир & Люксембург:</span>
+                    <span>🏡 Саарланд, Трір & Люксембург:</span>
                   </div>
                   <p className="text-slate-300 text-[11px] mt-1">
-                    <b>Забираем всех прямо по адресу</b> и развозим обратно также по адресу!
+                    <b>Забираємо всіх прямо за адресою</b> і розвозимо назад також за адресою!
                   </p>
                 </div>
 
                 {/* Stops List */}
                 <div className="space-y-2 text-xs">
                   <div className="text-[11px] font-semibold text-slate-400">
-                    Другие земли (при наличии от 4-х чел.):
+                    Інші землі (за наявності від 4-х осіб):
                   </div>
                   {MEETING_STOPS.slice(1).map((stop, i) => (
                     <div key={i} className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-start justify-between gap-2">
@@ -250,14 +252,14 @@ export default function App() {
                 <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1.5 text-[11px] text-slate-400">
                   <div className="flex items-start gap-1.5 text-slate-300">
                     <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                    <span><b>Время подачи:</b> высылается в личный чат за день вечером перед выездом.</span>
+                    <span><b>Час подачі:</b> надсилається в особистий чат за день увечері перед виїздом.</span>
                   </div>
                   <div className="flex items-start gap-1.5 text-slate-300">
                     <Users className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
-                    <span><b>Чат с водителем:</b> однодневная группа для коммуникации (удаляется через день).</span>
+                    <span><b>Чат з водієм:</b> одноденна група для комунікації (видаляється через день).</span>
                   </div>
                   <div className="pt-1 border-t border-slate-800/60 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Уточнить подсадку:</span>
+                    <span className="text-[10px] text-slate-500">Уточнити підсадку:</span>
                     <a
                       href="https://t.me/SVOI_travel_admin"
                       target="_blank"
@@ -271,6 +273,18 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* MINI APP TAB */}
+        {activeTab === 'miniapp' && (
+          <div className="py-2">
+            <SvoiMiniApp onNewLead={handleNewLead} />
+          </div>
+        )}
+
+        {/* CHANNEL & GIVEAWAYS TAB */}
+        {activeTab === 'channel' && (
+          <ChannelAdminDesk />
         )}
 
         {/* GAMES & QUIZZES TAB */}
@@ -320,7 +334,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950/60 py-4 mt-8 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Туристический клуб SVOI Travel • Поездки по Европе из Саарбрюккена</span>
+          <span>Туристичний клуб SVOI Travel • Поїздки Європою із Саарбрюккена</span>
           <div className="flex items-center gap-3">
             <a href="https://t.me/Svoi_TravelEU_bot" target="_blank" rel="noreferrer" className="hover:text-blue-400">
               @Svoi_TravelEU_bot

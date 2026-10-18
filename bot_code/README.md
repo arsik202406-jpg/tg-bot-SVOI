@@ -1,36 +1,27 @@
-# 🌍 Telegram-бот туристического клуба SVOI Travel (aiogram 3.x)
+# 🌍 Telegram-бот туристичного клубу SVOI Travel (aiogram 3.x)
 
-Официальный production-ready бот для европейского туристического клуба **SVOI** (@Svoi_TravelEU_bot).
+Офіційний production-ready бот для європейського туристичного клубу **SVOI** (@Svoi_TravelEU_bot).
 
-## 🚀 Возможности
-- 🧭 **Интерактивное главное меню** с удобной навигацией без спама сообщениями (`edit_message_text` + `callback.answer()`).
-- 🗺 **Каталог 14 туров по Европе** (Париж, Амстердам, Брюгге, Нойшванштайн, Лихтенштейн, Лазурный берег, Швейцария, Прага и др.) с подробными программами и ценами.
-- 💺 **Выбор мест в салоне** (VIP-кресла, место рядом с водителем, стандарт) с автоматической генерацией заявки.
-- 🚐 **Презентация автопарка:** кастомный Opel Vivaro VIP, звездное небо из алькантары, климат-контроль, USB.
-- 📍 **Точки сбора:** старт из Саарбрюккена (Saarbrücken Hbf) и точки подсадки по пути следования (Кайзерслаутерн, Мангейм, Франкфурт и др.).
-- ✍️ **FSM-сбор отзывов и пожеланий** (`FeedbackState.waiting_for_text`) с автоматической пересылкой в личные сообщения администратора (`ADMIN_ID`).
-- 📜 **Условия поездок и партнерская программа** для блогеров и групп.
-
----
-
-## 🧪 Пошаговая инструкция: Тестирование в Telegram (за 2 минуты)
-
-### ⚠️ Важно: вебхук Chatplace
-На текущем токене `@Svoi_TravelEU_bot` в данный момент подключен Webhook сервиса **Chatplace**. 
-Если вы запускаете aiogram скрипт:
-1. `bot.py` при старте автоматически вызывает `await bot.delete_webhook(drop_pending_updates=True)`, после чего бот слушает команды напрямую через Python aiogram.
-2. **Если вы не хотите прерывать работу Chatplace на основном боте**, зарегистрируйте за 1 минуту бесплатного тестового бота в `@BotFather` (например, `@svoi_test_travel_bot`), вставьте его токен в `.env` и тестируйте без малейшего риска!
+## 🚀 Можливості
+- 🧭 **Інтерактивне головне меню** зі зручною навігацією без спаму повідомленнями (`edit_message_text` + `callback.answer()`).
+- 🗺 **Каталог 14 турів Європою** (Париж, Нормандія/Етрета, Амстердам, Брюгге, Нойшванштайн, Ліхтенштейн, Лазурове узбережжя, Швейцарія, Прага тощо) з докладними програмами та цінами.
+- 💺 **Вибір місць у салоні:** 1-й ряд (2 місця поруч з водієм), 2-й ряд (3 місця), 3-й ряд (3 місця). Фіксація обраного місця (+5€), вільна посадка (0€).
+- 🚐 **Презентація автопарку:** мінівен Opel Vivaro (8 місць), регульовані крісла, клімат-контроль, USB-порти.
+- 📍 **Точки збору & Логістика:** забір і розвезення прямо за адресою (Саарланд, Трір, Люксембург), підсадка по дорозі від 4 осіб, точний час напередодні ввечері та одноденна група для зв'язку з водієм.
+- 💳 **Умови подорожей:** 0% передоплати на всі одноденні тури (оплата при посадці), передоплата тільки на багатоденні тури під готелі, медстраховка, багаж 10 кг + ручна поклажа.
+- 🎮 **Ігри та квізи в дорозі:** «Гео-Детектив», вікторина «Правда чи Неправда» з бонусною Карткою Пріоритету (+5€ до вибору місця).
+- ✍️ **FSM-збір відгуків та побажань** (`FeedbackState.waiting_for_text`) з автоматичним надсиланням у приватні повідомлення адміністратора (`ADMIN_ID`).
 
 ---
 
-### Быстрый запуск на локальном ПК (Windows / macOS / Linux):
+## 🧪 Швидкий запуск на локальному комп'ютері (Windows / macOS / Linux)
 
-1. **Распакуйте проект и перейдите в терминале в папку с ботом:**
+1. **Перейдіть у папку з ботом:**
 ```bash
-cd svoi_bot
+cd bot_code
 ```
 
-2. **Создайте и активируйте виртуальное окружение:**
+2. **Створіть та активуйте віртуальне середовище:**
 ```bash
 # macOS / Linux:
 python3 -m venv venv
@@ -41,40 +32,12 @@ python -m venv venv
 .\venv\Scripts\activate
 ```
 
-3. **Установите зависимости:**
+3. **Встановіть залежності:**
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Запустите бота:**
-```bash
-python bot.py
-```
-
-Когда появится сообщение:
-`✅ Успешное подключение к Telegram API: SVOI | Поездки по Европе (@Svoi_TravelEU_bot)` — откройте бота в Telegram и отправьте `/start`.
-
----
-
-## 🛠 Развертывание на сервере (Ubuntu / Debian VPS)
-
-### Вариант 1. Запуск через Python venv
-
-1. **Клонируйте или скопируйте файлы на сервер:**
-```bash
-mkdir -p /opt/svoi_bot && cd /opt/svoi_bot
-# Скопируйте файлы репозитория в эту папку
-```
-
-2. **Создайте виртуальное окружение и установите зависимости:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-3. **Настройте переменные в файле `.env`:**
+4. **Перевірте налаштування в `.env`:**
 ```ini
 BOT_TOKEN=8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM
 ADMIN_ID=8450153980
@@ -83,53 +46,31 @@ BOT_USERNAME=Svoi_TravelEU_bot
 CHANNEL_URL=https://t.me/+Flt_2r6vi3U4ZDg6
 GROUP_URL=https://t.me/+J50liyDUHPgzYTQy
 ```
-*(Узнать свой `ADMIN_ID` можно бесплатно в боте `@userinfobot`)*
 
-4. **Запустите бота:**
+5. **Запустіть бота:**
 ```bash
-python -m bot_code.bot
+python bot.py
 ```
+
+Після повідомлення:
+`✅ Успішне підключення: SVOI | Поїздки по Європі (@Svoi_TravelEU_bot)` — відкрийте бота в Telegram і надішліть `/start`.
 
 ---
 
-### Вариант 2. Автозапуск через Systemd (Рекомендуется для 24/7)
+## 🛠 Розгортання на сервері (Render.com / VPS)
 
-Создайте сервис `/etc/systemd/system/svoi_bot.service`:
-```ini
-[Unit]
-Description=SVOI Travel Telegram Bot
-After=network.target
+### Варіант 1: Render.com
+1. Створіть новий **Web Service** або **Background Worker**.
+2. Вкажіть Root Directory: `bot_code`.
+3. Runtime: **Python 3**.
+4. Build Command: `pip install -r requirements.txt`.
+5. Start Command: `python bot.py`.
+6. В Environment Variables додайте:
+   - `BOT_TOKEN` = `8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM`
+   - `ADMIN_ID` = `8450153980`
+   - `PORT` = `10000` (для Web Service health check)
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/svoi_bot
-ExecStart=/opt/svoi_bot/venv/bin/python -m bot_code.bot
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Активируйте и запустите:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable svoi_bot
-sudo systemctl start svoi_bot
-sudo systemctl status svoi_bot
-```
-
-Просмотр логов в реальном времени:
-```bash
-journalctl -u svoi_bot -f
-```
-
----
-
-### Вариант 3. Запуск в Docker
-
+### Варіант 2: Docker
 ```bash
 docker compose up -d --build
-docker compose logs -f
 ```
