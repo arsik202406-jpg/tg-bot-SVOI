@@ -403,7 +403,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
   const seatSurcharge = selectedSeat ? selectedSeat.surcharge : 0;
   const totalPrice = basePrice + seatSurcharge;
 
-  // Safe Telegram WebApp HapticFeedback helper
+  // Safe Telegram WebApp HapticFeedback helper with Web Vibration API fallback
   const triggerHaptic = (
     type: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft' | 'success' | 'warning' | 'error' | 'selection' = 'light'
   ) => {
@@ -419,6 +419,16 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
           haptic.selectionChanged();
         } else {
           haptic.impactOccurred(type);
+        }
+      }
+      // Also trigger light device vibration via standard Web Vibration API when supported
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        if (type === 'selection' || type === 'light' || type === 'soft') {
+          navigator.vibrate(12);
+        } else if (type === 'success') {
+          navigator.vibrate([15, 30, 20]);
+        } else {
+          navigator.vibrate(20);
         }
       }
     } catch {
@@ -1492,7 +1502,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
-                    triggerHaptic('light');
+                    triggerHaptic('selection');
                     setSelectedSeat(null);
                   }}
                   className={`w-full py-2.5 px-3 rounded-xl border transition-all text-xs flex items-center justify-between ${
