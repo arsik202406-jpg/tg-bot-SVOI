@@ -86,8 +86,7 @@ def get_giveaway_button(gw_id: str, count: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text=f"🎉 Брати участь! ({count})", callback_data=f"gw_join_{gw_id}")
             ],
             [
-                InlineKeyboardButton(text="🗺 Переглянути розклад турів", url=f"https://t.me/{settings.BOT_USERNAME}?start=trips"),
-                InlineKeyboardButton(text="🚀 Mini App", web_app=WebAppInfo(url=settings.MINI_APP_URL))
+                InlineKeyboardButton(text="💺 Забронювати місце", url=f"https://t.me/{settings.BOT_USERNAME}?start=trips")
             ]
         ]
     )
@@ -194,6 +193,7 @@ async def process_giveaway_prize(message: Message, state: FSMContext, bot: Bot):
 
     # 1. Спроба прямої публікації в канал через Bot API
     channel_published = False
+    error_reason = ""
     target = CURRENT_CHANNEL_TARGET
     if target:
         try:
@@ -201,6 +201,7 @@ async def process_giveaway_prize(message: Message, state: FSMContext, bot: Bot):
             channel_published = True
             GIVEAWAYS_DB["gw_active"]["message_id"] = sent_msg.message_id
         except Exception as e:
+            error_reason = str(e)
             logger.warning("Не вдалося автоматично опублікувати в %s: %s", target, e)
 
     if channel_published:
@@ -212,8 +213,12 @@ async def process_giveaway_prize(message: Message, state: FSMContext, bot: Bot):
         )
     else:
         await message.answer(
-            f"⚠️ <b>Пост створено!</b> (Бот не зміг опублікувати автоматично в {target}: переконайтеся, що бот доданий як адміністратор каналу з правом публікації).\n\n"
-            "Ось готовий пост для перевірки та пересилання:",
+            f"⚠️ <b>Не вдалося опублікувати в канал <code>{target}</code>!</b>\n"
+            f"Причина Telegram API: <code>{error_reason or 'chat not found'}</code>\n\n"
+            "💡 <b>Як виправити за 10 секунд (для приватного каналу):</b>\n"
+            "1️⃣ Додайте бота @Svoi_TravelEU_bot в <b>Адміністратори</b> вашого каналу з правом «Публікація повідомлень».\n"
+            "2️⃣ Натисніть нижче <b>«⚙️ Змінити @канал для постів»</b> і просто <b>перешліть сюди будь-який пост із вашого каналу</b> (або напишіть будь-який пост у каналі) — бот автоматично визначить числовий ID <code>-100...</code> вашого закритого каналу!\n\n"
+            "Ось готовий пост розіграшу:",
             reply_markup=get_channel_menu_keyboard(),
             parse_mode="HTML"
         )
@@ -561,15 +566,20 @@ async def process_set_channel_id(message: Message, state: FSMContext):
     global CURRENT_CHANNEL_TARGET
     await state.clear()
     
-    # 1. Перевірка, чи це переслане повідомлення з каналу
-    if message.forward_from_chat and message.forward_from_chat.type in ["channel", "supergroup"]:
-        chat_id = str(message.forward_from_chat.id)
-        chat_title = message.forward_from_chat.title or "Канал"
+    # 1. Перевірка пересланого повідомлення з каналу (підтримка і forward_from_chat, і нового forward_origin в Bot API 7.0+)
+    forwarded_chat = getattr(message, "forward_from_chat", None)
+    forward_origin = getattr(message, "forward_origin", None)
+    if not forwarded_chat and forward_origin and hasattr(forward_origin, "chat"):
+        forwarded_chat = forward_origin.chat
+
+    if forwarded_chat and getattr(forwarded_chat, "type", "") in ["channel", "supergroup"]:
+        chat_id = str(forwarded_chat.id)
+        chat_title = getattr(forwarded_chat, "title", None) or "Канал SVOI"
         CURRENT_CHANNEL_TARGET = chat_id
         await message.answer(
             f"✅ <b>Канал успішно визначено та прив'язано!</b> 🎉\n\n"
             f"📢 Назва: <b>{chat_title}</b>\n"
-            f"🆔 ID каналу: <code>{CURRENT_CHANNEL_TARGET}</code>\n\n"
+            f"🆔 Числовий ID закритого каналу: <code>{CURRENT_CHANNEL_TARGET}</code>\n\n"
             "Тепер усі розіграші, опитування та пости публікуватимуться прямо в цей канал!",
             reply_markup=get_channel_menu_keyboard(),
             parse_mode="HTML"
@@ -578,10 +588,21 @@ async def process_set_channel_id(message: Message, state: FSMContext):
 
     raw_text = (message.text or "").strip()
     if not raw_text:
-        await message.answer("⚠️ Не вдалося визначити канал. Будь ласка, вкажіть @username або ID каналу:", reply_markup=get_channel_menu_keyboard())
+        await message.answer("⚠️ Не вдалося визначити канал. Будь ласка, перешліть пост із каналу або вкажіть числовий ID (-100...):", reply_markup=get_channel_menu_keyboard())
         return
 
-    # Якщо користувач ввів посилання на канал виду https://t.me/username
+    # Якщо користувач ввів закрите посилання-запрошення t.me/+...
+    if "t.me/+" in raw_text or "joinchat" in raw_text:
+        await message.answer(
+            "⚠️ <b>Ви надіслали закрите посилання-запрошення (t.me/+...)!</b>\n\n"
+            "Telegram API не дозволяє публікувати за посиланням-запрошенням — для приватного каналу потрібен його <b>числовий ID (починається з -100...)</b>.\n\n"
+            "👉 <b>Просто перешліть будь-яке повідомлення зі свого каналу сюди в бот</b>, і бот сам миттєво дізнається числовий ID!",
+            reply_markup=get_channel_menu_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+
+    # Якщо користувач ввів публічне посилання на канал виду https://t.me/username
     if "t.me/" in raw_text and not raw_text.startswith("-100"):
         raw_text = "@" + raw_text.split("t.me/")[-1].strip("/@")
 
@@ -592,6 +613,14 @@ async def process_set_channel_id(message: Message, state: FSMContext):
         reply_markup=get_channel_menu_keyboard(),
         parse_mode="HTML"
     )
+
+@router.channel_post()
+async def on_any_channel_post(message: Message):
+    """Автоматично запам'ятовує числовий ID (-100...) приватного каналу при будь-якому пості в каналі"""
+    global CURRENT_CHANNEL_TARGET
+    if message.chat and message.chat.type in ["channel", "supergroup"]:
+        CURRENT_CHANNEL_TARGET = str(message.chat.id)
+        logger.info("Автоматично збережено ID каналу з channel_post: %s (%s)", message.chat.title, CURRENT_CHANNEL_TARGET)
 
 @router.my_chat_member()
 async def on_bot_added_as_admin(event: ChatMemberUpdated, bot: Bot):

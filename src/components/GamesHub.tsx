@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Compass, Sparkles, Trophy, HelpCircle, CheckCircle2, 
-  XCircle, Send, Gift, Flame, Share2, ExternalLink, RefreshCw 
+  XCircle, Send, Gift, Flame, Share2, ExternalLink, RefreshCw,
+  BarChart3, Vote, Award, Utensils, Mountain, Zap, Check
 } from 'lucide-react';
 
 interface GeoQuest {
@@ -12,6 +13,31 @@ interface GeoQuest {
   options: { label: string; isCorrect: boolean }[];
   fact: string;
   secretGuide: string;
+}
+
+interface TravelPoll {
+  id: string;
+  category: string;
+  question: string;
+  totalVotes: number;
+  isAnonymous: boolean;
+  options: {
+    id: string;
+    label: string;
+    votes: number;
+    badge?: string;
+  }[];
+}
+
+interface InteractiveTriviaItem {
+  id: string;
+  category: 'gastro' | 'records' | 'routes';
+  categoryLabel: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  rewardPoints: number;
 }
 
 const GEO_QUESTS: GeoQuest[] = [
@@ -115,23 +141,160 @@ const QUIZ_ITEMS = [
     question: 'Чи правда, що у Брюгге під середньовічною бруківкою прокладено діючий підземний пивопровід?',
     isTrue: true,
     explanation: 'Правда! У 2016 році броварня De Halve Maan проклала під землею понад 3 кілометри поліетиленових труб, щоб доставляти до 4000 літрів пінного напою на годину просто на завод розливу без вантажівок!'
+  },
+  {
+    id: 'q5',
+    country: '🇱🇺 Люксембург',
+    question: 'Чи правда, що в усьому Люксембурзі проїзд у потягах, трамваях і автобусах на 100% безкоштовний навіть для туристів?',
+    isTrue: true,
+    explanation: 'Правда! Люксембург став першою країною у світі, яка скасувала оплату за громадський транспорт по всій території країни.'
+  }
+];
+
+const INITIAL_TRAVEL_POLLS: TravelPoll[] = [
+  {
+    id: 'poll-weekend-dest',
+    category: '🗺 Голосування за маршрут вікенду',
+    question: 'Куди б ви найбільше хотіли вирушити з клубом SVOI у найближчі вихідні?',
+    totalVotes: 148,
+    isAnonymous: false,
+    options: [
+      { id: 'opt-1', label: '🇨🇭 Швейцарія: Лаутербруннен + ущелина Ааре (120€)', votes: 54, badge: '🔥 Лідер' },
+      { id: 'opt-2', label: '🇫🇷 Скелі Етрета над Атлантикою + Париж (140€)', votes: 41 },
+      { id: 'opt-3', label: '🇧🇪 Середньовічний Брюгге: канали та шоколад (110€)', votes: 32 },
+      { id: 'opt-4', label: '🇮🇹 Озеро Комо + Мілан + Лугано на 2 дні (260€)', votes: 21 }
+    ]
+  },
+  {
+    id: 'poll-travel-style',
+    category: '🚐 Комфорт та формат поїздки',
+    question: 'Що для вас є найважливішим під час поїздки вихідного дня Європою?',
+    totalVotes: 112,
+    isAnonymous: false,
+    options: [
+      { id: 'st-1', label: '🏡 Адресний збір Door-to-Door прямо від дому', votes: 49, badge: 'Топ вибір' },
+      { id: 'st-2', label: '👥 Маленька група до 8 осіб у комфортному Opel Vivaro', votes: 35 },
+      { id: 'st-3', label: '💳 Бронювання з 0% передоплати (оплата при посадці)', votes: 18 },
+      { id: 'st-4', label: '📸 Вільний час без біганини за прапорцем гіда', votes: 10 }
+    ]
+  },
+  {
+    id: 'poll-gastro',
+    category: '🍽 Гастрономічне опитування',
+    question: 'Який кулінарний спеціалітет ви обов’язково куштуєте в наших поїздках?',
+    totalVotes: 96,
+    isAnonymous: true,
+    options: [
+      { id: 'ga-1', label: '🧇 Гарячі бельгійські вафлі з полуницею у Брюгге', votes: 38 },
+      { id: 'ga-2', label: '🦪 Свіжі нормандські устриці на березі в Етрета', votes: 26 },
+      { id: 'ga-3', label: '🍕 Ельзаський пиріг Тарт Фламбе з печі у Страсбурзі', votes: 20 },
+      { id: 'ga-4', label: '🧀 Швейцарське сирне фондю з видом на Альпи', votes: 12 }
+    ]
+  }
+];
+
+const INTERACTIVE_TRIVIA: InteractiveTriviaItem[] = [
+  {
+    id: 'tr-1',
+    category: 'gastro',
+    categoryLabel: '🍽 Гастро-Європа',
+    question: 'З якого французького регіону походить хрусткий пиріг «Тарт Фламбе» (Flammkuchen) з вершковим крем-фрешем, цибулею та беконом?',
+    options: [
+      '🇫🇷 Ельзас (Страсбург та Кольмар)',
+      '🇫🇷 Прованс (Ніцца та Канни)',
+      '🇫🇷 Нормандія (Руан та Етрета)',
+      '🇧🇪 Фландрія (Брюгге та Гент)'
+    ],
+    correctIndex: 0,
+    explanation: 'Тарт Фламбе — кулінарна візитівка Ельзасу! У нашому турі до Страсбурга та Кольмара (80€) ми показуємо автентичні заклади Winstub, де його випікають у дров’яній печі.',
+    rewardPoints: 25
+  },
+  {
+    id: 'tr-2',
+    category: 'records',
+    categoryLabel: '🏔 Альпійські рекорди',
+    question: 'Скільки водоспадів спадає зі скель у знаменитій швейцарській долині Лаутербруннен, яку ми відвідуємо в турі?',
+    options: [
+      '🌊 Рівно 72 водоспади',
+      '🌊 15 водоспадів',
+      '🌊 105 водоспадів',
+      '🌊 32 водоспади'
+    ],
+    correctIndex: 0,
+    explanation: 'Долина Лаутербруннен офіційно відома як «Долина 72 водоспадів», а найвищий із них — Штауббах — падає з висоти майже 300 метрів!',
+    rewardPoints: 25
+  },
+  {
+    id: 'tr-3',
+    category: 'routes',
+    categoryLabel: '🌍 3 країни за 1 день',
+    question: 'Які 3 країни (окрім Німеччини на старті) ми відвідуємо за 1 день у нашому альпійському комбо-турі до Вадуца?',
+    options: [
+      '🇨🇭 Швейцарія + 🇱🇮 Ліхтенштейн + 🇦🇹 Австрія',
+      '🇫🇷 Франція + 🇧🇪 Бельгія + 🇳🇱 Нідерланди',
+      '🇮🇹 Італія + 🇨🇭 Швейцарія + 🇫🇷 Франція',
+      '🇱🇺 Люксембург + 🇧🇪 Бельгія + 🇫🇷 Франція'
+    ],
+    correctIndex: 0,
+    explanation: 'У турі «Ліхтенштейн: 3 країни за 1 день» (120€) ми гуляємо столицею Ліхтенштейну Вадуцом, швейцарськими Альпами та австрійським Брегенцом на Боденському озері!',
+    rewardPoints: 25
+  },
+  {
+    id: 'tr-4',
+    category: 'records',
+    categoryLabel: '🚠 Вершини Європи',
+    question: 'На яку висоту піднімає канатна дорога Егюій-дю-Міді в нашому турі «Шамоні — Монблан» всього за 20 хвилин?',
+    options: [
+      '🏔 3 842 метри над рівнем моря',
+      '🏔 1 950 метрів над рівнем моря',
+      '🏔 2 500 метрів над рівнем моря',
+      '🏔 4 810 метрів над рівнем моря'
+    ],
+    correctIndex: 0,
+    explanation: 'Вершина Егюій-дю-Міді розташована на висоті 3 842 м! Там знаходиться знаменитий скляний куб «Крок у порожнечу» прямо навпроти піку Монблан.',
+    rewardPoints: 25
+  },
+  {
+    id: 'tr-5',
+    category: 'gastro',
+    categoryLabel: '🇳🇱 Смаки Голландії',
+    question: 'Як називається традиційний голландський десерт із двох тонких вафель, з’єднаних гарячим карамельним сиропом?',
+    options: [
+      '🍪 Стропвафлі (Stroopwafel)',
+      '🥐 Круасан із мигдалем',
+      '🥨 Баварський брецель',
+      '🍰 Шварцвальдський торт'
+    ],
+    correctIndex: 0,
+    explanation: 'Гарячі стропвафлі (Stroopwafels) печуть просто перед вами на ринках Амстердама та в селі вітряків Заансе-Сханс!',
+    rewardPoints: 25
   }
 ];
 
 export const GamesHub: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'geo' | 'quiz' | 'giveaways'>('geo');
+  const [activeTab, setActiveTab] = useState<'polls' | 'geo' | 'quiz' | 'giveaways'>('polls');
+
+  // Interactive Polls & Multi-Quiz State
+  const [polls, setPolls] = useState<TravelPoll[]>(INITIAL_TRAVEL_POLLS);
+  const [votedPolls, setVotedPolls] = useState<Record<string, string>>({});
+  const [triviaIndex, setTriviaIndex] = useState(0);
+  const [selectedTriviaOption, setSelectedTriviaOption] = useState<number | null>(null);
+  const [triviaScore, setTriviaScore] = useState(0);
+  const [answeredTriviaIds, setAnsweredTriviaIds] = useState<Record<string, boolean>>({});
+  const [triviaCategoryFilter, setTriviaCategoryFilter] = useState<'all' | 'gastro' | 'records' | 'routes'>('all');
+  const [pollToast, setPollToast] = useState<string | null>(null);
 
   // Geo-Detective State
   const [geoIndex, setGeoIndex] = useState(0);
   const [selectedGeoOption, setSelectedGeoOption] = useState<number | null>(null);
   const [geoResult, setGeoResult] = useState<'correct' | 'wrong' | null>(null);
 
-  // Quiz State
+  // True/False Quiz State
   const [quizIndex, setQuizIndex] = useState(0);
   const [userQuizAnswer, setUserQuizAnswer] = useState<boolean | null>(null);
 
   // Group Giveaway Simulator
-  const [raffleParticipants, setRaffleParticipants] = useState([
+  const [raffleParticipants] = useState([
     { name: 'Олена К.', handle: '@elena_de' },
     { name: 'Михайло В.', handle: '@mike_travel' },
     { name: 'Ольга С.', handle: '@olga_st' },
@@ -143,6 +306,68 @@ export const GamesHub: React.FC = () => {
 
   const currentGeo = GEO_QUESTS[geoIndex];
   const currentQuiz = QUIZ_ITEMS[quizIndex];
+
+  const filteredTrivia = INTERACTIVE_TRIVIA.filter(
+    (item) => triviaCategoryFilter === 'all' || item.category === triviaCategoryFilter
+  );
+  const currentTrivia = filteredTrivia[triviaIndex % filteredTrivia.length] || INTERACTIVE_TRIVIA[0];
+
+  const triggerToast = (msg: string) => {
+    setPollToast(msg);
+    setTimeout(() => setPollToast(null), 3200);
+  };
+
+  const handleVotePoll = (pollId: string, optionId: string) => {
+    if (votedPolls[pollId]) return;
+    setVotedPolls((prev) => ({ ...prev, [pollId]: optionId }));
+    setPolls((prev) =>
+      prev.map((p) => {
+        if (p.id !== pollId) return p;
+        return {
+          ...p,
+          totalVotes: p.totalVotes + 1,
+          options: p.options.map((o) => (o.id === optionId ? { ...o, votes: o.votes + 1 } : o))
+        };
+      })
+    );
+    triggerToast('✅ Ваш голос враховано в опитуванні мандрівників SVOI!');
+  };
+
+  const handleResetPollVote = (pollId: string) => {
+    const chosenOptionId = votedPolls[pollId];
+    if (!chosenOptionId) return;
+    const nextVoted = { ...votedPolls };
+    delete nextVoted[pollId];
+    setVotedPolls(nextVoted);
+    setPolls((prev) =>
+      prev.map((p) => {
+        if (p.id !== pollId) return p;
+        return {
+          ...p,
+          totalVotes: Math.max(1, p.totalVotes - 1),
+          options: p.options.map((o) =>
+            o.id === chosenOptionId ? { ...o, votes: Math.max(0, o.votes - 1) } : o
+          )
+        };
+      })
+    );
+  };
+
+  const handleSelectTriviaAnswer = (optionIdx: number) => {
+    if (selectedTriviaOption !== null) return;
+    setSelectedTriviaOption(optionIdx);
+    const isCorrect = optionIdx === currentTrivia.correctIndex;
+    if (isCorrect && !answeredTriviaIds[currentTrivia.id]) {
+      setTriviaScore((prev) => prev + currentTrivia.rewardPoints);
+      setAnsweredTriviaIds((prev) => ({ ...prev, [currentTrivia.id]: true }));
+      triggerToast(`🎉 Правильно! +${currentTrivia.rewardPoints} балів до вашого рейтингу мандрівника!`);
+    }
+  };
+
+  const handleNextTrivia = () => {
+    setSelectedTriviaOption(null);
+    setTriviaIndex((prev) => (prev + 1) % filteredTrivia.length);
+  };
 
   const handleGeoAnswer = (idx: number, isCorrect: boolean) => {
     setSelectedGeoOption(idx);
@@ -176,29 +401,54 @@ export const GamesHub: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {pollToast && (
+        <div className="fixed bottom-5 right-5 z-50 px-4 py-3 rounded-2xl bg-slate-900/95 border border-cyan-400/50 text-cyan-200 text-xs font-bold shadow-[0_0_25px_rgba(34,211,238,0.3)] flex items-center gap-2 animate-fade-in">
+          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span>{pollToast}</span>
+        </div>
+      )}
+
       {/* Top Banner */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <div className="flex items-center gap-2.5">
+            <span className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
               <Sparkles className="w-5 h-5" />
             </span>
             <div>
-              <h2 className="text-xl font-bold text-white tracking-wide">
-                Ігри & Гейміфікація в чаті
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold text-white tracking-wide">
+                  Ігри, Вікторини та Опитування в Telegram-боті
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[11px] font-bold">
+                  Бали гравця: {triviaScore} XP
+                </span>
+              </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Актуальні фото маршрутів: Етрета, ущелина Ааре, Лаутербруннен, Брюгге та Нойшванштайн
+                Інтерактивні вікторини з конфеті, живі опитування про маршрути, Гео-Детектив та розіграші місць
               </p>
             </div>
           </div>
         </div>
 
         {/* Tab Controls */}
-        <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800 text-xs">
+          <button
+            onClick={() => setActiveTab('polls')}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+              activeTab === 'polls'
+                ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Vote className="w-3.5 h-3.5" />
+            Вікторини & Опитування ({INTERACTIVE_TRIVIA.length + polls.length})
+          </button>
+
           <button
             onClick={() => setActiveTab('geo')}
-            className={`px-3.5 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
               activeTab === 'geo'
                 ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
                 : 'text-slate-400 hover:text-white'
@@ -210,7 +460,7 @@ export const GamesHub: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('quiz')}
-            className={`px-3.5 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
               activeTab === 'quiz'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                 : 'text-slate-400 hover:text-white'
@@ -222,7 +472,7 @@ export const GamesHub: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('giveaways')}
-            className={`px-3.5 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
               activeTab === 'giveaways'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
                 : 'text-slate-400 hover:text-white'
@@ -233,6 +483,291 @@ export const GamesHub: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* ================= TAB 0: ВІКТОРИНИ ТА ОПИТУВАННЯ ПРО ПОДОРОЖІ (NEW) ================= */}
+      {activeTab === 'polls' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Column: Multi-Option Travel Trivia Quiz */}
+          <div className="lg:col-span-7 space-y-5">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                    <Award className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      Інтерактивна бліц-вікторина мандрівника
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Відповідайте на запитання про Європу та заробляйте бали на знижку й безкоштовний вибір місця
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-extrabold flex items-center gap-1">
+                    <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{triviaScore} XP</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                {[
+                  { id: 'all', label: '🌍 Усі теми (5)' },
+                  { id: 'gastro', label: '🍽 Гастро-Європа' },
+                  { id: 'records', label: '🏔 Альпійські рекорди' },
+                  { id: 'routes', label: '🚐 Маршрути SVOI' }
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => {
+                      setTriviaCategoryFilter(cat.id as any);
+                      setTriviaIndex(0);
+                      setSelectedTriviaOption(null);
+                    }}
+                    className={`px-3 py-1 rounded-xl font-medium transition-all border ${
+                      triviaCategoryFilter === cat.id
+                        ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Active Trivia Question Card */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-4">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold">
+                    {currentTrivia.categoryLabel}
+                  </span>
+                  <span className="text-slate-500 font-mono">
+                    Питання #{(triviaIndex % filteredTrivia.length) + 1} із {filteredTrivia.length} • +{currentTrivia.rewardPoints} XP
+                  </span>
+                </div>
+
+                <h4 className="text-sm sm:text-base font-bold text-white leading-relaxed">
+                  {currentTrivia.question}
+                </h4>
+
+                <div className="space-y-2">
+                  {currentTrivia.options.map((optText, idx) => {
+                    const isPicked = selectedTriviaOption === idx;
+                    const isRight = idx === currentTrivia.correctIndex;
+                    let optionClass =
+                      'bg-slate-900/90 hover:bg-slate-800 border-slate-800 text-slate-200 hover:border-cyan-500/40';
+                    if (selectedTriviaOption !== null) {
+                      if (isRight) {
+                        optionClass =
+                          'bg-emerald-950/80 border-emerald-400 text-emerald-200 font-bold shadow-[0_0_15px_rgba(52,211,153,0.25)]';
+                      } else if (isPicked) {
+                        optionClass = 'bg-rose-950/80 border-rose-500 text-rose-200';
+                      } else {
+                        optionClass = 'opacity-45 bg-slate-900/40 border-slate-800 text-slate-500';
+                      }
+                    }
+
+                    return (
+                      <button
+                        key={idx}
+                        disabled={selectedTriviaOption !== null}
+                        onClick={() => handleSelectTriviaAnswer(idx)}
+                        className={`w-full p-3 rounded-xl border text-xs sm:text-sm text-left transition-all flex items-center justify-between gap-2 ${optionClass}`}
+                      >
+                        <span>{optText}</span>
+                        {selectedTriviaOption !== null && isRight && (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        )}
+                        {selectedTriviaOption !== null && isPicked && !isRight && (
+                          <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Explanation & Next Button */}
+                {selectedTriviaOption !== null && (
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-cyan-500/30 space-y-2.5 animate-fade-in text-xs">
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`font-bold flex items-center gap-1.5 ${
+                          selectedTriviaOption === currentTrivia.correctIndex
+                            ? 'text-emerald-400'
+                            : 'text-amber-300'
+                        }`}
+                      >
+                        {selectedTriviaOption === currentTrivia.correctIndex
+                          ? '🎉 Правильна відповідь! Конфеті у вашому чаті!'
+                          : '💡 Цікавий факт про цю локацію:'}
+                      </span>
+                      <span className="text-[10px] font-mono text-cyan-300">
+                        Telegram Quiz Mode
+                      </span>
+                    </div>
+                    <p className="text-slate-300 leading-relaxed">{currentTrivia.explanation}</p>
+                    <div className="pt-1 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-slate-400">
+                        Промокод активності: <code className="text-amber-300 font-bold">QUIZ-SVOI5</code>
+                      </span>
+                      <button
+                        onClick={handleNextTrivia}
+                        className="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Наступне питання</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Reward Progress Bar */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-cyan-950/50 via-slate-950 to-indigo-950/50 border border-cyan-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                <div className="space-y-1 flex-1 w-full">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-cyan-200 flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Прогрес до VIP-бонусу мандрівника:</span>
+                    </span>
+                    <span className="font-mono text-amber-300 font-bold">
+                      {Math.min(triviaScore, 50)} / 50 XP
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                    <div
+                      className="h-full bg-gradient-to-r from-cyan-400 to-emerald-400 transition-all duration-500"
+                      style={{ width: `${Math.min(100, (triviaScore / 50) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+                <a
+                  href="https://t.me/SVOI_travel_admin?text=Вітаю! Я пройшов вікторину мандрівника SVOI та отримав промокод QUIZ-SVOI5 на безкоштовний вибір місця!"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shrink-0 transition-all"
+                >
+                  Забрати бонус (+5€ місце)
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Live Interactive Travel Polls */}
+          <div className="lg:col-span-5 space-y-4">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 rounded-xl bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                    <BarChart3 className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      Опитування спільноти про подорожі
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Голосуйте за напрямки — бачите миттєвий розподіл голосів як у Telegram Polls
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {polls.map((poll) => {
+                  const userVotedOptionId = votedPolls[poll.id];
+                  return (
+                    <div
+                      key={poll.id}
+                      className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800/90 space-y-3"
+                    >
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-purple-300">{poll.category}</span>
+                        <span className="text-slate-500">
+                          {poll.isAnonymous ? 'Анонімне опитування' : 'Публічне опитування'} • {poll.totalVotes} голосів
+                        </span>
+                      </div>
+
+                      <h4 className="text-xs sm:text-sm font-bold text-white leading-snug">
+                        {poll.question}
+                      </h4>
+
+                      <div className="space-y-2">
+                        {poll.options.map((opt) => {
+                          const percent =
+                            poll.totalVotes > 0 ? Math.round((opt.votes / poll.totalVotes) * 100) : 0;
+                          const isChosen = userVotedOptionId === opt.id;
+
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => handleVotePoll(poll.id, opt.id)}
+                              className={`w-full p-2.5 rounded-xl border text-left transition-all relative overflow-hidden ${
+                                userVotedOptionId
+                                  ? isChosen
+                                    ? 'bg-slate-900 border-cyan-400/70 text-white'
+                                    : 'bg-slate-900/50 border-slate-800/80 text-slate-300'
+                                  : 'bg-slate-900 hover:bg-slate-800/90 border-slate-800 hover:border-purple-400/50 text-slate-200'
+                              }`}
+                            >
+                              {userVotedOptionId && (
+                                <div
+                                  className={`absolute inset-y-0 left-0 transition-all duration-500 ${
+                                    isChosen ? 'bg-cyan-500/20' : 'bg-purple-500/10'
+                                  }`}
+                                  style={{ width: `${percent}%` }}
+                                />
+                              )}
+
+                              <div className="relative flex items-center justify-between gap-2 text-xs">
+                                <span className="font-medium flex items-center gap-1.5">
+                                  {isChosen && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
+                                  <span>{opt.label}</span>
+                                  {opt.badge && (
+                                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                                      {opt.badge}
+                                    </span>
+                                  )}
+                                </span>
+                                {userVotedOptionId && (
+                                  <span className="font-mono font-bold text-cyan-300 shrink-0">
+                                    {percent}% ({opt.votes})
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
+                        <span>
+                          {userVotedOptionId
+                            ? '✓ Ви проголосували'
+                            : 'Натисніть на варіант, щоб проголосувати'}
+                        </span>
+                        {userVotedOptionId && (
+                          <button
+                            type="button"
+                            onClick={() => handleResetPollVote(poll.id)}
+                            className="text-cyan-400 hover:underline"
+                          >
+                            Переголосувати
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TAB 1: ГЕО-ДЕТЕКТИВ */}
       {activeTab === 'geo' && (

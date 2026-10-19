@@ -98,11 +98,11 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-600/70 shadow-sm';
     }
 
-    // 2. Booking / Confirm Reservation / Seat selection / РЕЗЕРВ (Vibrant emerald neon & font-black)
-    if (data === 'cb_book' || data.startsWith('cb_select_seat') || data.startsWith('cb_confirm_') || text.includes('РЕЗЕРВ') || text.includes('Забронювати') || text.includes('Підтвердити')) {
+    // 2. Booking / Confirm Reservation / Seat selection / ЗАБРОНЮВАТИ МІСЦЕ (Large central 2-tile button)
+    if (data === 'cb_book' || data.startsWith('cb_select_seat') || data.startsWith('cb_confirm_') || text.includes('РЕЗЕРВ') || text.includes('ЗАБРОНЮВАТИ') || text.includes('Забронювати') || text.includes('Підтвердити')) {
       return styleMode === 'neon'
-        ? 'bg-gradient-to-r from-emerald-950 via-teal-950 to-green-950 hover:from-emerald-900 hover:to-teal-900 active:bg-emerald-800 text-white border-2 border-emerald-400 hover:border-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.7),inset_0_0_10px_rgba(52,211,153,0.3)] font-black ring-1 ring-emerald-400/60'
-        : 'bg-emerald-950/50 hover:bg-emerald-900/70 text-emerald-100 hover:text-white border border-emerald-400 font-bold shadow-sm';
+        ? 'py-3 text-sm sm:text-[15px] tracking-wide bg-gradient-to-r from-emerald-950 via-teal-900 to-green-950 hover:from-emerald-900 hover:to-teal-800 active:bg-emerald-800 text-white border-2 border-emerald-400 hover:border-emerald-300 shadow-[0_0_22px_rgba(52,211,153,0.75),inset_0_0_12px_rgba(52,211,153,0.35)] font-black ring-1 ring-emerald-400/70'
+        : 'py-3 text-sm sm:text-[15px] bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-100 hover:text-white border-2 border-emerald-400 font-black shadow-md';
     }
 
     // 3. Trips / Schedule / Tours catalog (Vibrant cyan neon)
@@ -112,11 +112,11 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         : 'bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-200 hover:text-white border border-cyan-400 font-semibold shadow-sm';
     }
 
-    // 4. Partner / Стати партнером (Vibrant gold neon)
+    // 4. Partner / Стати партнером клубу (Compact 1-tile subtle style)
     if (data === 'cb_partner' || text.includes('партнер')) {
       return styleMode === 'neon'
-        ? 'bg-gradient-to-r from-amber-950 via-yellow-950 to-orange-950 hover:from-amber-900 hover:to-yellow-900 active:bg-amber-800 text-amber-100 hover:text-white border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_18px_rgba(251,191,36,0.65),inset_0_0_10px_rgba(251,191,36,0.25)] font-bold ring-1 ring-amber-400/50'
-        : 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 border border-amber-400 font-semibold shadow-sm';
+        ? 'text-[11px] py-1.5 bg-slate-900/90 hover:bg-amber-950/60 text-amber-200/90 hover:text-white border border-amber-500/50 hover:border-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.25)] font-medium'
+        : 'text-[11px] py-1.5 bg-slate-900/75 hover:bg-amber-950/40 text-amber-200/90 border border-amber-500/40 font-medium';
     }
 
     // 5. Meeting Stops / Pickup points
@@ -216,22 +216,22 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
   const getMainKeyboard = (): InlineBtn[][] => [
     [
-      { text: '🌌 SVOI Mini App (3D Салон & 14 турів) ✨', callbackData: 'cb_open_miniapp' }
+      { text: '🗺 Напрямки та дати', callbackData: 'cb_trips' },
+      { text: '⭐ Відгуки туристів', callbackData: 'cb_reviews' }
     ],
     [
-      { text: '🔵 🗺 Напрямки та дати', callbackData: 'cb_trips' },
-      { text: '🟢 ⚡️ РЕЗЕРВ МІСЦЯ', callbackData: 'cb_book' }
+      { text: '💺 ЗАБРОНЮВАТИ МІСЦЕ', callbackData: 'cb_book' }
     ],
     [
-      { text: '🟠 ⭐ Відгуки туристів', callbackData: 'cb_reviews' },
-      { text: '🔷 ❓ Часті питання (FAQ)', callbackData: 'cb_faq' }
+      { text: '❓ Часті питання (FAQ)', callbackData: 'cb_faq' },
+      { text: '🤝 Стати партнером клубу', callbackData: 'cb_partner' }
     ],
     [
-      { text: '🟡 🤝 Стати партнером клубу', callbackData: 'cb_partner' }
+      { text: '🎮 Ігри та вікторини', callbackData: 'cb_games' },
+      { text: '📢 Наш канал', url: CHANNEL_URL }
     ],
     [
-      { text: "🟣 💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url: MANAGER_URL },
-      { text: '💎 📢 НАШ КАНАЛ', url: CHANNEL_URL }
+      { text: "💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url: MANAGER_URL }
     ],
     [
       { text: '👑 Керування каналом (/channel)', callbackData: 'cb_adm_channel_menu' },
@@ -1010,19 +1010,32 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
     if (data === 'cb_games') {
       const gamesText = 
-        `🎮 <b>Ігри та вікторини клубу SVOI</b> 🏆\n\n` +
-        `Любите подорожі та загадки? Беріть участь в іграх, вигравайте бонуси та Картку Пріоритету!\n\n` +
-        `👇 <i>Оберіть активність:</i>`;
+        `🎮 <b>Ігровий клуб та вікторини SVOI Travel (6 ігор)</b> 🏆\n\n` +
+        `Відпочивайте з користю, перевіряйте свої знання про Європу та вигравайте приємні бонуси й Картку Пріоритету для поїздок!\n\n` +
+        `✨ <b>Доступні ігри та вікторини:</b>\n` +
+        `• 🕵️ <b>«Гео-Детектив» (6 локацій):</b> вгадайте локацію за описом\n` +
+        `• 🧠 <b>«Правда чи Неправда» (6 фактів):</b> закони та курйози Європи\n` +
+        `• 🍽 <b>Гастро-Квіз «Смаки Європи»:</b> кулінарна вікторина\n` +
+        `• 💶 <b>«Інтуїція Мандрівника»:</b> цифри, висоти та рекорди\n` +
+        `• 🎒 <b>Тест «Ідеальний тур»:</b> підбір поїздки за 10 секунд\n` +
+        `• 🎰 <b>Колесо Фортуни SVOI:</b> миттєвий розіграш бонусу!\n\n` +
+        `👇 <i>Оберіть гру:</i>`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '🕵️ Гра «Гео-Детектив»', callbackData: 'cb_game_geo' }
+          { text: '🕵️ Гра «Гео-Детектив»', callbackData: 'cb_game_geo' },
+          { text: '🧠 «Правда чи Неправда»', callbackData: 'cb_game_quiz' }
         ],
         [
-          { text: '🧠 Вікторина «Правда чи Неправда»', callbackData: 'cb_game_quiz' }
+          { text: '🍽 Гастро-Квіз «Смаки Європи»', callbackData: 'cb_game_gastro' },
+          { text: '💶 Інтуїція: Цифри та рекорди', callbackData: 'cb_game_price' }
         ],
         [
-          { text: '🎁 Розіграші у групі SVOI', callbackData: 'cb_game_group_info' }
+          { text: '🎒 Тест: Підбір ідеального туру', callbackData: 'cb_game_match' },
+          { text: '🎰 Колесо Фортуни SVOI', callbackData: 'cb_game_wheel' }
+        ],
+        [
+          { text: '🎁 Розіграші у групі та каналі SVOI', callbackData: 'cb_game_group_info' }
         ],
         [
           { text: '🔙 Головне меню', callbackData: 'cb_back' }
@@ -1033,39 +1046,56 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     }
 
     if (data === 'cb_game_geo') {
-      const geoText = 
-        `🕵️ <b>Гео-Детектив: Вгадайте локацію за описом!</b>\n\n` +
-        `«Білосніжні алебастрові скелі та природні арки над Атлантикою, що надихали Клода Моне на шедеври імпресіонізму».\n\n` +
-        `<i>Хто перший вгадає, де зроблено цей знімок?</i>`;
+      const geoQuestions = [
+        {
+          q: `🕵️ <b>Гео-Детектив: Вгадайте локацію за описом!</b>\n\n«Білосніжні алебастрові скелі та природні арки над Атлантикою, що надихали Клода Моне на шедеври імпресіонізму».`,
+          img: 'https://images.unsplash.com/photo-1549144511-f099e773c147?auto=format&fit=crop&w=1000&q=80',
+          opts: [
+            [{ text: '🇫🇷 Етрета (Нормандія, Франція)', callbackData: 'cb_geocheck_correct' }],
+            [{ text: '🇮🇹 Узбережжя Амальфі', callbackData: 'cb_geocheck_wrong' }, { text: '🇬🇧 Скелі Дувра', callbackData: 'cb_geocheck_wrong' }]
+          ]
+        },
+        {
+          q: `🕵️ <b>Гео-Детектив: Який замок став емблемою студії Волта Діснея?</b>\n\n«Білосніжний палац баварського короля-мрійника Людвіга II, що височіє на скелі над альпійським озером Альпзее та підвісним мостом Марієнбрюке».`,
+          img: 'https://images.unsplash.com/photo-1534313314376-a72289b6181e?auto=format&fit=crop&w=1000&q=80',
+          opts: [
+            [{ text: '🇩🇪 Замок Нойшванштайн (Баварія)', callbackData: 'cb_geocheck_correct' }],
+            [{ text: '🇫🇷 Замок Шамбор', callbackData: 'cb_geocheck_wrong' }, { text: '🇨🇭 Шийонський замок', callbackData: 'cb_geocheck_wrong' }]
+          ]
+        },
+        {
+          q: `🕵️ <b>Гео-Детектив: Де знімали «Зоряні війни» та «Казино Рояль»?</b>\n\n«Глибоке альпійське озеро у формі перевернутої літери Y, оточене розкішними італійськими віллами, кипарисами та засніженими вершинами».`,
+          img: 'https://images.unsplash.com/photo-1536663815808-535e2280d2c2?auto=format&fit=crop&w=1000&q=80',
+          opts: [
+            [{ text: '🇮🇹 Озеро Комо (Белладжо та Варенна)', callbackData: 'cb_geocheck_correct' }],
+            [{ text: '🇮🇹 Озеро Гарда', callbackData: 'cb_geocheck_wrong' }, { text: '🇦🇹 Гальштат', callbackData: 'cb_geocheck_wrong' }]
+          ]
+        }
+      ];
+      const pick = geoQuestions[Math.floor(Math.random() * geoQuestions.length)];
 
       const keyboard: InlineBtn[][] = [
-        [
-          { text: '🇫🇷 Етрета (Нормандія, Франція)', callbackData: 'cb_geocheck_correct' }
-        ],
-        [
-          { text: '🇮🇹 Узбережжя Амальфі', callbackData: 'cb_geocheck_wrong' },
-          { text: '🇬🇧 Скелі Дувра', callbackData: 'cb_geocheck_wrong' }
-        ],
+        ...pick.opts,
         [
           { text: '🔙 Меню ігор', callbackData: 'cb_games' }
         ]
       ];
-      editLastBotMessage(geoText, keyboard, 'https://images.unsplash.com/photo-1549144511-f099e773c147?auto=format&fit=crop&w=1000&q=80');
+      editLastBotMessage(pick.q, keyboard, pick.img);
       return;
     }
 
     if (data === 'cb_geocheck_correct') {
       const text = 
         `🎉 <b>БРАВО! ВИ СПРАВЖНІЙ ГЕО-ДЕТЕКТИВ!</b> 🏆\n\n` +
-        `Це знамениті скелі <b>Етрета</b> в Нормандії! Ми їдемо сюди в турі «Етрета + Париж» (140€).\n\n` +
+        `Ви безпомилково впізнали локацію з наших авторських турів!\n\n` +
         `🎁 <b>Ваш приз: КАРТКА ПРІОРИТЕТУ</b>\n` +
         `Промокод: <code>PRIORITY-SVOI5</code>\n` +
-        `Дає право <b>безкоштовно обрати будь-яке місце в мінівені (економія 5€)</b> або знижку 10% на першу поїздку!\n\n` +
+        `Дає право <b>безкоштовно обрати будь-яке місце в мінівені (економія 5€)</b>!\n\n` +
         `<i>Надішліть промокод менеджеру @SVOI_travel_admin при бронюванні!</i>`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '💬 Надіслати менеджеру', url: 'https://t.me/SVOI_travel_admin?text=Вітаю! Я відгадав локацію в Гео-Детективі. Мій промокод PRIORITY-SVOI5.' }
+          { text: '🔄 Наступна загадка Гео-Детектива', callbackData: 'cb_game_geo' }
         ],
         [
           { text: '🗺 Обрати тур', callbackData: 'cb_trips' },
@@ -1078,9 +1108,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
     if (data === 'cb_geocheck_wrong') {
       const text = 
-        `🔍 <b>Не зовсім так!</b>\n\n` +
-        `Правильна відповідь — легендарні скелі <b>Етрета у Франції</b> на березі Атлантики.\n\n` +
-        `Спробуйте ще раз або оберіть іншу гру!`;
+        `🔍 <b>Майже вгадали!</b>\n\n` +
+        `Спробуйте ще раз або оберіть іншу гру з нашої колекції!`;
 
       const keyboard: InlineBtn[][] = [
         [
@@ -1093,9 +1122,12 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     }
 
     if (data === 'cb_game_quiz') {
-      const text = 
-        `🧠 <b>Квіз «Правда чи Неправда» (Швейцарія):</b>\n\n` +
-        `Чи правда, що у Швейцарії законом заборонено мати лише одну морську свинку?`;
+      const quizzes = [
+        `🧠 <b>Квіз «Правда чи Неправда» (Швейцарія):</b>\n\nЧи правда, що у Швейцарії законом заборонено мати лише одну морську свинку?`,
+        `🧠 <b>Квіз «Правда чи Неправда» (Люксембург):</b>\n\nЧи правда, що весь громадський транспорт у Люксембурзі (потяги, трамваї, автобуси) є на 100% безкоштовним для всіх туристів?`,
+        `🧠 <b>Квіз «Правда чи Неправда» (Ліхтенштейн):</b>\n\nЧи правда, що все князівство Ліхтенштейн можна було офіційно орендувати на добу через Airbnb?`
+      ];
+      const text = quizzes[Math.floor(Math.random() * quizzes.length)];
 
       const keyboard: InlineBtn[][] = [
         [
@@ -1113,14 +1145,13 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     if (data === 'cb_qcheck_1' || data === 'cb_qcheck_0') {
       const isTrue = data === 'cb_qcheck_1';
       const text = (
-        (isTrue ? '🎉 <b>У яблучко! Це чиста правда!</b> 🐹\n\n' : '😮 <b>Сюрприз! Це насправді ПРАВДА!</b> 🐹\n\n') +
-        `У Швейцарії закон про захист тварин визнає морських свинок соціальними істотами, які страждають на самоті. Їх дозволено заводити лише парами!\n\n` +
-        `Такі незвичайні факти ми розповідаємо в наших турах!`
+        (isTrue ? '🎉 <b>У яблучко! Це чиста правда!</b> 🏆\n\n' : '😮 <b>Сюрприз! Це насправді ПРАВДА!</b> ✨\n\n') +
+        `Європа сповнена дивовижних законів і традицій, про які ми розповідаємо під час наших поїздок на Opel Vivaro!`
       );
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '🗺 Подивитися тури до Швейцарії', callbackData: 'cb_trip_swiss_rhine_zurich' },
+          { text: '🎲 Наступний факт', callbackData: 'cb_game_quiz' },
           { text: '🔙 Меню ігор', callbackData: 'cb_games' }
         ]
       ];
@@ -1128,13 +1159,119 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       return;
     }
 
+    if (data === 'cb_game_gastro') {
+      const text =
+        `🍽 <b>Гастро-Квіз «Смаки Європи»:</b>\n\n` +
+        `З якого регіону походить знаменитий <b>Тарт Фламбе (Flammkuchen)</b> — тонкий хрусткий пиріг із дров'яної печі з вершковим крем-фрешем, цибулею та беконом?`;
+      const keyboard: InlineBtn[][] = [
+        [{ text: '🇫🇷 Ельзас (Страсбург та Кольмар)', callbackData: 'cb_gastro_ok' }],
+        [{ text: '🇮🇹 Ломбардія (Мілан)', callbackData: 'cb_gastro_no' }, { text: '🇳🇱 Амстердам', callbackData: 'cb_gastro_no' }],
+        [{ text: '🔙 Меню ігор', callbackData: 'cb_games' }]
+      ];
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
+    if (data === 'cb_gastro_ok' || data === 'cb_gastro_no') {
+      const ok = data === 'cb_gastro_ok';
+      const text =
+        (ok ? `🍽 <b>Смачно і правильно! Ви справжній гурман!</b> 🎉\n\n` : `🥐 <b>Правильна відповідь — Ельзас (Страсбург та Кольмар)!</b>\n\n`) +
+        `У нашому турі «Ельзас + Страсбург» (80€) ми показуємо автентичні таверни Winstub, де готують найкращий Тарт Фламбе без туристичних черг!`;
+      const keyboard: InlineBtn[][] = [
+        [{ text: '🗺 Подивитися тур в Ельзас (80€)', callbackData: 'cb_trip_alsace_strasbourg' }],
+        [{ text: '🔙 Меню ігор', callbackData: 'cb_games' }]
+      ];
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
+    if (data === 'cb_game_price') {
+      const text =
+        `💶 <b>Гра «Інтуїція Мандрівника: Цифри та рекорди»</b>\n\n` +
+        `Скільки водоспадів спадає з крутих скель в одній лише швейцарській долині <b>Лаутербруннен</b>, яку ми відвідуємо в нашому альпійському комбо-турі?`;
+      const keyboard: InlineBtn[][] = [
+        [{ text: '🌊 Рівно 72 водоспади', callbackData: 'cb_price_ok' }],
+        [{ text: '🌊 12 водоспадів', callbackData: 'cb_price_no' }, { text: '🌊 Понад 250 водоспадів', callbackData: 'cb_price_no' }],
+        [{ text: '🔙 Меню ігор', callbackData: 'cb_games' }]
+      ];
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
+    if (data === 'cb_price_ok' || data === 'cb_price_no') {
+      const ok = data === 'cb_price_ok';
+      const text =
+        (ok ? `🎯 <b>Точно в ціль! Ваша інтуїція на висоті!</b>\n\n` : `📊 <b>Точна відповідь — рівно 72 водоспади!</b>\n\n`) +
+        `Найвідоміший із них — <b>Штауббахський водоспад</b> заввишки майже 300 метрів! Ми гуляємо цією долиною 3 години в турі «Ааре + Лаутербруннен + Берн» (120€).`;
+      const keyboard: InlineBtn[][] = [
+        [{ text: '🗺 Тур у Лаутербруннен (120€)', callbackData: 'cb_trip_swiss_aare_bern' }],
+        [{ text: '🔙 Меню ігор', callbackData: 'cb_games' }]
+      ];
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
+    if (data === 'cb_game_match') {
+      const text =
+        `🎒 <b>Тест: Який ідеальний тур SVOI підходить саме вам?</b> ✨\n\n` +
+        `Оберіть, який формат вихідного дня приносить вам найбільше задоволення:`;
+      const keyboard: InlineBtn[][] = [
+        [{ text: '🏔 Гори, водоспади та альпійська природа', callbackData: 'cb_match_alps' }],
+        [{ text: '🥐 Романтика, світові столиці та круїзи', callbackData: 'cb_match_romance' }],
+        [{ text: '🏰 Середньовічні замки, шоколад та затишок', callbackData: 'cb_match_castles' }],
+        [{ text: '🌊 Море, пальми та релакс на 2–3 дні', callbackData: 'cb_match_sea' }],
+        [{ text: '🔙 Меню ігор', callbackData: 'cb_games' }]
+      ];
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
+    if (data.startsWith('cb_match_')) {
+      const style = data.replace('cb_match_', '');
+      const map: Record<string, string> = {
+        alps: `🏔 <b>Ваш ідеальний вибір: Швейцарські Альпи або Монблан!</b>\n\n• <b>Ущелина Ааре + Лаутербруннен + Берн (120€)</b>\n• <b>Шамоні — Монблан на 2 дні (260€)</b>`,
+        romance: `🥐 <b>Ваш ідеальний вибір: Париж або Етрета + Париж!</b>\n\n• <b>Париж: Версаль + круїз на яхті (120€)</b>\n• <b>Скелі Етрета + вечірній Париж (140€)</b>`,
+        castles: `🏰 <b>Ваш ідеальний вибір: Брюгге, Ельзас або Нойшванштайн!</b>\n\n• <b>Казковий Брюгге (110€)</b>\n• <b>Ельзас + Страсбург (80€)</b>\n• <b>Замок Нойшванштайн (120€)</b>`,
+        sea: `🌊 <b>Ваш ідеальний вибір: Італія або Лазурове узбережжя!</b>\n\n• <b>Озеро Комо + Мілан + Лугано на 2 дні (260€)</b>\n• <b>Лазурове узбережжя: Монако, Ніцца, Канни на 3 дні (440€)</b>`
+      };
+      const text = `${map[style] || map.alps}\n\n🎁 <b>Бонус за проходження тесту:</b> безкоштовна фіксація місця в салоні за промокодом <code>MATCH-SVOI</code>!`;
+      const keyboard: InlineBtn[][] = [
+        [{ text: '💺 Забронювати місце', callbackData: 'cb_book' }],
+        [{ text: '🔙 Меню ігор', callbackData: 'cb_games' }]
+      ];
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
+    if (data === 'cb_game_wheel') {
+      const prizes = [
+        { desc: '💺 Безкоштовний вибір будь-якого місця в 1-му або 2-му ряду (економія 5€)', code: 'WHEEL-SEAT5' },
+        { desc: '☕ Кава та круасан на панорамній зупинці в подарунок від клубу', code: 'WHEEL-COFFEE' },
+        { desc: '💎 Знижка -10€ на будь-який дво- або триденний тур (Комо, Шамоні, Ніцца)', code: 'WHEEL-10EUR' },
+        { desc: '🌟 VIP-статус «Пріоритетна посадка» + місце біля панорамного вікна', code: 'WHEEL-VIP' }
+      ];
+      const won = prizes[Math.floor(Math.random() * prizes.length)];
+      const text =
+        `🎰 <b>КОЛЕСО ФОРТУНИ SVOI ЗУПИНИЛОСЯ!</b> ✨🎉\n\n` +
+        `🎁 <b>Ваш виграш:</b>\n${won.desc}!\n\n` +
+        `🔑 Персональний промокод: <code>${won.code}</code>\n` +
+        `<i>Вкажіть цей код менеджеру @SVOI_travel_admin під час бронювання!</i>`;
+      const keyboard: InlineBtn[][] = [
+        [{ text: '🎰 Крутити ще раз', callbackData: 'cb_game_wheel' }],
+        [{ text: '💺 Використати бонус і забронювати', callbackData: 'cb_book' }],
+        [{ text: '🔙 Меню ігор', callbackData: 'cb_games' }]
+      ];
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
     if (data === 'cb_game_group_info') {
       const text = 
-        `📢 <b>Розіграші та вікторини у групі Telegram!</b> 🎟✨\n\n` +
+        `📢 <b>Розіграші та вікторини у групі та каналі Telegram!</b> 🎟✨\n\n` +
         `<b>Чи може бот проводити вікторини у групі?</b>\n` +
         `👉 <b>ТАК!</b> Бот публікує вікторини через механізм <code>Telegram Quiz</code> із конфеті при правильній відповіді.\n\n` +
         `🔥 <b>Розіграші квитків:</b>\n` +
-        `Бот публікує допис із кнопкою участі та в призначений час автоматично обирає випадкового переможця серед підписників групи!\n\n` +
+        `Бот публікує допис із кнопкою участі та в призначений час автоматично обирає випадкового переможця серед підписників!\n\n` +
         `Долучайтеся до нашої групи мандрівників:`;
 
       const keyboard: InlineBtn[][] = [

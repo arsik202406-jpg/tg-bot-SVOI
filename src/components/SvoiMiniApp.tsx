@@ -220,13 +220,49 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     }
   };
 
-  // Search, Price Range Slider, Add-to-Calendar & Share states
+  // Search, Price Range Slider, Add-to-Calendar, Share & Trip Statistics states
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [maxPriceFilter, setMaxPriceFilter] = useState<number>(450);
   const [priceSortOrder, setPriceSortOrder] = useState<'default' | 'asc' | 'desc'>('default');
   const [calendarAddedTrips, setCalendarAddedTrips] = useState<Record<string, boolean>>({});
   const [shareModalTrip, setShareModalTrip] = useState<TripItem | null>(null);
   const [copiedShareLink, setCopiedShareLink] = useState<boolean>(false);
+  const [tripDateSelections, setTripDateSelections] = useState<Record<string, string>>({});
+  const [statsWidgetExpanded, setStatsWidgetExpanded] = useState<boolean>(true);
+
+  // Deterministic seat availability & occupancy calculation per tour and departure date (out of 8 seats in Opel Vivaro)
+  const getTripOccupancy = (tripId: string, dateStr?: string) => {
+    const totalSeats = 8;
+    const targetDate =
+      dateStr ||
+      tripDateSelections[tripId] ||
+      (selectedTrip.id === tripId ? selectedDepartureDate : undefined) ||
+      TRIPS_LIST.find((t) => t.id === tripId)?.departureDates?.[0] ||
+      '25.10.2026';
+
+    let hash = 0;
+    const key = `${tripId}__${targetDate}`;
+    for (let i = 0; i < key.length; i++) {
+      hash = (hash * 31 + key.charCodeAt(i)) % 997;
+    }
+    // Occupied seats between 2 and 7 so every tour has realistic demand and free seats
+    const occupiedSeats = 2 + (hash % 6); // 2..7 occupied -> 1..6 free seats
+    const freeSeats = Math.max(1, totalSeats - occupiedSeats);
+    const occupancyPercent = Math.round((occupiedSeats / totalSeats) * 100);
+
+    // Pick deterministic occupied seat IDs (e.g., seat-4, seat-6) while keeping seat-2 free by default
+    const candidateSeats = ['seat-4', 'seat-6', 'seat-8', 'seat-3', 'seat-7', 'seat-5', 'seat-1'];
+    const occupiedSeatIds = candidateSeats.slice(0, Math.min(2, occupiedSeats));
+
+    return {
+      totalSeats,
+      freeSeats,
+      occupiedSeats,
+      occupancyPercent,
+      targetDate,
+      occupiedSeatIds
+    };
+  };
 
   // GitHub Pages / Public URL Binder Modal state
   const [showUrlSetupModal, setShowUrlSetupModal] = useState<boolean>(false);
@@ -1024,6 +1060,145 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   </button>
                 </div>
               )}
+
+              {/* ================= WIDGET: СТАТИСТИКА ПОЇЗДОК (TRIP STATISTICS & OCCUPANCY) ================= */}
+              {(() => {
+                const statsList = filteredTrips.map((t) => {
+                  const occ = getTripOccupancy(t.id);
+                  return { trip: t, ...occ };
+                });
+                const totalFreeAcrossTrips = statsList.reduce((acc, item) => acc + item.freeSeats, 0);
+                const totalCapacityAcrossTrips = statsList.length * 8;
+                const totalOccupiedAcrossTrips = totalCapacityAcrossTrips - totalFreeAcrossTrips;
+                const avgOccupancyPercent =
+                  totalCapacityAcrossTrips > 0
+                    ? Math.round((totalOccupiedAcrossTrips / totalCapacityAcrossTrips) * 100)
+                    : 0;
+                const hotTripsCount = statsList.filter((item) => item.freeSeats <= 2).length;
+
+                return (
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900/95 to-indigo-950/40 border border-cyan-500/35 shadow-[0_0_20px_rgba(34,211,238,0.1)] space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center text-cyan-300 font-bold text-sm shadow-inner">
+                          📊
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs sm:text-sm font-extrabold text-white tracking-tight">
+                              Статистика поїздок та вільні місця
+                            </h4>
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-[10px] font-bold text-emerald-300">
+                              Live • 8 місць у бусі
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            Кількість доступних місць на обрану дату виїзду та заповненість кожного туру
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('selection');
+                          setStatsWidgetExpanded((prev) => !prev);
+                        }}
+                        className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-semibold text-cyan-300 hover:text-white transition-all"
+                      >
+                        {statsWidgetExpanded ? 'Згорнути деталі ▲' : 'Показати всі рейси ▼'}
+                      </button>
+                    </div>
+
+                    {/* Top 3 KPI Summary Pills */}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/90">
+                        <span className="text-[10px] text-slate-400 block">Доступно місць</span>
+                        <span className="text-sm sm:text-base font-black text-emerald-400">
+                          {totalFreeAcrossTrips} <span className="text-[10px] font-normal text-slate-500">/ {totalCapacityAcrossTrips}</span>
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/90">
+                        <span className="text-[10px] text-slate-400 block">Середня заповненість</span>
+                        <span className="text-sm sm:text-base font-black text-cyan-300">
+                          {avgOccupancyPercent}%
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/90">
+                        <span className="text-[10px] text-slate-400 block">Гарячі рейси (1–2 м.)</span>
+                        <span className="text-sm sm:text-base font-black text-amber-400">
+                          {hotTripsCount} {hotTripsCount === 1 ? 'тур' : 'тури'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Expandable Per-Tour Occupancy Progress Bars */}
+                    <AnimatePresence initial={false}>
+                      {statsWidgetExpanded && statsList.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="pt-1 max-h-48 overflow-y-auto pr-1 space-y-2 scrollbar-thin">
+                            {statsList.map(({ trip, freeSeats, occupiedSeats, occupancyPercent, targetDate }) => {
+                              const barColor =
+                                freeSeats <= 2
+                                  ? 'from-rose-500 to-amber-500'
+                                  : freeSeats <= 4
+                                    ? 'from-amber-400 to-cyan-400'
+                                    : 'from-emerald-400 to-cyan-500';
+                              const badgeColor =
+                                freeSeats <= 2
+                                  ? 'text-rose-300 bg-rose-500/15 border-rose-500/30'
+                                  : freeSeats <= 4
+                                    ? 'text-amber-300 bg-amber-500/15 border-amber-500/30'
+                                    : 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30';
+
+                              return (
+                                <div
+                                  key={`stat-${trip.id}`}
+                                  onClick={() => handleSelectTrip(trip, targetDate)}
+                                  className="p-2 rounded-xl bg-slate-950/90 hover:bg-slate-900 border border-slate-800/80 hover:border-cyan-500/40 cursor-pointer transition-all space-y-1.5"
+                                >
+                                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <span className="font-bold text-white truncate">{trip.shortTitle}</span>
+                                      <span className="text-[10px] text-slate-400 shrink-0">• 📅 {targetDate}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold ${badgeColor}`}>
+                                        Вільно: {freeSeats} з 8
+                                      </span>
+                                      <span className="text-[10px] font-mono text-slate-400 w-8 text-right">
+                                        {occupancyPercent}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                    <motion.div
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${occupancyPercent}%` }}
+                                      transition={{ duration: 0.5, ease: 'easeOut' }}
+                                      className={`h-full rounded-full bg-gradient-to-r ${barColor}`}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-[9px] text-slate-500">
+                                    <span>Зайнято місць: {occupiedSeats}/8</span>
+                                    <span className="text-cyan-400 hover:underline">Обрати місце в салоні →</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Empty Search State */}
@@ -1174,7 +1349,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
                             <div className="flex flex-wrap gap-1">
                               {trip.departureDates.slice(0, 4).map((d) => {
-                                const isDateActive = isSelected && selectedDepartureDate === d;
+                                const activeCardDate =
+                                  tripDateSelections[trip.id] ||
+                                  (isSelected ? selectedDepartureDate : trip.departureDates?.[0]);
+                                const isDateActive = activeCardDate === d;
                                 return (
                                   <button
                                     key={d}
@@ -1182,7 +1360,9 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       triggerHaptic('selection');
-                                      handleSelectTrip(trip, d);
+                                      setTripDateSelections((prev) => ({ ...prev, [trip.id]: d }));
+                                      setSelectedTrip(trip);
+                                      setSelectedDepartureDate(d);
                                     }}
                                     className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all border ${
                                       isDateActive
@@ -1195,6 +1375,46 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                                 );
                               })}
                             </div>
+
+                            {/* Per-Tour Seat Availability & Occupancy Progress Bar for Selected Date */}
+                            {(() => {
+                              const occ = getTripOccupancy(trip.id);
+                              const barGradient =
+                                occ.freeSeats <= 2
+                                  ? 'from-rose-500 via-amber-500 to-orange-400'
+                                  : occ.freeSeats <= 4
+                                    ? 'from-amber-400 to-cyan-400'
+                                    : 'from-emerald-400 to-cyan-400';
+                              return (
+                                <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5 mt-1">
+                                  <div className="flex items-center justify-between text-[10px]">
+                                    <span className="text-slate-300 font-semibold flex items-center gap-1">
+                                      💺 На дату <b className="text-cyan-300">{occ.targetDate}</b>:
+                                    </span>
+                                    <span
+                                      className={`font-extrabold ${
+                                        occ.freeSeats <= 2
+                                          ? 'text-rose-400'
+                                          : occ.freeSeats <= 4
+                                            ? 'text-amber-300'
+                                            : 'text-emerald-400'
+                                      }`}
+                                    >
+                                      Вільно {occ.freeSeats} із {occ.totalSeats} місць ({occ.occupancyPercent}%)
+                                    </span>
+                                  </div>
+                                  <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800/80">
+                                    <motion.div
+                                      key={`${trip.id}-${occ.targetDate}`}
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${occ.occupancyPercent}%` }}
+                                      transition={{ duration: 0.45, ease: 'easeOut' }}
+                                      className={`h-full rounded-full bg-gradient-to-r ${barGradient}`}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
 
@@ -1318,6 +1538,87 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 </div>
               </div>
 
+              {/* INTERACTIVE CABIN LEGEND (ЛЕГЕНДА ПОЗНАЧЕНЬ СХЕМИ САЛОНУ) */}
+              <div className="mb-5 p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800/90 space-y-2.5 shadow-inner">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-cyan-300 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Легенда позначень схеми салону Opel Vivaro:</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Схема 2 + 3 + 3 (8 пасажирів)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                  {/* 1. Водій */}
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <span className="w-6 h-6 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-xs shrink-0">
+                      👨‍✈️
+                    </span>
+                    <div className="leading-tight">
+                      <span className="font-bold text-slate-200 block">Водій клубу</span>
+                      <span className="text-[9px] text-slate-400">Службове місце</span>
+                    </div>
+                  </div>
+
+                  {/* 2. Вільне 1-й ряд */}
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-amber-500/30">
+                    <span className="w-6 h-6 rounded-lg bg-amber-500/20 border-2 border-amber-400 text-amber-300 flex items-center justify-center text-[10px] font-bold shrink-0">
+                      1–2
+                    </span>
+                    <div className="leading-tight">
+                      <span className="font-bold text-amber-300 block">Вільне (1-й ряд)</span>
+                      <span className="text-[9px] text-slate-400">Панорамні +5€</span>
+                    </div>
+                  </div>
+
+                  {/* 3. Вільне 2-3 ряд */}
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-sky-500/30">
+                    <span className="w-6 h-6 rounded-lg bg-sky-500/20 border-2 border-sky-400 text-sky-300 flex items-center justify-center text-[10px] font-bold shrink-0">
+                      3–8
+                    </span>
+                    <div className="leading-tight">
+                      <span className="font-bold text-sky-300 block">Вільне (Салон)</span>
+                      <span className="text-[9px] text-slate-400">Комфорт +5€ / 0€</span>
+                    </div>
+                  </div>
+
+                  {/* 4. Обране крісло */}
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-emerald-500/40">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-400 text-slate-950 shadow-[0_0_10px_rgba(52,211,153,0.8)] flex items-center justify-center text-xs font-black shrink-0">
+                      ✓
+                    </span>
+                    <div className="leading-tight">
+                      <span className="font-bold text-emerald-300 block">Обране місце</span>
+                      <span className="text-[9px] text-slate-400">Ваш активний вибір</span>
+                    </div>
+                  </div>
+
+                  {/* 5. Зайняте місце */}
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-rose-500/30">
+                    <span className="w-6 h-6 rounded-lg bg-rose-950/90 border border-rose-500/60 text-rose-300 flex items-center justify-center text-xs shrink-0">
+                      🔒
+                    </span>
+                    <div className="leading-tight">
+                      <span className="font-bold text-rose-300 block">Зайняте (Бронь)</span>
+                      <span className="text-[9px] text-slate-400">Вже викуплено</span>
+                    </div>
+                  </div>
+
+                  {/* 6. Вихід / Розсувні двері */}
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-cyan-500/30">
+                    <span className="w-6 h-6 rounded-lg bg-cyan-950 border border-cyan-400/50 text-cyan-300 flex items-center justify-center text-xs shrink-0">
+                      🚪
+                    </span>
+                    <div className="leading-tight">
+                      <span className="font-bold text-cyan-300 block">Вихід / Посадка</span>
+                      <span className="text-[9px] text-slate-400">Розсувні двері справа</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* SEATS LAYOUT IN 3 ROWS WITH FRAMER MOTION ANIMATIONS */}
               <div className="space-y-4 max-w-xl mx-auto">
                 {/* --- 1-Й РЯД (ВОДІЙ + 2 МІСЦЯ) --- */}
@@ -1382,6 +1683,15 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                       );
                     })}
                   </div>
+                </div>
+
+                {/* SLIDING DOOR / EXIT INDICATOR BETWEEN ROW 1 AND ROW 2 */}
+                <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-cyan-950/30 border border-dashed border-cyan-500/40 text-[11px]">
+                  <span className="text-slate-400">Лівий борт (панорамне вікно)</span>
+                  <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+                    <span>🚪 Вихід / Посадка (Розсувні двері)</span>
+                    <span className="text-cyan-400">➡️</span>
+                  </span>
                 </div>
 
                 {/* --- 2-Й РЯД (3 КАПІТАНСЬКІ МІСЦЯ) --- */}

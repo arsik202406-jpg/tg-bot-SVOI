@@ -17,25 +17,22 @@ def get_main_menu_keyboard(user_id: int | None = None) -> InlineKeyboardMarkup:
 
     keyboard = [
         [
-            InlineKeyboardButton(
-                text="🌌 SVOI Mini App (3D Салон & 14 турів) ✨",
-                web_app=WebAppInfo(url=settings.MINI_APP_URL)
-            )
+            InlineKeyboardButton(text="💺 ЗАБРОНЮВАТИ МІСЦЕ", callback_data="cb_book")
         ],
         [
-            InlineKeyboardButton(text="🔵 🗺 Напрямки та дати", callback_data="cb_trips"),
-            InlineKeyboardButton(text="🟢 ⚡️ РЕЗЕРВ МІСЦЯ", callback_data="cb_book")
+            InlineKeyboardButton(text="🗺 Напрямки та дати", callback_data="cb_trips"),
+            InlineKeyboardButton(text="⭐ Відгуки туристів", callback_data="cb_reviews")
         ],
         [
-            InlineKeyboardButton(text="🟠 ⭐ Відгуки туристів", callback_data="cb_reviews"),
-            InlineKeyboardButton(text="🔷 ❓ Часті питання (FAQ)", callback_data="cb_faq")
+            InlineKeyboardButton(text="❓ Часті питання (FAQ)", callback_data="cb_faq"),
+            InlineKeyboardButton(text="🤝 Стати партнером клубу", callback_data="cb_partner")
         ],
         [
-            InlineKeyboardButton(text="🟡 🤝 Стати партнером клубу", callback_data="cb_partner")
+            InlineKeyboardButton(text="🎮 Ігри та вікторини", callback_data="cb_games"),
+            InlineKeyboardButton(text="📢 Наш канал", url=settings.CHANNEL_URL)
         ],
         [
-            InlineKeyboardButton(text="🟣 💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url=manager_url),
-            InlineKeyboardButton(text="💎 📢 НАШ КАНАЛ", url=settings.CHANNEL_URL)
+            InlineKeyboardButton(text="💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url=manager_url)
         ]
     ]
 
@@ -209,16 +206,26 @@ def get_custom_trip_keyboard() -> InlineKeyboardMarkup:
     )
 
 def get_games_keyboard() -> InlineKeyboardMarkup:
-    """Клавіатура інтерактивних ігор та вікторин"""
+    """Клавіатура інтерактивних ігор та вікторин (розширена колекція)"""
     keyboard = [
         [
-            InlineKeyboardButton(text="🕵️ Гра «Гео-Детектив»", callback_data="cb_game_geo")
+            InlineKeyboardButton(text="🕵️ Гра «Гео-Детектив»", callback_data="cb_game_geo"),
+            InlineKeyboardButton(text="🧠 «Правда чи Неправда»", callback_data="cb_game_quiz")
         ],
         [
-            InlineKeyboardButton(text="🧠 Вікторина «Правда чи Неправда»", callback_data="cb_game_quiz")
+            InlineKeyboardButton(text="🍽 Гастро-Квіз «Смаки Європи»", callback_data="cb_game_gastro"),
+            InlineKeyboardButton(text="💶 Інтуїція: Цифри та рекорди", callback_data="cb_game_price")
         ],
         [
-            InlineKeyboardButton(text="🔙 Назад до FAQ", callback_data="cb_faq")
+            InlineKeyboardButton(text="🎒 Тест: Підбір ідеального туру", callback_data="cb_game_match"),
+            InlineKeyboardButton(text="🎰 Колесо Фортуни SVOI", callback_data="cb_game_wheel")
+        ],
+        [
+            InlineKeyboardButton(text="🎁 Розіграші квитків у каналі/групі", callback_data="cb_game_group_info")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад до FAQ", callback_data="cb_faq"),
+            InlineKeyboardButton(text="🏠 Головне меню", callback_data="cb_back")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
