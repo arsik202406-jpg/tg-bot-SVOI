@@ -12,6 +12,16 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Enable iframe embedding across AI Studio preview, Telegram WebApps, mobile & desktop
+  app.use((_req, res, next) => {
+    res.removeHeader('X-Frame-Options');
+    res.removeHeader('Content-Security-Policy');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    next();
+  });
+
   // API endpoint to verify Telegram Bot token directly
   app.post('/api/telegram/verify', async (req, res) => {
     const { token } = req.body;

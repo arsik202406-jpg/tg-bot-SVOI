@@ -1,4 +1,4 @@
-import { TripItem } from '../types';
+import { TripItem, ReviewItem } from '../types';
 
 export const TRIPS_LIST: TripItem[] = [
   {
@@ -12,7 +12,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Версальський палац', 'Круїз на яхті по Сені', 'Ейфелева вежа', 'Єлисейські поля'],
     description: 'Королівський Версаль, годинний круїз на яхті річкою Сена з аудіогідом, панорама Ейфелевої вежі, Лувр (ззовні) та вільний час на французьку каву та круасани.',
-    pickupSaarbruecken: '06:00 Hbf'
+    pickupSaarbruecken: '06:00',
+    category: 'weekend',
+    departureDates: ['25.10.2026 (Нд)', '01.11.2026 (Нд)', '08.11.2026 (Нд)', '15.11.2026 (Нд)', '22.11.2026 (Нд)']
   },
   {
     id: 'etretat_paris',
@@ -25,7 +27,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1589802829985-817e51171b92?auto=format&fit=crop&w=1200&q=80',
     highlights: ['5 годин на скелях Етрета', 'Нормандські устриці', '2–3 години вечірній Париж', 'Ейфелева вежа у вогнях'],
     description: 'Ідеальний комбінований тур в активному темпі: 5 годин на алебастрових скелях та пляжі Етрета (Нормандія) + 2–3 години яскравої вечірньої прогулянки сяючим нічним Парижем.',
-    pickupSaarbruecken: '05:30 Hbf'
+    pickupSaarbruecken: '05:30',
+    category: 'combo',
+    departureDates: ['24.10.2026 (Сб)', '31.10.2026 (Сб)', '07.11.2026 (Сб)', '21.11.2026 (Сб)']
   },
   {
     id: 'amsterdam',
@@ -38,7 +42,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1512470876302-972faa2aa9a4?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Канали ЮНЕСКО', 'Площа Дам', 'Квітковий ринок', 'Автентичні сироварні'],
     description: 'Круїз на човні каналами Прінсенграхт, площа Дам, квітковий базар Bloemenmarkt, дегустація традиційного голландського оселедця та пряникові будинки.',
-    pickupSaarbruecken: '05:30 Hbf'
+    pickupSaarbruecken: '05:30',
+    category: 'weekend',
+    departureDates: ['24.10.2026 (Сб)', '31.10.2026 (Сб)', '14.11.2026 (Сб)', '28.11.2026 (Сб)']
   },
   {
     id: 'bruges',
@@ -51,7 +57,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?auto=format&fit=crop&w=1200&q=80',
     highlights: ['Озеро Кохання', 'Вежа Белфорт', 'Бельгійський шоколад', 'Крафтове пиво'],
     description: 'Ідеальний розмірений тур для спокійних прогулянок: романтичне Озеро Кохання з лебедями, бруковані мости, 6–7 годин вільного часу на вафлі, шоколад і затишні тераси.',
-    pickupSaarbruecken: '06:00 Hbf'
+    pickupSaarbruecken: '06:00',
+    category: 'relax',
+    departureDates: ['25.10.2026 (Нд)', '08.11.2026 (Нд)', '22.11.2026 (Нд)']
   },
   {
     id: 'liechtenstein',
@@ -64,7 +72,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Князівство Ліхтенштейн', 'Замок Вадуц', 'Австрійський Фельдкірх', 'Швейцарські Альпи'],
     description: 'Унікальна експрес-подорож: княжий замок Вадуц, пам\'ятний штамп у паспорт, фортеця Шаттенбург в Австрії та захоплюючі швейцарські гірські перевали.',
-    pickupSaarbruecken: '06:00 Hbf'
+    pickupSaarbruecken: '06:00',
+    category: 'express',
+    departureDates: ['25.10.2026 (Нд)', '08.11.2026 (Нд)', '22.11.2026 (Нд)']
   },
   {
     id: 'neuschwanstein',
@@ -77,7 +87,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1534351590666-13e3e96b5017?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Замок короля Людвіга II', 'Міст Марієнбрюке', 'Озеро Альпзее', 'Баварські Альпи'],
     description: 'Казковий замок серед засніжених скель, що послужив прообразом замку сплячої красуні Волта Діснея, кришталеве озеро та баварські кренделі.',
-    pickupSaarbruecken: '06:00 Hbf'
+    pickupSaarbruecken: '06:00',
+    category: 'relax',
+    departureDates: ['31.10.2026 (Сб)', '14.11.2026 (Сб)', '28.11.2026 (Сб)']
   },
   {
     id: 'cote_dazur',
@@ -90,7 +102,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Англійська набережна', 'Монако & Казино Монте-Карло', 'Каннський Палац', 'Готель включений'],
     description: 'Преміальна триденна подорож на Лазурове узбережжя: Ніцца, прогулянка трасою Формули-1 у Монако, набережна Круазет у Каннах, проживання в готелі.',
-    pickupSaarbruecken: '05:00 Hbf'
+    pickupSaarbruecken: '05:00',
+    category: 'weekend',
+    departureDates: ['30.10 - 01.11.2026', '20.11 - 22.11.2026', '11.12 - 13.12.2026']
   },
   {
     id: 'mont_saint_michel',
@@ -103,7 +117,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1563285372-f21724e3856d?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Абатство VIII століття на скелі', 'Місто корсарів Сен-Мало', 'Устриці Канкаля', 'Атлантичний океан'],
     description: 'Острів-фортеця серед найпотужніших океанських припливів, старовинне абатство, гранітні стіни Сен-Мало та найсвіжіші атлантичні устриці прямо на березі.',
-    pickupSaarbruecken: '05:00 Hbf'
+    pickupSaarbruecken: '05:00',
+    category: 'weekend',
+    departureDates: ['07.11 - 08.11.2026', '21.11 - 22.11.2026']
   },
   {
     id: 'swiss_rhine_zurich',
@@ -116,7 +132,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Рейнський водоспад', 'Цюриське озеро', 'Міст Капельбрюкке Люцерн', 'Швейцарський шоколад'],
     description: 'Грандіозний бурхливий Рейнський водоспад, фінансова столиця Цюрих із собором Гроссмюнстер та казковий середньовічний Люцерн з озером.',
-    pickupSaarbruecken: '06:00 Hbf'
+    pickupSaarbruecken: '06:00',
+    category: 'express',
+    departureDates: ['25.10.2026 (Нд)', '01.11.2026 (Нд)', '15.11.2026 (Нд)', '29.11.2026 (Нд)']
   },
   {
     id: 'swiss_aare_bern',
@@ -129,7 +147,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1573843981267-be1999ff37cd?auto=format&fit=crop&w=1200&q=80',
     highlights: ['3 год Лаутербруннен (водоспади)', '2 год ущелина Ааре', '2 год старий Берн ЮНЕСКО', 'Альпійські види'],
     description: 'Комбінований тур в активному темпі: 3 години в казковій долині Лаутербруннен біля водоспаду Штауббах, 2 години в бірюзовому льодовиковому каньйоні Аарешлюхт і 2 години у столичному Берні.',
-    pickupSaarbruecken: '06:00 Hbf'
+    pickupSaarbruecken: '06:00',
+    category: 'combo',
+    departureDates: ['24.10.2026 (Сб)', '07.11.2026 (Сб)', '21.11.2026 (Сб)']
   },
   {
     id: 'brussels',
@@ -142,7 +162,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1572953109213-3be62398eb95?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Золота площа Гран-Плас', 'Пісяючий хлопчик', 'Атоміум', 'Гарячі бельгійські вафлі'],
     description: 'Чудова площа Гран-Плас у позолоті, футуристичний Атоміум, вулички коміксів та гастрономічне задоволення від свіжої випічки та шоколаду.',
-    pickupSaarbruecken: '06:30 Hbf'
+    pickupSaarbruecken: '06:30',
+    category: 'weekend',
+    departureDates: ['25.10.2026 (Нд)', '14.11.2026 (Сб)', '28.11.2026 (Сб)']
   },
   {
     id: 'prague',
@@ -155,7 +177,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Карлів міст', 'Празький Град', 'Астрономічний годинник', 'Чеські трдельники'],
     description: 'Магічна Прага: величний собор Святого Віта, легендарний Карлів міст, старовинна площа з курантами Орлой та ситна чеська кухня.',
-    pickupSaarbruecken: '05:00 Hbf'
+    pickupSaarbruecken: '05:00',
+    category: 'express',
+    departureDates: ['31.10.2026 (Сб)', '21.11.2026 (Сб)', '05.12.2026 (Сб)']
   },
   {
     id: 'alsace_strasbourg',
@@ -168,7 +192,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1589182373726-e4f658ab50f0?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Квартал «Маленька Франція»', 'Страсбурзький собор', 'Тарт фламбе', 'Винна дорога'],
     description: 'Пряникові фахверкові будинки над каналами, рожевий собор Нотр-Дам, аромат свіжого Flammkuchen та знамените ельзаське біле вино.',
-    pickupSaarbruecken: '07:30 Hbf'
+    pickupSaarbruecken: '07:30',
+    category: 'relax',
+    departureDates: ['24.10.2026 (Сб)', '31.10.2026 (Сб)', '07.11.2026 (Сб)', '14.11.2026 (Сб)', '28.11.2026 (Сб)']
   },
   {
     id: 'como_milan',
@@ -181,7 +207,9 @@ export const TRIPS_LIST: TripItem[] = [
     image: 'https://images.unsplash.com/photo-1513584684374-8bab748fbf90?auto=format&fit=crop&w=1000&q=80',
     highlights: ['Озеро Комо та вілли', 'Собор Дуомо Мілан', 'Галерея Віктора Еммануїла', 'Готель включений'],
     description: 'Аристократична романтика озера Комо з катерами та розкішними садами, а наступного дня — шедевральний собор Дуомо в Мілані та італійський шопінг.',
-    pickupSaarbruecken: '05:00 Hbf'
+    pickupSaarbruecken: '05:00',
+    category: 'weekend',
+    departureDates: ['06.11 - 07.11.2026', '20.11 - 21.11.2026', '04.12 - 05.12.2026']
   }
 ];
 
@@ -194,19 +222,19 @@ export interface MeetingStopItem {
 
 export const PICKUP_LOGISTICS = {
   addressPickupAreas: 'Земля Саар (Saarland), Трір (Trier) та Люксембург (Luxembourg)',
-  addressPickupDescription: 'Забираємо всіх прямо за адресою і розвозимо назад також за адресою!',
+  addressPickupDescription: 'Збір усіх пасажирів прямо за адресою і повернення також за адресою (Door-to-Door)!',
   otherLandsRule: 'Можемо забрати і в інших землях — залежить від маршруту (по дорозі чи ні) або якщо тур не одноденний. За наявності від 4-х осіб можемо забрати з інших земель.',
   managerContactText: 'Писати менеджеру для уточнення: можливість підсадки уточнюйте у @SVOI_travel_admin',
   timeNotificationRule: 'Точний час, коли за вами заїдуть, висилається в особистий чат за день увечері перед поїздкою.',
   chatGroupRule: 'Основні питання водієві та щодо поїздки ви зможете поставити у новоствореній одноденній групі для комунікації учасників. Через день група автоматично видаляється.',
-  vehicleTransferText: '🚐 Трансфер: Opel Vivaro комфортне авто з усіма зручностями.'
+  vehicleTransferText: '🚐 Трансфер: Opel Vivaro — комфортабельне авто з усіма зручностями.'
 };
 
 export const MEETING_STOPS: MeetingStopItem[] = [
   { 
     city: 'Саарланд, Трір, Люксембург', 
     condition: 'За адресою пасажира (Door-to-Door)', 
-    rule: 'Забираємо і привозимо назад прямо за вказаною адресою',
+    rule: 'Збір і повернення назад прямо за вказаною адресою',
     badge: 'Основна зона 🏡'
   },
   { 
@@ -252,3 +280,73 @@ export const MEETING_STOPS: MeetingStopItem[] = [
     badge: 'Північні тури'
   }
 ];
+
+export const VERIFIED_REVIEWS: ReviewItem[] = [
+  {
+    id: 'rev-1',
+    author: 'Олена К.',
+    city: 'Саарбрюккен',
+    trip: 'Брюгге (Бельгія)',
+    rating: 5,
+    date: '12.10.2026',
+    text: 'Поїздка в Брюгге перевершила всі очікування! Дуже комфортний салон Opel Vivaro, водій Олександр — справжній профі, зупинки без поспіху. Шоколад, лебеді на каналах — неймовірна атмосфера!',
+    verified: true,
+    highlight: 'Дуже комфортний салон та професійний водій'
+  },
+  {
+    id: 'rev-2',
+    author: 'Михайло та Юлія',
+    city: 'Трір',
+    trip: 'Париж (Версаль + яхта)',
+    rating: 5,
+    date: '05.10.2026',
+    text: 'Париж за 1 день без черг і метушні — це казка! Кораблик по Сені і вечірня сяюча Ейфелева вежа назавжди в серці. Зручно, що забрали прямо біля будинку за адресою.',
+    verified: true,
+    highlight: 'Зручний адресний збір біля будинку'
+  },
+  {
+    id: 'rev-3',
+    author: 'Тетяна В.',
+    city: 'Люксембург',
+    trip: 'Озеро Комо + Мілан',
+    rating: 5,
+    date: '28.09.2026',
+    text: 'Два дні італійського щастя! Вілли Белладжо просто космос. Дуже сподобалося місце біля водія — панорамний огляд просто вражаючий, зоряне небо ввечері створює неймовірний затишок.',
+    verified: true,
+    highlight: 'Панорамний огляд та зоряне небо в авто'
+  },
+  {
+    id: 'rev-4',
+    author: 'Андрій С.',
+    city: 'Хомбург',
+    trip: 'Замок Нойшванштайн',
+    rating: 5,
+    date: '15.09.2026',
+    text: 'Жодного стресу з навігацією, платними автобанами та парковками. Сіли, відпочили, погуляли в Альпах і повернулися додому відпочилими. Без передоплати — дуже чесні умови!',
+    verified: true,
+    highlight: 'Чесні умови без передоплати'
+  },
+  {
+    id: 'rev-5',
+    author: 'Наталія Д.',
+    city: 'Саарланд',
+    trip: 'Страсбург + Кольмар',
+    rating: 5,
+    date: '02.09.2026',
+    text: 'Пряниковий Кольмар закохав з першого погляду. Їхали з донькою, дуже м’який хід авто та свіжий клімат-контроль. Окрема подяка за адресний збір прямо від нашого під’їзду.',
+    verified: true,
+    highlight: 'М’який хід авто та клімат-контроль'
+  },
+  {
+    id: 'rev-6',
+    author: 'Сергій та Вікторія',
+    city: 'Люксембург',
+    trip: 'Амстердам (Нідерланди)',
+    rating: 5,
+    date: '20.08.2026',
+    text: 'Продуманий до дрібниць таймінг: встигли на круїз каналами, на квітковий ринок та скуштували традиційного голландського оселедця. Обов’язково поїдемо ще до Нормандії!',
+    verified: true,
+    highlight: 'Ідеально продуманий таймінг'
+  }
+];
+

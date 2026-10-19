@@ -17,14 +17,16 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  const isTgWebApp = typeof window !== 'undefined' && Boolean(
-    (window as any).Telegram?.WebApp?.initData ||
-    window.location.search.includes('tgWebApp') ||
-    window.location.search.includes('miniapp') ||
-    window.location.hash.includes('tgWebAppData')
+  // Only detect as native Telegram WebApp if there is actual non-empty initData from Telegram,
+  // or Telegram URL parameters / hash (tgWebAppData)
+  const isRealTgWebApp = typeof window !== 'undefined' && Boolean(
+    (typeof (window as any).Telegram?.WebApp?.initData === 'string' && (window as any).Telegram.WebApp.initData.length > 0) ||
+    window.location.hash.includes('tgWebAppData') ||
+    window.location.search.includes('tgWebApp=true')
   );
 
-  const [activeTab, setActiveTab] = useState<AppTab>(isTgWebApp ? 'miniapp' : 'simulator');
+  const [activeTab, setActiveTab] = useState<AppTab>(isRealTgWebApp ? 'miniapp' : 'simulator');
+  const [showFullWebAppOnly, setShowFullWebAppOnly] = useState(isRealTgWebApp);
   const [showCarModal, setShowCarModal] = useState(false);
 
   // Initial demo leads to showcase CRM functionality right away
@@ -69,8 +71,34 @@ export default function App() {
       userName: 'Ольга С.',
       userHandle: '@olga_st',
       userId: 629104819,
-      text: 'Були в турі до Брюгге минулих вихідних. Враження неймовірні! Комфортний салон Opel Vivaro та турбота організаторів зробили дорогу абсолютно непомітною. Хотілося б тур до Норвегії!',
-      timestamp: '15.10.2026, 19:20',
+      tripTitle: 'Брюгге (Бельгія)',
+      meetingPoint: 'За адресою: Саарбрюккен',
+      text: 'Були в турі до Брюгге минулих вихідних. Враження неймовірні! Комфортний салон Opel Vivaro та турбота організаторів зробили дорогу абсолютно непомітною. Хотілося б ще тур до Норвегії!',
+      timestamp: '17.10.2026, 19:20',
+      status: 'confirmed'
+    },
+    {
+      id: 'lead-4',
+      type: 'feedback',
+      userName: 'Максим та Аліна',
+      userHandle: '@max_alina_de',
+      userId: 491820491,
+      tripTitle: 'Париж (Версаль + яхта + Ейфелева вежа)',
+      meetingPoint: 'За адресою: Люксембург',
+      text: 'Дякуємо клубу SVOI за незабутню подорож до Парижа! Особливо цінно, що заїхали за нами прямо до будинку. Салон чистий, зоряне небо ввечері — це щось неймовірне!',
+      timestamp: '18.10.2026, 10:15',
+      status: 'confirmed'
+    },
+    {
+      id: 'lead-5',
+      type: 'feedback',
+      userName: 'Дмитро К.',
+      userHandle: '@dmytro_travel',
+      userId: 382910471,
+      tripTitle: 'Озеро Комо + Мілан',
+      meetingPoint: 'За адресою: Трір',
+      text: 'Прекрасна поїздка на Комо! Комфортний мікроавтобус на 8 місць, дуже тепла компанія своїх і жодного головного болю з парковками в Італії. Вже забронювали наступний виїзд!',
+      timestamp: '18.10.2026, 17:40',
       status: 'confirmed'
     }
   ]);
@@ -86,11 +114,30 @@ export default function App() {
   };
 
   // If opened directly as a Telegram Mini App inside Telegram, render clean full-screen view
-  if (isTgWebApp) {
+  // with a top switcher to access the test preview window anytime
+  if (showFullWebAppOnly) {
     return (
       <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
+        {/* Quick switcher to test preview window */}
+        <div className="bg-slate-950/95 border-b border-slate-800/80 px-3 py-1.5 flex items-center justify-between text-xs sticky top-0 z-50">
+          <div className="flex items-center gap-1.5 text-cyan-300 font-semibold text-[11px]">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span>SVOI Telegram Mini App</span>
+          </div>
+          <button
+            onClick={() => {
+              setShowFullWebAppOnly(false);
+              setActiveTab('simulator');
+            }}
+            className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 hover:text-white border border-blue-500/40 text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm"
+          >
+            <span>📱 Тестове вікно симулятора</span>
+            <ExternalLink className="w-2.5 h-2.5" />
+          </button>
+        </div>
+
         <main className="flex-1 w-full max-w-xl mx-auto">
-          <SvoiMiniApp onNewLead={handleNewLead} />
+          <SvoiMiniApp onNewLead={handleNewLead} leads={leads} />
         </main>
       </div>
     );
@@ -114,6 +161,7 @@ export default function App() {
             <div className="lg:col-span-7 flex flex-col items-center">
               <TelegramSimulator
                 onNewLead={handleNewLead}
+                leads={leads}
                 onOpenCarModal={() => setShowCarModal(true)}
               />
             </div>
@@ -296,7 +344,7 @@ export default function App() {
         {/* MINI APP TAB */}
         {activeTab === 'miniapp' && (
           <div className="py-2">
-            <SvoiMiniApp onNewLead={handleNewLead} />
+            <SvoiMiniApp onNewLead={handleNewLead} leads={leads} />
           </div>
         )}
 

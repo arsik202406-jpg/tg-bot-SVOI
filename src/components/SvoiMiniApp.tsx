@@ -3,15 +3,18 @@ import {
   Sparkles, Armchair, Compass, Clock, MapPin, 
   Check, CheckCircle2, ChevronRight, User, Phone, 
   Send, ExternalLink, ShieldCheck, Zap, Snowflake, 
-  Luggage, Info, Star, Flame, Eye, RefreshCw, X 
+  Luggage, Info, Star, Flame, Eye, RefreshCw, X,
+  Calendar, CalendarDays, Filter, Wrench, Terminal, Copy
 } from 'lucide-react';
 import { TRIPS_LIST } from '../data/tripsData';
 import { TripItem, LeadItem } from '../types';
+import { ReviewsCarousel } from './ReviewsCarousel';
 
 interface SvoiMiniAppProps {
   onNewLead?: (lead: LeadItem) => void;
   onClose?: () => void;
   isEmbedded?: boolean;
+  leads?: LeadItem[];
 }
 
 interface SeatOption {
@@ -30,35 +33,35 @@ const CABIN_SEATS: SeatOption[] = [
   {
     id: 'seat-1',
     name: 'Місце 1 (1-й ряд, центр)',
-    row: '1-й ряд (VIP біля водія)',
+    row: '1-й ряд (біля водія)',
     rowNumber: 1,
     position: 'center',
-    surcharge: 15,
+    surcharge: 5,
     perks: ['Панорамний огляд лобового скла', 'Найбільше місця для ніг', 'USB-C Fast Charge']
   },
   {
     id: 'seat-2',
     name: 'Місце 2 (1-й ряд, вікно)',
-    row: '1-й ряд (VIP біля водія)',
+    row: '1-й ряд (біля водія)',
     rowNumber: 1,
     position: 'window',
-    surcharge: 15,
+    surcharge: 5,
     perks: ['Широкий панорамний вид', 'Окремий вихід', 'Підсклянник та USB-C']
   },
   // 2-й ряд
   {
     id: 'seat-3',
     name: 'Місце 3 (2-й ряд, ліве вікно)',
-    row: '2-й ряд (Капітанські місця)',
+    row: '2-й ряд (Комфортні сидіння)',
     rowNumber: 2,
     position: 'window',
-    surcharge: 10,
+    surcharge: 5,
     perks: ['Окремий підлокітник', 'Індивідуальний дефлектор AC', 'Тоноване вікно']
   },
   {
     id: 'seat-4',
     name: 'Місце 4 (2-й ряд, центр)',
-    row: '2-й ряд (Капітанські місця)',
+    row: '2-й ряд (Комфортні сидіння)',
     rowNumber: 2,
     position: 'center',
     surcharge: 5,
@@ -67,17 +70,17 @@ const CABIN_SEATS: SeatOption[] = [
   {
     id: 'seat-5',
     name: 'Місце 5 (2-й ряд, праве вікно)',
-    row: '2-й ряд (Капітанські місця)',
+    row: '2-й ряд (Комфортні сидіння)',
     rowNumber: 2,
     position: 'window',
-    surcharge: 10,
+    surcharge: 5,
     perks: ['Зручний вихід через зсувні двері', 'Підлокітник', 'USB зарядка']
   },
   // 3-й ряд
   {
     id: 'seat-6',
     name: 'Місце 6 (3-й ряд, ліве вікно)',
-    row: '3-й ряд (Затишний диван)',
+    row: '3-й ряд (Затишний ряд)',
     rowNumber: 3,
     position: 'window',
     surcharge: 5,
@@ -86,7 +89,7 @@ const CABIN_SEATS: SeatOption[] = [
   {
     id: 'seat-7',
     name: 'Місце 7 (3-й ряд, центр)',
-    row: '3-й ряд (Затишний диван)',
+    row: '3-й ряд (Затишний ряд)',
     rowNumber: 3,
     position: 'center',
     surcharge: 0,
@@ -95,7 +98,7 @@ const CABIN_SEATS: SeatOption[] = [
   {
     id: 'seat-8',
     name: 'Місце 8 (3-й ряд, праве вікно)',
-    row: '3-й ряд (Затишний диван)',
+    row: '3-й ряд (Затишний ряд)',
     rowNumber: 3,
     position: 'window',
     surcharge: 5,
@@ -106,31 +109,147 @@ const CABIN_SEATS: SeatOption[] = [
 export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({ 
   onNewLead, 
   onClose,
-  isEmbedded = false 
+  isEmbedded = false,
+  leads = []
 }) => {
   // Navigation within Mini App
   const [activeStep, setActiveStep] = useState<'tours' | 'seats' | 'checkout'>('tours');
   const [selectedTrip, setSelectedTrip] = useState<TripItem>(TRIPS_LIST[0]);
   const [selectedSeat, setSelectedSeat] = useState<SeatOption | null>(CABIN_SEATS[1]); // Default front row window
+  const [selectedDepartureDate, setSelectedDepartureDate] = useState<string>(
+    TRIPS_LIST[0]?.departureDates?.[0] || '25.10.2026 (Нд)'
+  );
   const [filterDuration, setFilterDuration] = useState<'all' | '1day' | 'multiday'>('all');
+  const [filterDateWeekend, setFilterDateWeekend] = useState<string>('all');
+  const [showCalendarModal, setShowCalendarModal] = useState<boolean>(false);
+  const [calendarMonth, setCalendarMonth] = useState<'oct' | 'nov' | 'dec'>('oct');
   const [starlightCeiling, setStarlightCeiling] = useState(true);
 
   // Form states
   const [passengerName, setPassengerName] = useState('Олександр');
   const [passengerHandle, setPassengerHandle] = useState('@alex_traveler');
   const [passengerPhone, setPassengerPhone] = useState('+49 170 1234567');
-  const [pickupCity, setPickupCity] = useState('Саарбрюккен');
+  const [pickupCity, setPickupCity] = useState('Саарланд (за адресою)');
+  const [pickupAddress, setPickupAddress] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // Filtered tours
+  // Developer Mode Simulation States (imitate Telegram initData)
+  const [isDevMode, setIsDevMode] = useState<boolean>(false);
+  const [showDevInspector, setShowDevInspector] = useState<boolean>(false);
+  const [devToast, setDevToast] = useState<string | null>(null);
+  const [copiedInitData, setCopiedInitData] = useState<boolean>(false);
+
+  const handleToggleDevMode = () => {
+    triggerHaptic('medium');
+    if (!isDevMode) {
+      const mockUser = {
+        id: 845015398,
+        first_name: 'Олександр (Dev)',
+        last_name: 'Мандрівник',
+        username: 'alex_traveler_dev',
+        language_code: 'uk',
+        is_premium: true
+      };
+      const nowTs = Math.floor(Date.now() / 1000);
+      const mockInitData = `query_id=AAHl3mDZU00jncjJ52TyGTHm&user=${encodeURIComponent(JSON.stringify(mockUser))}&auth_date=${nowTs}&hash=9f438b17c8d990b7e21a84cd803e1e07b22a61358914b72804c7d0a2046421bb`;
+
+      // Mock Telegram WebApp object in window
+      if (typeof window !== 'undefined') {
+        const win = window as any;
+        win.Telegram = win.Telegram || {};
+        win.Telegram.WebApp = {
+          ...(win.Telegram.WebApp || {}),
+          initData: mockInitData,
+          initDataUnsafe: {
+            query_id: 'AAHl3mDZU00jncjJ52TyGTHm',
+            user: mockUser,
+            auth_date: String(nowTs),
+            hash: '9f438b17c8d990b7e21a84cd803e1e07b22a61358914b72804c7d0a2046421bb'
+          },
+          version: '7.10',
+          platform: 'ios',
+          colorScheme: 'dark',
+          themeParams: {
+            bg_color: '#070b14',
+            text_color: '#ffffff',
+            hint_color: '#708499',
+            link_color: '#22d3ee',
+            button_color: '#0284c7',
+            button_text_color: '#ffffff'
+          },
+          isExpanded: true,
+          viewportHeight: 740,
+          viewportStableHeight: 740,
+          headerColor: '#070b14',
+          backgroundColor: '#070b14',
+          ready: () => console.log('[Dev WebApp] tg.ready() OK'),
+          expand: () => console.log('[Dev WebApp] tg.expand() OK'),
+          close: () => {
+            console.log('[Dev WebApp] tg.close() called');
+            if (onClose) onClose();
+          },
+          sendData: (data: string) => {
+            console.log('[Dev WebApp] tg.sendData() transmitted:', data);
+            setDevToast(`📤 tg.sendData: надіслано в бот ${data.length} байт`);
+            setTimeout(() => setDevToast(null), 4000);
+          },
+          HapticFeedback: {
+            impactOccurred: (style: string) => console.log('[Dev WebApp] Haptic impact:', style),
+            notificationOccurred: (type: string) => console.log('[Dev WebApp] Haptic notification:', type),
+            selectionChanged: () => console.log('[Dev WebApp] Haptic selectionChanged')
+          }
+        };
+      }
+
+      setPassengerName('Олександр (Dev)');
+      setPassengerHandle('@alex_traveler_dev');
+      setPassengerPhone('+49 170 1234567');
+      setPickupAddress('Bahnhofstraße 12, 66111 Saarbrücken');
+      setIsDevMode(true);
+      setShowDevInspector(true);
+      setDevToast('🛠 Режим розробника увімкнено! Імітовано отримання initData з Telegram');
+      setTimeout(() => setDevToast(null), 3500);
+    } else {
+      setIsDevMode(false);
+      setShowDevInspector(false);
+      setDevToast('Режим розробника вимкнено.');
+      setTimeout(() => setDevToast(null), 2500);
+    }
+  };
+
+  // Filtered tours by duration and calendar date
   const filteredTrips = useMemo(() => {
     return TRIPS_LIST.filter(trip => {
-      if (filterDuration === '1day') return trip.duration === '1 день';
-      if (filterDuration === 'multiday') return trip.duration !== '1 день';
+      // Duration filter
+      if (filterDuration === '1day' && trip.duration !== '1 день') return false;
+      if (filterDuration === 'multiday' && trip.duration === '1 день') return false;
+      
+      // Date filter
+      if (filterDateWeekend !== 'all') {
+        const dates = trip.departureDates || [];
+        if (filterDateWeekend === '24-25.10') {
+          if (!dates.some(d => d.includes('24.10') || d.includes('25.10'))) return false;
+        } else if (filterDateWeekend === '31.10-01.11') {
+          if (!dates.some(d => d.includes('31.10') || d.includes('01.11') || d.includes('30.10'))) return false;
+        } else if (filterDateWeekend === '07-08.11') {
+          if (!dates.some(d => d.includes('07.11') || d.includes('08.11') || d.includes('06.11'))) return false;
+        } else if (filterDateWeekend === '14-15.11') {
+          if (!dates.some(d => d.includes('14.11') || d.includes('15.11'))) return false;
+        } else if (filterDateWeekend === '21-22.11') {
+          if (!dates.some(d => d.includes('21.11') || d.includes('22.11') || d.includes('20.11'))) return false;
+        } else if (filterDateWeekend === '28-29.11') {
+          if (!dates.some(d => d.includes('28.11') || d.includes('29.11') || d.includes('27.11'))) return false;
+        } else if (filterDateWeekend === '12.2026' || filterDateWeekend === 'dec.2026') {
+          if (!dates.some(d => d.includes('12.2026') || d.includes('12.'))) return false;
+        } else {
+          // Specific date substring e.g. "24.10" or "01.11"
+          if (!dates.some(d => d.includes(filterDateWeekend))) return false;
+        }
+      }
       return true;
     });
-  }, [filterDuration]);
+  }, [filterDuration, filterDateWeekend]);
 
   // Native Telegram WebApp SDK initialization and auto-detection
   useEffect(() => {
@@ -219,9 +338,14 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     }
   };
 
-  const handleSelectTrip = (trip: TripItem) => {
+  const handleSelectTrip = (trip: TripItem, chosenDate?: string) => {
     triggerHaptic('medium');
     setSelectedTrip(trip);
+    if (chosenDate) {
+      setSelectedDepartureDate(chosenDate);
+    } else if (trip.departureDates && trip.departureDates.length > 0) {
+      setSelectedDepartureDate(trip.departureDates[0]);
+    }
     setActiveStep('seats');
   };
 
@@ -235,13 +359,13 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       id: `lead-mini-${Date.now()}`,
       type: 'booking',
       bookingCode,
-      tripTitle: selectedTrip.title,
+      tripTitle: `${selectedTrip.title} • ${selectedDepartureDate}`,
       duration: selectedTrip.duration,
       seatType: selectedSeat ? selectedSeat.name : 'Вільна посадка (0€)',
       basePrice,
       seatFee: seatSurcharge,
       totalCost: totalPrice,
-      meetingPoint: `За адресою: ${pickupCity}`,
+      meetingPoint: pickupAddress.trim() ? `${pickupCity}: ${pickupAddress.trim()}` : pickupCity,
       userName: passengerName,
       userHandle: passengerHandle.startsWith('@') ? passengerHandle : `@${passengerHandle}`,
       userId: 8450153980,
@@ -258,16 +382,25 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
         const tg = (window as any).Telegram.WebApp;
         triggerHaptic('success');
-        tg.sendData(JSON.stringify({
-          action: 'book_trip',
-          trip: selectedTrip.shortTitle,
-          seat: selectedSeat?.name,
-          total: totalPrice,
-          code: bookingCode
-        }));
+        // Note: sendData only works when WebApp is opened via KeyboardButton.
+        // For inline buttons or menu button, Telegram throws an error if called, so catch safely.
+        if (typeof tg.sendData === 'function') {
+          try {
+            tg.sendData(JSON.stringify({
+              action: 'book_trip',
+              trip: selectedTrip.shortTitle,
+              date: selectedDepartureDate,
+              seat: selectedSeat?.name,
+              total: totalPrice,
+              code: bookingCode
+            }));
+          } catch (innerErr) {
+            console.warn('tg.sendData not allowed in current launch mode (inline/menu button):', innerErr);
+          }
+        }
       }
     } catch (err) {
-      console.log('Telegram WebApp sendData not available in browser mode');
+      console.warn('Telegram WebApp context error caught:', err);
     }
 
     setTimeout(() => {
@@ -278,7 +411,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
   };
 
   return (
-    <div className={`relative w-full ${isEmbedded ? 'max-w-md mx-auto rounded-3xl overflow-hidden' : 'max-w-5xl mx-auto rounded-3xl'} bg-[#070b19] border border-cyan-500/30 shadow-[0_0_50px_rgba(6,182,212,0.15)] text-slate-100 flex flex-col overflow-hidden font-sans select-none`}>
+    <div className={`relative w-full ${isEmbedded ? 'max-w-md mx-auto rounded-2xl sm:rounded-3xl' : 'max-w-5xl mx-auto rounded-2xl sm:rounded-3xl'} bg-[#070b19] border border-cyan-500/30 shadow-[0_0_50px_rgba(6,182,212,0.15)] text-slate-100 flex flex-col h-full max-h-[92vh] sm:max-h-[90vh] overflow-hidden font-sans select-none`}>
       {/* Dynamic Cosmic Stars & Nebula Backdrop */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-cyan-600/15 rounded-full blur-3xl animate-pulse" />
@@ -289,37 +422,51 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       </div>
 
       {/* Top Telegram Mini App Header Bar */}
-      <div className="relative z-10 bg-slate-950/80 backdrop-blur-xl border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+      <div className="relative z-10 bg-slate-950/85 backdrop-blur-xl border-b border-cyan-500/20 px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5">
           <div className="relative">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-600 to-amber-400 p-[1.5px] shadow-lg shadow-cyan-500/30">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-600 to-amber-400 p-[1.5px] shadow-lg shadow-cyan-500/30">
               <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center font-black text-xs text-cyan-300">
                 ✨
               </div>
             </div>
             {starlightCeiling && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-cyan-400 rounded-full animate-ping" />
             )}
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-sm text-white tracking-wide">SVOI Mini App</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+              <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide">SVOI Mini App</span>
+              <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
                 Зоряне небо 🌌
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">VIP салон Opel Vivaro & 14 турів</p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 hidden xs:block">Opel Vivaro & 14 турів Європою</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Developer Mode Simulator Trigger Button */}
+          <button
+            onClick={handleToggleDevMode}
+            className={`px-2.5 sm:px-3 py-1 rounded-xl text-[11px] font-extrabold border transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
+              isDevMode 
+                ? 'bg-amber-500/25 border-amber-400 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.4)] ring-1 ring-amber-400/50' 
+                : 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-500/40 text-amber-300 hover:text-white'
+            }`}
+            title="Імітувати отримання initData від Telegram WebApp SDK"
+          >
+            <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="truncate">{isDevMode ? '🛠 Dev Mode: ON' : '🛠 Запустити в режимі розробника'}</span>
+          </button>
+
           {/* Starlight toggle */}
           <button
             onClick={() => {
               triggerHaptic('soft');
               setStarlightCeiling(!starlightCeiling);
             }}
-            className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5 ${
+            className={`px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5 ${
               starlightCeiling 
                 ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.3)]' 
                 : 'bg-slate-900 border-slate-700 text-slate-400'
@@ -336,30 +483,120 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 triggerHaptic('light');
                 onClose();
               }}
-              className="w-8 h-8 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all shrink-0"
+              title="Закрити Mini App"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           )}
         </div>
       </div>
 
+      {/* Dev Mode Simulated Telegram Status Banner & Inspector */}
+      {isDevMode && (
+        <div className="relative z-20 bg-amber-950/80 border-b border-amber-500/40 px-3 sm:px-4 py-2 text-xs text-amber-200 space-y-1.5 shrink-0 animate-fade-in backdrop-blur-md">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-extrabold text-amber-300 flex items-center gap-1 text-[11px]">
+                <Terminal className="w-3.5 h-3.5" />
+                <span>Telegram WebApp: initData змодельовано</span>
+              </span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-200 border border-amber-500/30 font-mono">
+                @alex_traveler_dev (ID: 845015398)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowDevInspector(!showDevInspector)}
+                className="px-2 py-0.5 rounded-lg bg-amber-900/60 hover:bg-amber-800 text-[10px] text-amber-100 font-semibold border border-amber-500/40 transition-all"
+              >
+                {showDevInspector ? 'Сховати інспектор' : 'Показати JSON initData'}
+              </button>
+              <button
+                onClick={() => {
+                  triggerHaptic('success');
+                  setDevToast('✨ Тестовий Haptic Pulse (success) відтворено!');
+                  setTimeout(() => setDevToast(null), 2500);
+                }}
+                className="px-2 py-0.5 rounded-lg bg-amber-900/40 hover:bg-amber-800 text-[10px] text-amber-200 transition-all"
+                title="Перевірити тактильну вібрацію HapticFeedback"
+              >
+                Тест Haptic
+              </button>
+              <button
+                onClick={handleToggleDevMode}
+                className="w-5 h-5 rounded-md bg-amber-900/80 hover:bg-amber-800 text-amber-300 hover:text-white flex items-center justify-center text-[10px]"
+                title="Вимкнути режим розробника"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Expanded Inspector Panel */}
+          {showDevInspector && (
+            <div className="mt-2 p-2.5 rounded-xl bg-slate-950/90 border border-amber-500/30 text-[11px] font-mono text-slate-300 space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] text-slate-400 pb-1 border-b border-slate-800">
+                <span>Імітований об'єкт window.Telegram.WebApp.initDataUnsafe:</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(
+                      JSON.stringify((window as any).Telegram?.WebApp?.initDataUnsafe || {}, null, 2)
+                    );
+                    setCopiedInitData(true);
+                    setTimeout(() => setCopiedInitData(false), 2000);
+                  }}
+                  className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>{copiedInitData ? 'Скопійовано!' : 'Копіювати JSON'}</span>
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
+                <div>
+                  <span className="text-amber-400">user.first_name:</span> "Олександр (Dev)"<br />
+                  <span className="text-amber-400">user.username:</span> "@alex_traveler_dev"<br />
+                  <span className="text-amber-400">user.id:</span> 845015398<br />
+                  <span className="text-amber-400">user.is_premium:</span> true
+                </div>
+                <div>
+                  <span className="text-cyan-400">platform:</span> "ios" (модельована)<br />
+                  <span className="text-cyan-400">version:</span> "7.10"<br />
+                  <span className="text-cyan-400">themeParams.bg_color:</span> "#070b14"<br />
+                  <span className="text-emerald-400">HapticFeedback:</span> Активний
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Floating Dev Toast Notification */}
+      {devToast && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-950/95 border border-amber-500/60 shadow-2xl rounded-2xl px-4 py-2 text-xs text-amber-200 flex items-center gap-2 animate-bounce">
+          <Wrench className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{devToast}</span>
+        </div>
+      )}
+
       {/* Mini App Tab Navigation Bar */}
-      <div className="relative z-10 bg-slate-900/60 backdrop-blur-md px-4 py-2 border-b border-slate-800/80 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-1.5 w-full">
+      <div className="relative z-10 bg-slate-900/60 backdrop-blur-md px-2 sm:px-4 py-2 border-b border-slate-800/80 flex items-center justify-between text-xs shrink-0 overflow-x-auto scrollbar-none">
+        <div className="flex items-center gap-1 sm:gap-1.5 w-full">
           <button
             onClick={() => {
               triggerHaptic('selection');
               setActiveStep('tours');
             }}
-            className={`flex-1 py-1.5 px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-1.5 px-2.5 sm:px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 shrink-0 ${
               activeStep === 'tours'
                 ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30 border border-cyan-400/40'
                 : 'text-slate-400 hover:text-white bg-slate-950/40'
             }`}
           >
             <Compass className="w-3.5 h-3.5" />
-            <span>1. Тури ({TRIPS_LIST.length})</span>
+            <span className="truncate">1. Тури ({TRIPS_LIST.length})</span>
           </button>
 
           <button
@@ -367,14 +604,14 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               triggerHaptic('selection');
               setActiveStep('seats');
             }}
-            className={`flex-1 py-1.5 px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-1.5 px-2.5 sm:px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 shrink-0 ${
               activeStep === 'seats'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400/40'
                 : 'text-slate-400 hover:text-white bg-slate-950/40'
             }`}
           >
             <Armchair className="w-3.5 h-3.5" />
-            <span>2. VIP Салон 3D</span>
+            <span className="truncate">2. Салон 3D</span>
           </button>
 
           <button
@@ -382,71 +619,140 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               triggerHaptic('selection');
               setActiveStep('checkout');
             }}
-            className={`flex-1 py-1.5 px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-1.5 px-2.5 sm:px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 shrink-0 ${
               activeStep === 'checkout'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 border border-emerald-400/40'
                 : 'text-slate-400 hover:text-white bg-slate-950/40'
             }`}
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>3. Бронь ({totalPrice}€)</span>
+            <span className="truncate">3. Бронь ({totalPrice}€)</span>
           </button>
         </div>
       </div>
 
       {/* Main Mini App Body Area */}
-      <div className="relative z-10 p-4 sm:p-6 overflow-y-auto max-h-[75vh]">
+      <div className="relative z-10 p-3 sm:p-5 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 [scrollbar-width:thin] [scrollbar-color:rgba(6,182,212,0.3)_transparent]">
         {/* ================= STEP 1: 14 TOURS SHOWCASE ================= */}
         {activeStep === 'tours' && (
-          <div className="space-y-4">
+          <div className="space-y-4 pb-12 sm:pb-6">
             {/* Header intro & filters */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-                  <Compass className="w-5 h-5 text-cyan-400" />
-                  <span>Вітрина всіх 14 турів Європою</span>
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Оберіть тур на зручну дату — без передоплати на одноденні поїздки!
-                </p>
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
+                    <Compass className="w-5 h-5 text-cyan-400" />
+                    <span>Вітрина всіх 14 турів Європою</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Оберіть тур та точну дату виїзду — 0% передоплати на одноденні поїздки!
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Calendar Modal Trigger Button */}
+                  <button
+                    onClick={() => {
+                      triggerHaptic('medium');
+                      setShowCalendarModal(true);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600/30 to-blue-600/30 hover:from-cyan-600/50 hover:to-blue-600/50 text-cyan-300 hover:text-white border border-cyan-400/50 font-bold text-xs flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(34,211,238,0.25)]"
+                    title="Відкрити інтерактивний календар турів"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Календар дат</span>
+                  </button>
+
+                  {/* Filter pills */}
+                  <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button
+                      onClick={() => {
+                        triggerHaptic('selection');
+                        setFilterDuration('all');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                        filterDuration === 'all' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Усі (14)
+                    </button>
+                    <button
+                      onClick={() => {
+                        triggerHaptic('selection');
+                        setFilterDuration('1day');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                        filterDuration === '1day' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      1 день
+                    </button>
+                    <button
+                      onClick={() => {
+                        triggerHaptic('selection');
+                        setFilterDuration('multiday');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                        filterDuration === 'multiday' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      2-3 дні
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              {/* Filter pills */}
-              <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800 text-xs">
-                <button
-                  onClick={() => {
-                    triggerHaptic('selection');
-                    setFilterDuration('all');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                    filterDuration === 'all' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Усі (14)
-                </button>
-                <button
-                  onClick={() => {
-                    triggerHaptic('selection');
-                    setFilterDuration('1day');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                    filterDuration === '1day' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  1 день
-                </button>
-                <button
-                  onClick={() => {
-                    triggerHaptic('selection');
-                    setFilterDuration('multiday');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                    filterDuration === 'multiday' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  2-3 дні
-                </button>
+              {/* Quick Weekend & Date Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] scrollbar-thin">
+                <span className="text-slate-500 font-semibold shrink-0 flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-cyan-400" />
+                  <span>Дати:</span>
+                </span>
+                {[
+                  { id: 'all', label: 'Всі дати' },
+                  { id: '24-25.10', label: '24–25 Жовтня' },
+                  { id: '31.10-01.11', label: '31 Жовтня – 01 Листопада' },
+                  { id: '07-08.11', label: '07–08 Листопада' },
+                  { id: '14-15.11', label: '14–15 Листопада' },
+                  { id: '21-22.11', label: '21–22 Листопада' },
+                  { id: '28-29.11', label: '28–29 Листопада' },
+                  { id: '12.2026', label: '❄️ Грудень 2026' }
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      triggerHaptic('selection');
+                      setFilterDateWeekend(item.id);
+                    }}
+                    className={`px-2.5 py-1 rounded-xl font-medium shrink-0 transition-all border ${
+                      filterDateWeekend === item.id
+                        ? 'bg-cyan-500/25 border-cyan-400 text-white font-bold shadow-[0_0_10px_rgba(34,211,238,0.3)]'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
+
+              {/* Active Filter Notice */}
+              {filterDateWeekend !== 'all' && (
+                <div className="flex items-center justify-between bg-cyan-950/40 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-xs text-cyan-200">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Фільтр: поїздки на <b>{filterDateWeekend}</b> ({filteredTrips.length} доступно)</span>
+                  </span>
+                  <button
+                    onClick={() => {
+                      triggerHaptic('selection');
+                      setFilterDateWeekend('all');
+                    }}
+                    className="text-[11px] underline text-cyan-400 hover:text-white"
+                  >
+                    Скинути фільтр
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Tours Grid */}
@@ -512,10 +818,43 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                         ))}
                       </div>
 
+                      {/* Available Departure Dates Chips for this tour */}
+                      {trip.departureDates && trip.departureDates.length > 0 && (
+                        <div className="pt-2 border-t border-slate-800/60">
+                          <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 mb-1.5">
+                            <Calendar className="w-3 h-3 text-cyan-400" />
+                            <span>Дати виїзду:</span>
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {trip.departureDates.slice(0, 4).map((d) => {
+                              const isDateActive = isSelected && selectedDepartureDate === d;
+                              return (
+                                <button
+                                  key={d}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    triggerHaptic('selection');
+                                    handleSelectTrip(trip, d);
+                                  }}
+                                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all border ${
+                                    isDateActive
+                                      ? 'bg-cyan-500 text-white border-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.4)]'
+                                      : 'bg-slate-900 text-slate-300 hover:text-white border-slate-800 hover:border-cyan-500/50'
+                                  }`}
+                                >
+                                  {d}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* CTA Button */}
                       <div className="pt-2 flex items-center justify-between border-t border-slate-800/80">
                         <span className="text-[11px] text-slate-400">
-                          Посадка: <b className="text-slate-200">Саарбрюккен (06:00)</b>
+                          Збір: <b className="text-slate-200">Саарланд, Люксембург, Трір</b>
                         </span>
                         <button
                           onClick={(e) => {
@@ -533,12 +872,21 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 );
               })}
             </div>
+
+            {/* Customer Testimonials Carousel directly in Tours showcase */}
+            <div className="pt-2">
+              <ReviewsCarousel
+                leads={leads}
+                activeTripTitle={selectedTrip?.title}
+                onNewFeedbackLead={onNewLead}
+              />
+            </div>
           </div>
         )}
 
-        {/* ================= STEP 2: 3D/2D VIP CABIN & STARLIGHT CEILING ================= */}
+        {/* ================= STEP 2: 3D/2D CABIN & STARLIGHT CEILING ================= */}
         {activeStep === 'seats' && (
-          <div className="space-y-5">
+          <div className="space-y-5 pb-12 sm:pb-6">
             {/* Cabin Top Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
               <div>
@@ -552,10 +900,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 </div>
                 <h3 className="text-lg font-extrabold text-white mt-1 flex items-center gap-2">
                   <Armchair className="w-5 h-5 text-indigo-400" />
-                  <span>Інтерактивний VIP-салон Opel Vivaro</span>
+                  <span>Інтерактивний салон Opel Vivaro</span>
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Клікніть на потрібне крісло для бронювання. Стеля з підсвічуванням «Зоряне небо».
+                  Клікніть на потрібне крісло для бронювання. Бронь місця — лише 5€ (або 0€ вільна посадка).
                 </p>
               </div>
 
@@ -613,7 +961,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-amber-300 flex items-center gap-1.5">
                       <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                      1-й ряд (VIP біля водія, +15€)
+                      1-й ряд (біля водія, +5€)
                     </span>
                     <span className="text-[10px] text-slate-400">Найкращий огляд</span>
                   </div>
@@ -803,7 +1151,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
         {/* ================= STEP 3: CHECKOUT & SEND TO TELEGRAM ================= */}
         {activeStep === 'checkout' && (
-          <div className="space-y-5">
+          <div className="space-y-5 pb-14 sm:pb-8">
             {orderSuccess ? (
               <div className="p-6 rounded-3xl bg-emerald-950/40 border-2 border-emerald-400/60 text-center space-y-4 shadow-2xl animate-fade-in">
                 <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-400 flex items-center justify-center mx-auto text-2xl shadow-lg shadow-emerald-500/30">
@@ -893,6 +1241,30 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                     <span className="text-base font-extrabold text-cyan-300">{basePrice}€</span>
                   </div>
 
+                  {/* Selected Departure Date */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                    <div>
+                      <span className="font-semibold text-cyan-300 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Дата виїзду:</span>
+                      </span>
+                      <span className="block text-xs font-bold text-white mt-0.5">
+                        {selectedDepartureDate}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setActiveStep('tours');
+                        setShowCalendarModal(true);
+                      }}
+                      className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1"
+                    >
+                      Змінити дату
+                    </button>
+                  </div>
+
                   <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
                     <div>
                       <span className="font-semibold text-slate-300">
@@ -964,21 +1336,49 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                      Місто / Точка збору:
+                  <div className="sm:col-span-2 space-y-2">
+                    <label className="text-[11px] font-semibold text-slate-300 block">
+                      Регіон та адреса збору пасажира (Door-to-Door):
                     </label>
+                    {/* Quick selection chips for core regions */}
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {[
+                        'Саарланд (за адресою)',
+                        'Люксембург (за адресою)',
+                        'Трір (за адресою)',
+                        'Інша земля (від 4 осіб)'
+                      ].map((reg) => (
+                        <button
+                          key={reg}
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('selection');
+                            setPickupCity(reg);
+                          }}
+                          className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold transition-all border ${
+                            pickupCity === reg
+                              ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-sm'
+                              : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {reg}
+                        </button>
+                      ))}
+                    </div>
+
                     <div className="relative">
                       <MapPin className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
                       <input
                         type="text"
-                        required
-                        value={pickupCity}
-                        onChange={(e) => setPickupCity(e.target.value)}
-                        placeholder="Саарбрюккен, Трір, Люксембург..."
+                        value={pickupAddress}
+                        onChange={(e) => setPickupAddress(e.target.value)}
+                        placeholder="Введіть вашу точну адресу (вулиця, номер будинку, місто)..."
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-white outline-none focus:border-cyan-500"
                       />
                     </div>
+                    <p className="text-[10px] text-slate-400">
+                      📍 Збираємо пасажирів прямо біля вашого будинку по Саарланду, Люксембургу та Тріру!
+                    </p>
                   </div>
                 </div>
 
@@ -991,6 +1391,15 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   <Send className="w-4 h-4" />
                   <span>{isSubmitting ? 'Відправка заявки...' : `🚀 Забронювати поїздку (${totalPrice}€)`}</span>
                 </button>
+
+                {/* Social Proof & Customer Reviews Reassurance in Booking Flow */}
+                <div className="pt-2">
+                  <ReviewsCarousel
+                    leads={leads}
+                    activeTripTitle={selectedTrip?.title}
+                    onNewFeedbackLead={onNewLead}
+                  />
+                </div>
               </form>
             )}
           </div>
@@ -1003,8 +1412,246 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
           <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
           <span>Telegram WebApp SDK & Haptic Feedback Active</span>
         </div>
-        <span>Opel Vivaro VIP • 8 пасажирських місць</span>
+        <span>Комфортабельне авто Opel Vivaro • 8 місць</span>
       </div>
+
+      {/* ================= INTERACTIVE CALENDAR MODAL ================= */}
+      {showCalendarModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4 animate-fade-in">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto overscroll-contain bg-[#0c1222] border-2 border-cyan-500/40 rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] space-y-4 [scrollbar-width:thin]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">Календар турів SVOI</h3>
+                  <p className="text-[11px] text-slate-400">Оберіть дату, щоб побачити актуальні поїздки</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  triggerHaptic('light');
+                  setShowCalendarModal(false);
+                }}
+                className="w-8 h-8 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-all border border-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Month Switcher Tabs */}
+            <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-950/80 rounded-xl border border-slate-800 text-xs">
+              <button
+                onClick={() => {
+                  triggerHaptic('selection');
+                  setCalendarMonth('oct');
+                }}
+                className={`py-1.5 px-2 rounded-lg font-bold transition-all text-center ${
+                  calendarMonth === 'oct'
+                    ? 'bg-cyan-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Жовтень 2026
+              </button>
+              <button
+                onClick={() => {
+                  triggerHaptic('selection');
+                  setCalendarMonth('nov');
+                }}
+                className={`py-1.5 px-2 rounded-lg font-bold transition-all text-center ${
+                  calendarMonth === 'nov'
+                    ? 'bg-cyan-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Листопад 2026
+              </button>
+              <button
+                onClick={() => {
+                  triggerHaptic('selection');
+                  setCalendarMonth('dec');
+                }}
+                className={`py-1.5 px-2 rounded-lg font-bold transition-all text-center ${
+                  calendarMonth === 'dec'
+                    ? 'bg-cyan-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                ❄️ Грудень 2026
+              </button>
+            </div>
+
+            {/* Days of week header */}
+            <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400 pt-1">
+              <div>Пн</div>
+              <div>Вт</div>
+              <div>Ср</div>
+              <div>Чт</div>
+              <div>Пт</div>
+              <div className="text-cyan-400 font-extrabold">Сб</div>
+              <div className="text-cyan-400 font-extrabold">Нд</div>
+            </div>
+
+            {/* Month Grid */}
+            {calendarMonth === 'oct' && (
+              <div className="grid grid-cols-7 gap-1.5 text-xs text-center">
+                {/* 3 offset days Mon-Wed for Oct 1st Thursday */}
+                <div className="p-2 opacity-20">28</div>
+                <div className="p-2 opacity-20">29</div>
+                <div className="p-2 opacity-20">30</div>
+                {[...Array(31)].map((_, i) => {
+                  const day = i + 1;
+                  const dayStr = day < 10 ? `0${day}` : `${day}`;
+                  const isDepartureWeekend = day === 24 || day === 25 || day === 31;
+                  const tourCount = day === 24 ? 4 : day === 25 ? 3 : day === 31 ? 4 : 0;
+                  const isCurrentFilter = filterDateWeekend.includes(`${dayStr}.10`);
+
+                  return (
+                    <button
+                      key={day}
+                      disabled={!isDepartureWeekend}
+                      onClick={() => {
+                        triggerHaptic('medium');
+                        const filterKey = day === 24 || day === 25 ? '24-25.10' : '31.10-01.11';
+                        setFilterDateWeekend(filterKey);
+                        setShowCalendarModal(false);
+                        setActiveStep('tours');
+                      }}
+                      className={`relative p-2 rounded-xl transition-all flex flex-col items-center justify-center min-h-[46px] border ${
+                        isDepartureWeekend
+                          ? isCurrentFilter
+                            ? 'bg-cyan-500 text-white border-cyan-300 font-extrabold shadow-[0_0_12px_rgba(34,211,238,0.5)]'
+                            : 'bg-slate-900/90 hover:bg-cyan-950/70 text-cyan-200 hover:text-white border-cyan-500/50 hover:border-cyan-400 font-bold cursor-pointer'
+                          : 'text-slate-600 border-transparent hover:bg-slate-900/30'
+                      }`}
+                    >
+                      <span>{day}</span>
+                      {isDepartureWeekend && (
+                        <span className="text-[9px] text-emerald-400 font-mono mt-0.5">
+                          {tourCount} тур.
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {calendarMonth === 'nov' && (
+              <div className="grid grid-cols-7 gap-1.5 text-xs text-center">
+                {/* 6 offset days for Nov 1st Sunday */}
+                <div className="p-2 opacity-20">26</div>
+                <div className="p-2 opacity-20">27</div>
+                <div className="p-2 opacity-20">28</div>
+                <div className="p-2 opacity-20">29</div>
+                <div className="p-2 opacity-20">30</div>
+                <div className="p-2 opacity-20">31</div>
+                {[...Array(30)].map((_, i) => {
+                  const day = i + 1;
+                  const dayStr = day < 10 ? `0${day}` : `${day}`;
+                  const isDepartureWeekend = [1, 7, 8, 14, 15, 21, 22, 28, 29].includes(day);
+                  const isCurrentFilter = filterDateWeekend.includes(`${dayStr}.11`);
+
+                  return (
+                    <button
+                      key={day}
+                      disabled={!isDepartureWeekend}
+                      onClick={() => {
+                        triggerHaptic('medium');
+                        let filterKey = 'all';
+                        if (day === 1) filterKey = '31.10-01.11';
+                        else if (day === 7 || day === 8) filterKey = '07-08.11';
+                        else if (day === 14 || day === 15) filterKey = '14-15.11';
+                        else if (day === 21 || day === 22) filterKey = '21-22.11';
+                        else if (day === 28 || day === 29) filterKey = '28-29.11';
+                        setFilterDateWeekend(filterKey);
+                        setShowCalendarModal(false);
+                        setActiveStep('tours');
+                      }}
+                      className={`relative p-2 rounded-xl transition-all flex flex-col items-center justify-center min-h-[46px] border ${
+                        isDepartureWeekend
+                          ? isCurrentFilter
+                            ? 'bg-cyan-500 text-white border-cyan-300 font-extrabold shadow-[0_0_12px_rgba(34,211,238,0.5)]'
+                            : 'bg-slate-900/90 hover:bg-cyan-950/70 text-cyan-200 hover:text-white border-cyan-500/50 hover:border-cyan-400 font-bold cursor-pointer'
+                          : 'text-slate-600 border-transparent hover:bg-slate-900/30'
+                      }`}
+                    >
+                      <span>{day}</span>
+                      {isDepartureWeekend && (
+                        <span className="text-[9px] text-emerald-400 font-mono mt-0.5">
+                          ✓ тур
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {calendarMonth === 'dec' && (
+              <div className="grid grid-cols-7 gap-1.5 text-xs text-center">
+                {/* 1 offset day for Dec 1st Tuesday */}
+                <div className="p-2 opacity-20">30</div>
+                {[...Array(31)].map((_, i) => {
+                  const day = i + 1;
+                  const isDepartureWeekend = [5, 6, 12, 13, 19, 20].includes(day);
+
+                  return (
+                    <button
+                      key={day}
+                      disabled={!isDepartureWeekend}
+                      onClick={() => {
+                        triggerHaptic('medium');
+                        setFilterDateWeekend('12.2026');
+                        setShowCalendarModal(false);
+                        setActiveStep('tours');
+                      }}
+                      className={`relative p-2 rounded-xl transition-all flex flex-col items-center justify-center min-h-[46px] border ${
+                        isDepartureWeekend
+                          ? 'bg-slate-900/90 hover:bg-cyan-950/70 text-cyan-200 hover:text-white border-cyan-500/50 hover:border-cyan-400 font-bold cursor-pointer'
+                          : 'text-slate-600 border-transparent hover:bg-slate-900/30'
+                      }`}
+                    >
+                      <span>{day}</span>
+                      {isDepartureWeekend && (
+                        <span className="text-[9px] text-amber-300 font-mono mt-0.5">
+                          🎄 Ярмарок
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Modal Footer Controls */}
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+              <button
+                onClick={() => {
+                  triggerHaptic('light');
+                  setFilterDateWeekend('all');
+                  setShowCalendarModal(false);
+                }}
+                className="text-xs text-slate-400 hover:text-white underline"
+              >
+                Показати всі 14 турів (без фільтра дат)
+              </button>
+              <button
+                onClick={() => {
+                  triggerHaptic('light');
+                  setShowCalendarModal(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md shadow-cyan-600/30"
+              >
+                Готово
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -16,27 +16,23 @@ def get_main_menu_keyboard(user_id: int | None = None) -> InlineKeyboardMarkup:
     is_admin = (user_id is not None) and (user_id == settings.ADMIN_ID)
 
     keyboard = [
-        # Міні-апп відкривається нативно як WebApp всередині Telegram
         [
-            InlineKeyboardButton(
-                text="🚀 SVOI Mini App (Салон 3D & 14 турів) 🌌", 
-                web_app=WebAppInfo(url=settings.MINI_APP_URL)
-            )
-        ],
-        [
-            InlineKeyboardButton(text="🗺 Поїздки та дати", callback_data="cb_trips"),
-            InlineKeyboardButton(text="💺 Забронювати", callback_data="cb_book")
+            InlineKeyboardButton(text="🗺 Напрямки та дати", callback_data="cb_trips"),
+            InlineKeyboardButton(text="⚡️ РЕЗЕРВ МІСЦЯ", callback_data="cb_book")
         ],
         [
             InlineKeyboardButton(text="⭐ Відгуки туристів", callback_data="cb_reviews"),
             InlineKeyboardButton(text="❓ Часті питання (FAQ)", callback_data="cb_faq")
         ],
         [
-            InlineKeyboardButton(text="🚐 Індивідуальний виїзд (5-8 осіб)", callback_data="cb_custom_trip")
+            InlineKeyboardButton(text="🤝 Стати партнером клубу", callback_data="cb_partner")
         ],
         [
-            InlineKeyboardButton(text="💬 Менеджер", url=manager_url),
-            InlineKeyboardButton(text="📢 Наш Канал", url=settings.CHANNEL_URL)
+            InlineKeyboardButton(text="💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url=manager_url),
+            InlineKeyboardButton(text="💬 ДРУГИЙ МЕНЕДЖЕР", url="https://t.me/svoi_reserve_admin")
+        ],
+        [
+            InlineKeyboardButton(text="📢 НАШ КАНАЛ", url=settings.CHANNEL_URL)
         ]
     ]
 
@@ -73,9 +69,6 @@ def get_trips_keyboard() -> InlineKeyboardMarkup:
         text = f"{idx}. {title} — {trip['price']}€ [{seats_label}]"
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"cb_trip_{trip_id}")])
     
-    buttons.append([
-        InlineKeyboardButton(text="🚐 Індивідуальний виїзд (5-8 осіб)", callback_data="cb_custom_trip")
-    ])
     buttons.append([InlineKeyboardButton(text="🔙 Назад до меню", callback_data="cb_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -124,18 +117,18 @@ def get_seats_keyboard(trip_id: str = "general") -> InlineKeyboardMarkup:
     НОМЕРИ СПОЧАТКУ, короткі назви, щоб текст НІКОЛИ не обрізався на смартфонах!
     """
     keyboard = [
-        # 1-й ряд (VIP біля водія)
+        # 1-й ряд (біля водія)
         [
-            InlineKeyboardButton(text="1️⃣ Водій (+15€)", callback_data=f"cb_seat_1_{trip_id}"),
-            InlineKeyboardButton(text="2️⃣ Вікно (+15€)", callback_data=f"cb_seat_2_{trip_id}")
+            InlineKeyboardButton(text="1️⃣ Водій (+5€)", callback_data=f"cb_seat_1_{trip_id}"),
+            InlineKeyboardButton(text="2️⃣ Вікно (+5€)", callback_data=f"cb_seat_2_{trip_id}")
         ],
-        # 2-й ряд (Капітанські крісла)
+        # 2-й ряд
         [
-            InlineKeyboardButton(text="3️⃣ Ліве (+10€)", callback_data=f"cb_seat_3_{trip_id}"),
+            InlineKeyboardButton(text="3️⃣ Ліве (+5€)", callback_data=f"cb_seat_3_{trip_id}"),
             InlineKeyboardButton(text="4️⃣ Центр (+5€)", callback_data=f"cb_seat_4_{trip_id}"),
-            InlineKeyboardButton(text="5️⃣ Праве (+10€)", callback_data=f"cb_seat_5_{trip_id}")
+            InlineKeyboardButton(text="5️⃣ Праве (+5€)", callback_data=f"cb_seat_5_{trip_id}")
         ],
-        # 3-й ряд (Диван)
+        # 3-й ряд
         [
             InlineKeyboardButton(text="6️⃣ Ліве (+5€)", callback_data=f"cb_seat_6_{trip_id}"),
             InlineKeyboardButton(text="7️⃣ Центр (0€)", callback_data=f"cb_seat_7_{trip_id}"),

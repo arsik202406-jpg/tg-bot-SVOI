@@ -157,24 +157,39 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, leadsCou
         </div>
 
         {/* Mobile Sub-Navigation Bar */}
-        <div className="flex xl:hidden overflow-x-auto py-2 border-t border-slate-800 gap-1.5 text-xs scrollbar-none">
+        <div className="flex xl:hidden overflow-x-auto py-2 border-t border-slate-800 gap-2 text-xs scrollbar-none items-center">
           <button
             onClick={() => onTabChange('simulator')}
-            className={`px-3 py-1 rounded-lg shrink-0 ${activeTab === 'simulator' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400'}`}
+            className={`px-3 py-1.5 rounded-xl shrink-0 font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === 'simulator' 
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/40 ring-1 ring-blue-400' 
+                : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
+            }`}
           >
-            Симулятор
+            <Bot className="w-3.5 h-3.5 text-blue-300" />
+            <span>📱 Симулятор бота</span>
           </button>
           <button
             onClick={() => onTabChange('miniapp')}
-            className={`px-3 py-1 rounded-lg shrink-0 font-bold ${activeTab === 'miniapp' ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-sm' : 'text-cyan-300'}`}
+            className={`px-3 py-1.5 rounded-xl shrink-0 font-black transition-all flex items-center gap-1.5 ${
+              activeTab === 'miniapp' 
+                ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md shadow-cyan-600/40 border border-cyan-400' 
+                : 'bg-cyan-950/40 text-cyan-300 hover:text-white border border-cyan-500/30'
+            }`}
           >
-            🚀 Mini App
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span>🚀 SVOI Mini App</span>
           </button>
           <button
             onClick={() => onTabChange('channel')}
-            className={`px-3 py-1 rounded-lg shrink-0 font-bold ${activeTab === 'channel' ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-sm' : 'text-purple-300'}`}
+            className={`px-3 py-1.5 rounded-xl shrink-0 font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === 'channel' 
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-sm border border-purple-400' 
+                : 'bg-purple-950/30 text-purple-300 hover:text-white border border-purple-500/20'
+            }`}
           >
-            🎁 Канал & Розіграші
+            <Gift className="w-3.5 h-3.5 text-purple-400" />
+            <span>🎁 Канал & Розіграші</span>
           </button>
           <button
             onClick={() => onTabChange('minivan')}

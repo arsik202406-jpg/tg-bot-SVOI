@@ -14,14 +14,16 @@ export type ButtonBorderStyle = 'neon' | 'subtle' | 'classic';
 interface TelegramSimulatorProps {
   onNewLead: (lead: LeadItem) => void;
   onOpenCarModal?: () => void;
+  leads?: LeadItem[];
 }
 
 const BOT_TOKEN = "8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM";
 const MANAGER_URL = "https://t.me/SVOI_travel_admin";
+const RESERVE_MANAGER_URL = "https://t.me/svoi_reserve_admin";
 const CHANNEL_URL = "https://t.me/+Flt_2r6vi3U4ZDg6";
 const GROUP_URL = "https://t.me/+J50liyDUHPgzYTQy";
 
-export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead, onOpenCarModal }) => {
+export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead, onOpenCarModal, leads = [] }) => {
   const [viewMode, setViewMode] = useState<'mobile' | 'desktop'>('mobile');
   const [buttonBorderStyle, setButtonBorderStyle] = useState<ButtonBorderStyle>('neon');
   const [inputText, setInputText] = useState('');
@@ -65,12 +67,33 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     // 0. Mini App Button
     if (data === 'cb_open_miniapp' || text.includes('Mini App')) {
       return styleMode === 'neon'
-        ? 'bg-gradient-to-r from-cyan-950/80 via-purple-950/80 to-cyan-950/80 hover:from-cyan-900 hover:to-purple-900 text-cyan-100 hover:text-white border-2 border-cyan-400 hover:border-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.5)] font-bold'
+        ? 'bg-gradient-to-r from-cyan-950 via-purple-950 to-cyan-950 hover:from-cyan-900 hover:to-purple-900 text-cyan-100 hover:text-white border-2 border-cyan-400 hover:border-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.6),inset_0_0_10px_rgba(34,211,238,0.25)] font-bold ring-1 ring-cyan-400/50'
         : 'bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-200 border border-cyan-400 font-bold';
     }
 
-    // 0.5. Channel Admin Button
-    if (data.startsWith('cb_adm_') || text.includes('Керування каналом') || text.includes('канал')) {
+    // 0.4. Second / Reserve Manager Button (Vibrant neon color & font-black like РЕЗЕРВ)
+    if (text.includes("ДРУГИЙ МЕНЕДЖЕР") || text.includes("РЕЗЕРВНИЙ МЕНЕДЖЕР") || text.includes("Резервний менеджер")) {
+      return styleMode === 'neon'
+        ? 'bg-gradient-to-r from-violet-950 via-purple-950 to-indigo-950 hover:from-violet-900 hover:to-indigo-900 active:bg-violet-800 text-white border-2 border-violet-400 hover:border-violet-300 shadow-[0_0_18px_rgba(167,139,250,0.7),inset_0_0_10px_rgba(167,139,250,0.3)] font-black ring-1 ring-violet-400/60'
+        : 'bg-violet-950/50 hover:bg-violet-900/70 text-violet-100 hover:text-white border border-violet-400 font-bold shadow-sm';
+    }
+
+    // 0.5. Primary Manager Button (Vibrant neon color & font-black like РЕЗЕРВ)
+    if (text.includes("ЗВ'ЯЗОК З МЕНЕДЖЕРОМ") || text === "💬 МЕНЕДЖЕР" || (text.includes("МЕНЕДЖЕР") && !text.includes("ДРУГИЙ") && !text.includes("РЕЗЕРВНИЙ"))) {
+      return styleMode === 'neon'
+        ? 'bg-gradient-to-r from-fuchsia-950 via-pink-950 to-rose-950 hover:from-fuchsia-900 hover:to-pink-900 active:bg-fuchsia-800 text-white border-2 border-fuchsia-400 hover:border-fuchsia-300 shadow-[0_0_18px_rgba(217,70,239,0.7),inset_0_0_10px_rgba(217,70,239,0.3)] font-black ring-1 ring-fuchsia-400/60'
+        : 'bg-fuchsia-950/50 hover:bg-fuchsia-900/70 text-fuchsia-100 hover:text-white border border-fuchsia-400 font-bold shadow-sm';
+    }
+
+    // 0.6. Channel Button (Vibrant neon color & font-black like РЕЗЕРВ)
+    if (text.includes("КАНАЛ") || text.includes("Канал")) {
+      return styleMode === 'neon'
+        ? 'bg-gradient-to-r from-sky-950 via-blue-950 to-cyan-950 hover:from-sky-900 hover:to-blue-900 active:bg-sky-800 text-white border-2 border-sky-400 hover:border-sky-300 shadow-[0_0_18px_rgba(56,189,248,0.7),inset_0_0_10px_rgba(56,189,248,0.3)] font-black ring-1 ring-sky-400/60'
+        : 'bg-sky-950/50 hover:bg-sky-900/70 text-sky-100 hover:text-white border border-sky-400 font-bold shadow-sm';
+    }
+
+    // 0.7. Channel Admin Button
+    if (data.startsWith('cb_adm_') || text.includes('Керування каналом')) {
       return styleMode === 'neon'
         ? 'bg-purple-950/60 hover:bg-purple-900/80 text-purple-100 hover:text-white border-2 border-purple-400 hover:border-purple-300 shadow-[0_0_15px_rgba(192,132,252,0.4)] font-semibold'
         : 'bg-purple-950/40 hover:bg-purple-900/60 text-purple-200 border border-purple-500/70 font-semibold';
@@ -83,74 +106,74 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-600/70 shadow-sm';
     }
 
-    // 2. Booking / Confirm Reservation / Seat selection
-    if (data === 'cb_book' || data.startsWith('cb_select_seat') || data.startsWith('cb_confirm_') || text.includes('Забронювати') || text.includes('Підтвердити')) {
+    // 2. Booking / Confirm Reservation / Seat selection / РЕЗЕРВ (Vibrant emerald neon & font-black)
+    if (data === 'cb_book' || data.startsWith('cb_select_seat') || data.startsWith('cb_confirm_') || text.includes('РЕЗЕРВ') || text.includes('Забронювати') || text.includes('Підтвердити')) {
       return styleMode === 'neon'
-        ? 'bg-emerald-950/50 hover:bg-emerald-900/70 active:bg-emerald-800/80 text-emerald-100 hover:text-white border-2 border-emerald-400 hover:border-emerald-300 shadow-[0_0_14px_rgba(52,211,153,0.4)] font-semibold'
-        : 'bg-emerald-950/35 hover:bg-emerald-900/50 text-emerald-200 hover:text-white border border-emerald-500/70 hover:border-emerald-400 font-semibold shadow-sm';
+        ? 'bg-gradient-to-r from-emerald-950 via-teal-950 to-green-950 hover:from-emerald-900 hover:to-teal-900 active:bg-emerald-800 text-white border-2 border-emerald-400 hover:border-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.7),inset_0_0_10px_rgba(52,211,153,0.3)] font-black ring-1 ring-emerald-400/60'
+        : 'bg-emerald-950/50 hover:bg-emerald-900/70 text-emerald-100 hover:text-white border border-emerald-400 font-bold shadow-sm';
     }
 
-    // 3. Trips / Schedule / Tours catalog
-    if (data === 'cb_trips' || data.startsWith('cb_trip_') || text.includes('Поїздки') || text.includes('Розклад') || text.includes('тур')) {
+    // 3. Trips / Schedule / Tours catalog (Vibrant cyan neon)
+    if (data === 'cb_trips' || data.startsWith('cb_trip_') || text.includes('Поїздки') || text.includes('Напрямки') || text.includes('Розклад') || text.includes('тур')) {
       return styleMode === 'neon'
-        ? 'bg-cyan-950/50 hover:bg-cyan-900/70 active:bg-cyan-800/80 text-cyan-100 hover:text-white border-2 border-cyan-400 hover:border-cyan-300 shadow-[0_0_14px_rgba(34,211,238,0.4)] font-semibold'
-        : 'bg-cyan-950/35 hover:bg-cyan-900/50 text-cyan-200 hover:text-white border border-cyan-500/70 hover:border-cyan-400 font-semibold shadow-sm';
+        ? 'bg-gradient-to-r from-cyan-950 via-blue-950 to-teal-950 hover:from-cyan-900 hover:to-blue-900 active:bg-cyan-800 text-white border-2 border-cyan-400 hover:border-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.65),inset_0_0_10px_rgba(34,211,238,0.25)] font-bold ring-1 ring-cyan-400/50'
+        : 'bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-200 hover:text-white border border-cyan-400 font-semibold shadow-sm';
     }
 
-    // 4. Meeting Stops / Pickup points
+    // 4. Partner / Стати партнером (Vibrant gold neon)
+    if (data === 'cb_partner' || text.includes('партнер')) {
+      return styleMode === 'neon'
+        ? 'bg-gradient-to-r from-amber-950 via-yellow-950 to-orange-950 hover:from-amber-900 hover:to-yellow-900 active:bg-amber-800 text-amber-100 hover:text-white border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_18px_rgba(251,191,36,0.65),inset_0_0_10px_rgba(251,191,36,0.25)] font-bold ring-1 ring-amber-400/50'
+        : 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 border border-amber-400 font-semibold shadow-sm';
+    }
+
+    // 5. Meeting Stops / Pickup points
     if (data === 'cb_meeting' || data.startsWith('cb_pickup') || text.includes('Точки збору')) {
       return styleMode === 'neon'
         ? 'bg-teal-950/50 hover:bg-teal-900/70 active:bg-teal-800/80 text-teal-100 hover:text-white border-2 border-teal-400 hover:border-teal-300 shadow-[0_0_14px_rgba(45,212,191,0.4)] font-medium'
         : 'bg-teal-950/35 hover:bg-teal-900/50 text-teal-200 hover:text-white border border-teal-500/70 hover:border-teal-400 font-medium shadow-sm';
     }
 
-    // 5. Minivan / Car Fleet / Photos
+    // 6. Minivan / Car Fleet / Photos
     if (data === 'cb_car' || text.includes('авто') || text.includes('Автопарк')) {
       return styleMode === 'neon'
         ? 'bg-amber-950/50 hover:bg-amber-900/70 active:bg-amber-800/80 text-amber-100 hover:text-white border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.4)] font-medium'
         : 'bg-amber-950/35 hover:bg-amber-900/50 text-amber-200 hover:text-white border border-amber-500/70 hover:border-amber-400 font-medium shadow-sm';
     }
 
-    // 6. Games & Quizzes
+    // 7. Games & Quizzes
     if (data === 'cb_games' || data.startsWith('cb_game') || text.includes('Ігри') || text.includes('вікторин')) {
       return styleMode === 'neon'
         ? 'bg-purple-950/50 hover:bg-purple-900/70 active:bg-purple-800/80 text-purple-100 hover:text-white border-2 border-purple-400 hover:border-purple-300 shadow-[0_0_14px_rgba(192,132,252,0.4)] font-medium'
         : 'bg-purple-950/35 hover:bg-purple-900/50 text-purple-200 hover:text-white border border-purple-500/70 hover:border-purple-400 font-medium shadow-sm';
     }
 
-    // 7. Reviews
+    // 8. Reviews (Warm Amber)
     if (data === 'cb_reviews' || text.includes('Відгуки')) {
       return styleMode === 'neon'
-        ? 'bg-amber-950/50 hover:bg-amber-900/70 active:bg-amber-800/80 text-amber-100 hover:text-white border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.4)] font-semibold'
-        : 'bg-amber-950/35 hover:bg-amber-900/50 text-amber-200 border border-amber-500/70 font-semibold shadow-sm';
+        ? 'bg-gradient-to-r from-orange-950 via-amber-950 to-yellow-950 hover:from-orange-900 hover:to-amber-900 active:bg-orange-800 text-amber-100 hover:text-white border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_16px_rgba(245,158,11,0.6),inset_0_0_8px_rgba(245,158,11,0.25)] font-bold ring-1 ring-amber-400/50'
+        : 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 border border-amber-500/70 font-semibold shadow-sm';
     }
 
-    // 7.5. Custom individual trip
+    // 8.5. Custom individual trip
     if (data === 'cb_custom_trip' || text.includes('Індивідуальний')) {
       return styleMode === 'neon'
         ? 'bg-indigo-950/50 hover:bg-indigo-900/70 active:bg-indigo-800/80 text-indigo-100 hover:text-white border-2 border-indigo-400 hover:border-indigo-300 shadow-[0_0_14px_rgba(129,140,248,0.4)] font-semibold'
         : 'bg-indigo-950/35 hover:bg-indigo-900/50 text-indigo-200 border border-indigo-500/70 font-semibold shadow-sm';
     }
 
-    // 8. Feedback / Wishes
+    // 9. Feedback / Wishes
     if (data === 'cb_feedback' || data.includes('feedback') || text.includes('відгук') || text.includes('побажання')) {
       return styleMode === 'neon'
         ? 'bg-rose-950/50 hover:bg-rose-900/70 active:bg-rose-800/80 text-rose-100 hover:text-white border-2 border-rose-400 hover:border-rose-300 shadow-[0_0_14px_rgba(251,113,133,0.4)] font-medium'
         : 'bg-rose-950/35 hover:bg-rose-900/50 text-rose-200 hover:text-white border border-rose-500/70 hover:border-rose-400 font-medium shadow-sm';
     }
 
-    // 8. FAQ / Questions
+    // 10. FAQ / Questions (Royal Blue)
     if (data === 'cb_faq' || data.startsWith('cb_faq_') || text.includes('FAQ') || text.includes('питання')) {
       return styleMode === 'neon'
-        ? 'bg-blue-950/50 hover:bg-blue-900/70 active:bg-blue-800/80 text-blue-100 hover:text-white border-2 border-blue-400 hover:border-blue-300 shadow-[0_0_14px_rgba(96,165,250,0.4)] font-medium'
-        : 'bg-blue-950/35 hover:bg-blue-900/50 text-blue-200 hover:text-white border border-blue-500/70 hover:border-blue-400 font-medium shadow-sm';
-    }
-
-    // 9. Terms / Partner
-    if (data === 'cb_terms' || data === 'cb_partner' || text.includes('Умови') || text.includes('партнер')) {
-      return styleMode === 'neon'
-        ? 'bg-yellow-950/40 hover:bg-yellow-900/60 text-yellow-100 hover:text-white border-2 border-yellow-400 hover:border-yellow-300 shadow-[0_0_12px_rgba(250,204,21,0.3)] font-medium'
-        : 'bg-yellow-950/30 hover:bg-yellow-900/40 text-yellow-200 hover:text-white border border-yellow-500/60 hover:border-yellow-400 font-medium shadow-sm';
+        ? 'bg-gradient-to-r from-blue-950 via-indigo-950 to-slate-900 hover:from-blue-900 hover:to-indigo-900 active:bg-blue-800 text-blue-100 hover:text-white border-2 border-blue-400 hover:border-blue-300 shadow-[0_0_16px_rgba(96,165,250,0.6),inset_0_0_8px_rgba(96,165,250,0.25)] font-bold ring-1 ring-blue-400/50'
+        : 'bg-blue-950/40 hover:bg-blue-900/60 text-blue-200 hover:text-white border border-blue-500/70 hover:border-blue-400 font-medium shadow-sm';
     }
 
     // 10. Seat rows in minivan
@@ -201,22 +224,22 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
   const getMainKeyboard = (): InlineBtn[][] => [
     [
-      { text: '🚀 SVOI Mini App (Салон 3D & 14 турів) 🌌', callbackData: 'cb_open_miniapp' }
-    ],
-    [
-      { text: '🗺 Поїздки та дати', callbackData: 'cb_trips' },
-      { text: '💺 Забронювати', callbackData: 'cb_book' }
+      { text: '🗺 Напрямки та дати', callbackData: 'cb_trips' },
+      { text: '⚡️ РЕЗЕРВ МІСЦЯ', callbackData: 'cb_book' }
     ],
     [
       { text: '⭐ Відгуки туристів', callbackData: 'cb_reviews' },
       { text: '❓ Часті питання (FAQ)', callbackData: 'cb_faq' }
     ],
     [
-      { text: '🚐 Індивідуальний виїзд (5-8 осіб)', callbackData: 'cb_custom_trip' }
+      { text: '🤝 Стати партнером клубу', callbackData: 'cb_partner' }
     ],
     [
-      { text: '💬 Менеджер', url: MANAGER_URL },
-      { text: '📢 Наш Канал', url: CHANNEL_URL }
+      { text: "💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url: MANAGER_URL },
+      { text: '💬 ДРУГИЙ МЕНЕДЖЕР', url: RESERVE_MANAGER_URL }
+    ],
+    [
+      { text: '📢 НАШ КАНАЛ', url: CHANNEL_URL }
     ],
     [
       { text: '👑 Керування каналом (/channel)', callbackData: 'cb_adm_channel_menu' },
@@ -231,7 +254,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     `✨ <b>Чому обирають SVOI:</b>\n` +
     `• 🚐 <i>Комфорт у дорозі:</i> просторий 8-місний мінівен (2 місця поруч з водієм, 3 у 2-му та 3 у 3-му ряду)\n` +
     `• 💳 <i>Чесні умови:</i> працюємо <b>без передоплати</b> на одноденні поїздки!\n` +
-    `• 📍 <i>Зручний старт:</i> відправлення із Саарбрюккена + підсадка за маршрутом\n` +
+    `• 📍 <i>Зручний старт:</i> адресний збір (Door-to-Door) по Саарланду, Люксембургу та Тріру\n` +
     `• 👥 <i>Маленькі душевні групи</i> (до 8 осіб)\n\n` +
     `👇 <b>Оберіть потрібний розділ у меню:</b>`
   );
@@ -481,15 +504,12 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         ];
       });
       tripsKeyboard.push([
-        { text: '🚐 Індивідуальний виїзд (5-8 осіб)', callbackData: 'cb_custom_trip' }
-      ]);
-      tripsKeyboard.push([
         { text: '🔙 Назад до меню', callbackData: 'cb_back' }
       ]);
 
       const headerText = 
         `🗺 <b>Актуальні напрямки та розклад турів SVOI</b> 🇪🇺✨\n\n` +
-        `Усі поїздки здійснюються із <b>Саарбрюккена / Саарланду</b> (із забором за адресою та підсадкою по дорозі) ` +
+        `Усі поїздки здійснюються з <b>Саарланду, Люксембургу та Тріра</b> (зі збором прямо за адресою пасажира та підсадкою по дорозі) ` +
         `на комфортабельному мінівені Opel Vivaro.\n\n` +
         `👇 <i>Натисніть на напрямок для перегляду програми, лічильника місць та бронювання:</i>`;
 
@@ -621,7 +641,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         `───────────────\n\n` +
         `<b>Ірина М.</b> (Люксембург) — <i>Озеро Комо + Мілан</i>\n` +
         `⭐⭐⭐⭐⭐ <b>5/5</b> (28.09.2026)\n` +
-        `«Два дні італійського щастя! Дуже сподобалося VIP-місце біля водія — панорамний огляд просто вражаючий!»\n\n` +
+        `«Два дні італійського щастя! Дуже сподобалося місце біля водія — панорамний огляд просто вражаючий!»\n\n` +
         `👇 <i>Ви також можете поділитися своїми враженнями від минулих турів:</i>`;
 
       const keyboard: InlineBtn[][] = [
@@ -638,7 +658,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         `Повний комфортабельний мінівен Opel Vivaro (до 8 пасажирів) з персональним водієм у вашому повному розпорядженні.\n\n` +
         `✨ <b>Переваги індивідуального виїзду:</b>\n` +
         `• 📅 <b>Будь-яка зручна дата</b> на ваш вибір (будні або вихідні)\n` +
-        `• 📍 <b>Адресний забір від вашого під'їзду</b> (Door-to-Door)\n` +
+        `• 📍 <b>Адресний збір від вашого під'їзду</b> (Door-to-Door)\n` +
         `• 🗺 <b>Гнучкий маршрут:</b> можливість змінити зупинки, заїхати у бажаний ресторан або виноробню\n` +
         `• 👥 Тільки ви та ваші близькі — жодних сторонніх попутників!\n` +
         `• 💶 Фіксована вартість за все авто (від 550€ за весь бус на день залежно від кілометражу)\n\n` +
@@ -828,7 +848,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       const faqText = 
         `❓ <b>Часті питання про поїздки клубу SVOI (FAQ)</b> 💡\n\n` +
         `Зібрали для вас детальні відповіді на найважливіші питання:\n\n` +
-        `• 📍 <b>Точки збору:</b> адресний забір (Door-to-Door) по Саарланду, Тріру та Люксембургу!\n` +
+        `• 📍 <b>Точки збору:</b> адресний збір (Door-to-Door) по Саарланду, Тріру та Люксембургу!\n` +
         `• 💳 <b>Оплата:</b> працюємо БЕЗ ПЕРЕДОПЛАТИ на всі одноденні поїздки!\n` +
         `• 🚐 <b>Комфорт буса:</b> Opel Vivaro з кліматом, USB та зоряним LED-небом\n` +
         `• ⏱ <b>Таймінг:</b> від 5 до 8 годин вільного часу на локаціях без поспіху!\n\n` +
@@ -1262,7 +1282,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         basePrice: basePrice,
         seatFee: seatFee,
         totalCost: totalCost,
-        meetingPoint: 'Саарбрюккен Hbf (або по дорозі)',
+        meetingPoint: 'Саарланд, Люксембург або Трір (збір за адресою)',
         userName: 'Олександр',
         userHandle: '@alex_travel_de',
         userId: 984128574,
@@ -1279,9 +1299,9 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         `📋 <b>Деталі поїздки:</b>\n` +
         `• 🗺 <b>Напрямок:</b> ${tripTitle}\n` +
         `• ⏱ <b>Тривалість:</b> ${duration}\n` +
-        `• 🚐 <b>Транспорт:</b> Мінівен Opel Vivaro (8 місць, кондиціонер)\n` +
+        `• 🚐 <b>Транспорт:</b> Комфортабельне авто Opel Vivaro (8 місць, кондиціонер)\n` +
         `• 💺 <b>Обране місце:</b> ${seatName}\n` +
-        `• 📍 <b>Точка збору:</b> Саарбрюккен Hbf (або за адресою)\n\n` +
+        `• 📍 <b>Точка збору:</b> Саарланд, Люксембург або Трір (збір за адресою)\n\n` +
         `🧾 <b>Розрахунок вартості:</b>\n` +
         `• Базовий квиток туру: <b>${basePrice}€</b>\n` +
         `• Вибір місця: <b>+${seatFee}€</b>\n` +
@@ -1386,7 +1406,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
           `❤️ <b>Дякуємо за ваше звернення!</b>\n\n` +
           `Ваш відгук/побажання успішно передано керівництву клубу SVOI. ` +
           `Ми уважно вивчаємо кожне повідомлення та робимо наші поїздки ще яскравішими!\n\n` +
-          `До зустрічі на борту Opel Vivaro VIP! 🚐✨`;
+          `До зустрічі на борту нашого комфортабельного авто Opel Vivaro! 🚐✨`;
 
         const keyboard: InlineBtn[][] = [
           [
@@ -1584,38 +1604,46 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       <div
         className={`transition-all duration-300 w-full ${
           viewMode === 'mobile'
-            ? 'max-w-[420px] rounded-[36px] p-3 bg-slate-950 border-[6px] border-slate-800 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)]'
+            ? 'max-w-[430px] rounded-2xl sm:rounded-[36px] p-1.5 sm:p-3 bg-slate-950 border-2 sm:border-[6px] border-slate-800 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)]'
             : 'max-w-4xl rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl'
         }`}
       >
         {/* Telegram Header */}
-        <div className="bg-[#17212b] text-white px-4 py-3 rounded-t-2xl flex items-center justify-between border-b border-[#0e1621] select-none">
-          <div className="flex items-center gap-3">
+        <div className="bg-[#17212b] text-white px-3 sm:px-4 py-3 rounded-t-2xl flex items-center justify-between border-b border-[#0e1621] select-none">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <div className="relative">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-md text-sm ring-2 ring-blue-500/30">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-md text-xs sm:text-sm ring-2 ring-blue-500/30">
                 SVOI
               </div>
-              <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#17212b]" />
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#17212b]" />
             </div>
 
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-sm text-white">SVOI Travel EU</span>
-                <span className="bg-blue-500/20 text-blue-400 text-[10px] font-bold px-1.5 py-0.2 rounded border border-blue-500/30">
+                <span className="font-semibold text-xs sm:text-sm text-white">SVOI Travel EU</span>
+                <span className="bg-blue-500/20 text-blue-400 text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded border border-blue-500/30">
                   bot
                 </span>
               </div>
-              <p className="text-[11px] text-[#708499]">@Svoi_TravelEU_bot</p>
+              <p className="text-[10px] sm:text-[11px] text-[#708499]">@Svoi_TravelEU_bot</p>
             </div>
           </div>
 
           {/* Quick links dropdown / icons */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            <button
+              onClick={() => setShowMiniAppModal(true)}
+              className="text-[10px] sm:text-[11px] bg-gradient-to-r from-cyan-600/30 to-blue-600/30 hover:from-cyan-600/50 hover:to-blue-600/50 border border-cyan-400/60 text-cyan-200 hover:text-white font-extrabold px-2 sm:px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 shadow-[0_0_10px_rgba(34,211,238,0.3)] animate-pulse"
+              title="Відкрити SVOI Mini App"
+            >
+              <Sparkles className="w-3 h-3 text-cyan-300" />
+              <span>Mini App</span>
+            </button>
             <a
               href={CHANNEL_URL}
               target="_blank"
               rel="noreferrer"
-              className="text-[11px] bg-[#242f3d] hover:bg-[#2b394a] text-blue-400 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+              className="text-[10px] sm:text-[11px] bg-[#242f3d] hover:bg-[#2b394a] text-blue-400 px-2 sm:px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
             >
               Канал
               <ExternalLink className="w-2.5 h-2.5" />
@@ -1624,7 +1652,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
               href={MANAGER_URL}
               target="_blank"
               rel="noreferrer"
-              className="text-[11px] bg-[#242f3d] hover:bg-[#2b394a] text-emerald-400 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+              className="text-[10px] sm:text-[11px] bg-[#242f3d] hover:bg-[#2b394a] text-emerald-400 px-2 sm:px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
             >
               Менеджер
             </a>
@@ -1690,7 +1718,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
                           <button
                             key={bIdx}
                             onClick={() => handleCallbackClick(btn)}
-                            className={`w-full text-center py-2 px-2.5 rounded-xl text-xs font-medium transition-all duration-200 flex items-center justify-center gap-1.5 select-none ${getInlineButtonStyle(btn, buttonBorderStyle)}`}
+                            className={`w-full text-center py-2 px-2.5 rounded-xl text-xs transition-all duration-200 flex items-center justify-center gap-1.5 select-none ${getInlineButtonStyle(btn, buttonBorderStyle)}`}
                           >
                             <span className="truncate">{btn.text}</span>
                             {btn.url && <ExternalLink className="w-2.5 h-2.5 opacity-70 shrink-0" />}
@@ -1726,8 +1754,19 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         {/* Telegram Input Bar */}
         <form
           onSubmit={handleSendMessage}
-          className="bg-[#17212b] p-2.5 flex items-center gap-2 rounded-b-2xl border-t border-[#0e1621]"
+          className="bg-[#17212b] p-2 sm:p-2.5 flex items-center gap-2 rounded-b-2xl border-t border-[#0e1621]"
         >
+          {/* Telegram WebApp Menu Button with ionic neon glow */}
+          <button
+            type="button"
+            onClick={() => setShowMiniAppModal(true)}
+            className="h-10 px-2.5 sm:px-3 rounded-xl bg-gradient-to-r from-cyan-950/90 to-blue-950/90 hover:from-cyan-900 hover:to-blue-900 text-cyan-300 hover:text-white border-2 border-cyan-400 hover:border-cyan-300 shadow-[0_0_14px_rgba(34,211,238,0.45)] flex items-center gap-1.5 text-xs font-black transition-all shrink-0 active:scale-95"
+            title="Відкрити SVOI Mini App (Календар та 3D салон)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span className="font-bold">☰ Меню</span>
+          </button>
+
           <input
             type="text"
             value={inputText}
@@ -1779,70 +1818,74 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         {/* Category Buttons with matching colored borders */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
           <button
-            onClick={() => handleCallbackClick({ text: '🗺 Поїздки', callbackData: 'cb_trips' })}
-            className="p-2 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-200 border-2 border-cyan-400 hover:border-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.25)] flex items-center justify-between transition-all group"
+            onClick={() => handleCallbackClick({ text: '🗺 Напрямки та дати', callbackData: 'cb_trips' })}
+            className="p-2 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-200 border-2 border-cyan-400 hover:border-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.3)] flex items-center justify-between transition-all group"
           >
-            <span className="font-semibold truncate">🗺 Каталог турів</span>
+            <span className="font-bold truncate">🗺 Каталог турів</span>
             <span className="text-[10px] text-cyan-400 font-mono">Cyan</span>
           </button>
 
           <button
-            onClick={() => handleCallbackClick({ text: '💺 Забронювати місце', callbackData: 'cb_book' })}
-            className="p-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-200 border-2 border-emerald-400 hover:border-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.25)] flex items-center justify-between transition-all group"
+            onClick={() => handleCallbackClick({ text: '⚡️ РЕЗЕРВ МІСЦЯ', callbackData: 'cb_book' })}
+            className="p-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-100 border-2 border-emerald-400 hover:border-emerald-300 shadow-[0_0_14px_rgba(52,211,153,0.35)] flex items-center justify-between transition-all group font-black"
           >
-            <span className="font-semibold truncate">💺 Бронювання</span>
+            <span className="truncate">⚡️ РЕЗЕРВ</span>
             <span className="text-[10px] text-emerald-400 font-mono">Emerald</span>
           </button>
 
           <button
-            onClick={() => handleCallbackClick({ text: '📍 Точки збору', callbackData: 'cb_meeting' })}
-            className="p-2 rounded-xl bg-teal-950/40 hover:bg-teal-900/60 text-teal-200 border-2 border-teal-400 hover:border-teal-300 shadow-[0_0_12px_rgba(45,212,191,0.25)] flex items-center justify-between transition-all group"
+            onClick={() => handleCallbackClick({ text: '🤝 Стати партнером клубу', callbackData: 'cb_partner' })}
+            className="p-2 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.3)] flex items-center justify-between transition-all group font-bold"
           >
-            <span className="font-semibold truncate">📍 Точки збору</span>
-            <span className="text-[10px] text-teal-400 font-mono">Teal</span>
+            <span className="truncate">🤝 Партнерство</span>
+            <span className="text-[10px] text-amber-400 font-mono">Gold</span>
           </button>
 
-          <button
-            onClick={() => handleCallbackClick({ text: '🚐 Фото авто', callbackData: 'cb_car' })}
-            className="p-2 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.25)] flex items-center justify-between transition-all group"
+          <a
+            href={CHANNEL_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="p-2 rounded-xl bg-sky-950/40 hover:bg-sky-900/60 text-sky-100 border-2 border-sky-400 hover:border-sky-300 shadow-[0_0_14px_rgba(56,189,248,0.35)] flex items-center justify-between transition-all group font-black"
           >
-            <span className="font-semibold truncate">🚐 Автопарк</span>
-            <span className="text-[10px] text-amber-400 font-mono">Amber</span>
-          </button>
-
-          <button
-            onClick={() => handleCallbackClick({ text: '❓ Часті питання (FAQ)', callbackData: 'cb_faq' })}
-            className="p-2 rounded-xl bg-blue-950/40 hover:bg-blue-900/60 text-blue-200 border-2 border-blue-400 hover:border-blue-300 shadow-[0_0_12px_rgba(96,165,250,0.25)] flex items-center justify-between transition-all group"
-          >
-            <span className="font-semibold truncate">❓ FAQ / Оплата</span>
-            <span className="text-[10px] text-blue-400 font-mono">Blue</span>
-          </button>
-
-          <button
-            onClick={() => handleCallbackClick({ text: '🎮 Ігри та вікторини', callbackData: 'cb_games' })}
-            className="p-2 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 text-purple-200 border-2 border-purple-400 hover:border-purple-300 shadow-[0_0_12px_rgba(192,132,252,0.25)] flex items-center justify-between transition-all group"
-          >
-            <span className="font-semibold truncate">🎮 Ігри & Квести</span>
-            <span className="text-[10px] text-purple-400 font-mono">Purple</span>
-          </button>
-
-          <button
-            onClick={() => handleCallbackClick({ text: '✍️ Залишити побажання / відгук', callbackData: 'cb_feedback' })}
-            className="p-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-200 border-2 border-rose-400 hover:border-rose-300 shadow-[0_0_12px_rgba(251,113,133,0.25)] flex items-center justify-between transition-all group"
-          >
-            <span className="font-semibold truncate">✍️ Відгуки</span>
-            <span className="text-[10px] text-rose-400 font-mono">Rose</span>
-          </button>
+            <span className="truncate">📢 НАШ КАНАЛ</span>
+            <span className="text-[10px] text-sky-400 font-mono">Sky</span>
+          </a>
 
           <a
             href={MANAGER_URL}
             target="_blank"
             rel="noreferrer"
-            className="p-2 rounded-xl bg-violet-950/40 hover:bg-violet-900/60 text-violet-200 border-2 border-violet-400 hover:border-violet-300 shadow-[0_0_12px_rgba(167,139,250,0.25)] flex items-center justify-between transition-all group"
+            className="p-2 rounded-xl bg-fuchsia-950/40 hover:bg-fuchsia-900/60 text-fuchsia-100 border-2 border-fuchsia-400 hover:border-fuchsia-300 shadow-[0_0_14px_rgba(217,70,239,0.35)] flex items-center justify-between transition-all group font-black"
           >
-            <span className="font-semibold truncate">🆘 Менеджер</span>
+            <span className="truncate">💬 Менеджер</span>
+            <span className="text-[10px] text-fuchsia-400 font-mono">Fuchsia</span>
+          </a>
+
+          <a
+            href={RESERVE_MANAGER_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="p-2 rounded-xl bg-violet-950/40 hover:bg-violet-900/60 text-violet-100 border-2 border-violet-400 hover:border-violet-300 shadow-[0_0_14px_rgba(167,139,250,0.35)] flex items-center justify-between transition-all group font-black"
+          >
+            <span className="truncate">💬 2-й Менеджер</span>
             <span className="text-[10px] text-violet-400 font-mono">Violet</span>
           </a>
+
+          <button
+            onClick={() => handleCallbackClick({ text: '⭐ Відгуки туристів', callbackData: 'cb_reviews' })}
+            className="p-2 rounded-xl bg-orange-950/40 hover:bg-orange-900/60 text-orange-200 border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.3)] flex items-center justify-between transition-all group font-bold"
+          >
+            <span className="truncate">⭐ Відгуки</span>
+            <span className="text-[10px] text-amber-400 font-mono">Amber</span>
+          </button>
+
+          <button
+            onClick={() => handleCallbackClick({ text: '❓ Часті питання (FAQ)', callbackData: 'cb_faq' })}
+            className="p-2 rounded-xl bg-blue-950/40 hover:bg-blue-900/60 text-blue-200 border-2 border-blue-400 hover:border-blue-300 shadow-[0_0_12px_rgba(96,165,250,0.3)] flex items-center justify-between transition-all group font-bold"
+          >
+            <span className="truncate">❓ FAQ / Оплата</span>
+            <span className="text-[10px] text-blue-400 font-mono">Blue</span>
+          </button>
         </div>
       </div>
 
@@ -1853,10 +1896,11 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
       {/* Telegram Mini App Modal Overlay */}
       {showMiniAppModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-fade-in">
-          <div className="w-full max-w-4xl max-h-[94vh] overflow-y-auto rounded-3xl relative">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fade-in">
+          <div className="w-full max-w-4xl h-[94vh] max-h-[94vh] flex flex-col rounded-2xl sm:rounded-3xl relative overflow-hidden shadow-2xl">
             <SvoiMiniApp
               onNewLead={onNewLead}
+              leads={leads}
               onClose={() => setShowMiniAppModal(false)}
             />
           </div>

@@ -101,7 +101,7 @@ async def process_feedback_received(message: Message, state: FSMContext, bot: Bo
         "❤️ <b>Дякуємо за ваше звернення!</b>\n\n"
         "Ваш відгук/побажання успішно передано керівництву клубу SVOI. "
         "Ми уважно вивчаємо кожне повідомлення та робимо наші поїздки ще душевнішими та яскравішими!\n\n"
-        "До зустрічі на борту нашого Opel Vivaro VIP! 🚐✨"
+        "До зустрічі на борту нашого комфортабельного авто Opel Vivaro! 🚐✨"
     )
     await message.answer(
         text=thanks_text,

@@ -10,12 +10,15 @@ export interface TripItem {
   highlights: string[];
   description: string;
   pickupSaarbruecken: string;
+  departureDates?: string[];
+  category?: 'weekend' | 'express' | 'relax' | 'combo';
 }
 
 export interface InlineBtn {
   text: string;
   callbackData?: string;
   url?: string;
+  variant?: 'primary' | 'secondary' | 'reserve' | 'manager' | 'channel' | 'partner';
 }
 
 export interface SimMessage {
@@ -34,6 +37,7 @@ export interface LeadItem {
   bookingCode?: string;
   tripTitle?: string;
   duration?: string;
+  selectedDate?: string;
   seatType?: string;
   basePrice?: number;
   seatFee?: number;
@@ -53,4 +57,17 @@ export interface PythonCodeFile {
   language: string;
   description: string;
   content: string;
+}
+
+export interface ReviewItem {
+  id: string;
+  author: string;
+  city: string;
+  trip: string;
+  rating: number;
+  date: string;
+  text: string;
+  verified?: boolean;
+  avatar?: string;
+  highlight?: string;
 }
