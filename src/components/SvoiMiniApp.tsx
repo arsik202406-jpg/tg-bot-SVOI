@@ -1,10 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Sparkles, Armchair, Compass, Clock, MapPin, 
   Check, CheckCircle2, ChevronRight, User, Phone, 
   Send, ExternalLink, ShieldCheck, Zap, Snowflake, 
   Luggage, Info, Star, Flame, Eye, RefreshCw, X,
-  Calendar, CalendarDays, Filter, Wrench, Terminal, Copy
+  Calendar, CalendarDays, Filter, Wrench, Terminal, Copy,
+  Search, Share2, CalendarPlus
 } from 'lucide-react';
 import { TRIPS_LIST } from '../data/tripsData';
 import { TripItem, LeadItem } from '../types';
@@ -218,9 +220,43 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     }
   };
 
-  // Filtered tours by duration and calendar date
+  // Search, Add-to-Calendar & Share states
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [calendarAddedTrips, setCalendarAddedTrips] = useState<Record<string, boolean>>({});
+  const [shareModalTrip, setShareModalTrip] = useState<TripItem | null>(null);
+  const [copiedShareLink, setCopiedShareLink] = useState<boolean>(false);
+
+  const handleAddToCalendar = (e: React.MouseEvent, trip: TripItem, dateStr?: string) => {
+    e.stopPropagation();
+    triggerHaptic('success');
+    const chosenDate = dateStr || (selectedTrip.id === trip.id ? selectedDepartureDate : trip.departureDates?.[0]) || '25.10.2026';
+    setCalendarAddedTrips((prev) => ({ ...prev, [trip.id]: true }));
+    setDevToast(`📅 Дату виїзду «${trip.shortTitle}» (${chosenDate}) додано до системного Календаря пристрою!`);
+    setTimeout(() => setDevToast(null), 4000);
+  };
+
+  const handleShareTrip = (e: React.MouseEvent, trip: TripItem) => {
+    e.stopPropagation();
+    triggerHaptic('light');
+    setShareModalTrip(trip);
+    setCopiedShareLink(false);
+    setDevToast(`📤 Поширення туру «${trip.shortTitle}» у Telegram...`);
+    setTimeout(() => setDevToast(null), 3500);
+  };
+
+  // Filtered tours by search query, duration, and calendar date
   const filteredTrips = useMemo(() => {
     return TRIPS_LIST.filter(trip => {
+      // Search query filter (by title, shortTitle, badge/country, description, highlights)
+      if (searchQuery.trim().length > 0) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchTitle = trip.title.toLowerCase().includes(q) || trip.shortTitle.toLowerCase().includes(q);
+        const matchCountry = (trip.badge || '').toLowerCase().includes(q);
+        const matchDesc = trip.description.toLowerCase().includes(q);
+        const matchHighlights = trip.highlights.some(h => h.toLowerCase().includes(q));
+        if (!matchTitle && !matchCountry && !matchDesc && !matchHighlights) return false;
+      }
+
       // Duration filter
       if (filterDuration === '1day' && trip.duration !== '1 день') return false;
       if (filterDuration === 'multiday' && trip.duration === '1 день') return false;
@@ -249,7 +285,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       }
       return true;
     });
-  }, [filterDuration, filterDateWeekend]);
+  }, [searchQuery, filterDuration, filterDateWeekend]);
 
   // Native Telegram WebApp SDK initialization and auto-detection
   useEffect(() => {
@@ -702,6 +738,69 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 </div>
               </div>
 
+              {/* Search Bar for Filtering by Tour Name or Destination Country */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-cyan-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Пошук туру за назвою або країною (наприклад: Париж, Італія, Бельгія, Швейцарія)..."
+                  className="w-full bg-slate-950/90 border border-slate-800 focus:border-cyan-400 rounded-xl pl-10 pr-24 py-2.5 text-xs sm:text-sm text-white placeholder:text-slate-500 outline-none transition-all shadow-inner focus:shadow-[0_0_15px_rgba(34,211,238,0.2)]"
+                />
+                {searchQuery.trim().length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setSearchQuery('');
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 hover:text-white flex items-center gap-1 transition-all"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Очистити</span>
+                  </button>
+                ) : (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-mono hidden sm:inline">
+                    {filteredTrips.length} / {TRIPS_LIST.length} турів
+                  </span>
+                )}
+              </div>
+
+              {/* Quick Country Filter Tags */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] scrollbar-none">
+                <span className="text-slate-500 font-semibold shrink-0">Країни:</span>
+                {[
+                  { q: '', label: '🌍 Всі країни' },
+                  { q: 'Франція', label: '🇫🇷 Франція' },
+                  { q: 'Італія', label: '🇮🇹 Італія' },
+                  { q: 'Швейцарія', label: '🇨🇭 Швейцарія' },
+                  { q: 'Бельгія', label: '🇧🇪 Бельгія' },
+                  { q: 'Нідерланди', label: '🇳🇱 Нідерланди' },
+                  { q: 'Німеччина', label: '🇩🇪 Німеччина' },
+                  { q: 'Люксембург', label: '🇱🇺 Люксембург' }
+                ].map((c) => {
+                  const isCountryActive = searchQuery.toLowerCase() === c.q.toLowerCase();
+                  return (
+                    <button
+                      key={c.label}
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('selection');
+                        setSearchQuery(c.q);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-medium shrink-0 transition-all border ${
+                        isCountryActive
+                          ? 'bg-indigo-600/30 border-indigo-400 text-white font-bold shadow-sm'
+                          : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Quick Weekend & Date Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] scrollbar-thin">
                 <span className="text-slate-500 font-semibold shrink-0 flex items-center gap-1">
@@ -736,142 +835,207 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               </div>
 
               {/* Active Filter Notice */}
-              {filterDateWeekend !== 'all' && (
+              {(filterDateWeekend !== 'all' || searchQuery.trim().length > 0) && (
                 <div className="flex items-center justify-between bg-cyan-950/40 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-xs text-cyan-200">
                   <span className="flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Фільтр: поїздки на <b>{filterDateWeekend}</b> ({filteredTrips.length} доступно)</span>
+                    <span>
+                      Знайдено турів: <b>{filteredTrips.length}</b>
+                      {searchQuery.trim() && <> за запитом «<b>{searchQuery}</b>»</>}
+                      {filterDateWeekend !== 'all' && <> на дати <b>{filterDateWeekend}</b></>}
+                    </span>
                   </span>
                   <button
                     onClick={() => {
                       triggerHaptic('selection');
                       setFilterDateWeekend('all');
+                      setSearchQuery('');
                     }}
                     className="text-[11px] underline text-cyan-400 hover:text-white"
                   >
-                    Скинути фільтр
+                    Скинути всі фільтри
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Tours Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredTrips.map((trip) => {
-                const isSelected = selectedTrip.id === trip.id;
-                return (
-                  <div
-                    key={trip.id}
-                    onClick={() => handleSelectTrip(trip)}
-                    className={`group relative rounded-2xl overflow-hidden cursor-pointer border-2 transition-all duration-300 flex flex-col justify-between ${
-                      isSelected
-                        ? 'border-cyan-400 bg-slate-900/90 shadow-[0_0_20px_rgba(34,211,238,0.3)] ring-1 ring-cyan-500/50'
-                        : 'border-slate-800 hover:border-cyan-500/50 bg-slate-950/70 hover:bg-slate-900/60'
-                    }`}
-                  >
-                    {/* Tour Photo */}
-                    <div className="relative h-44 w-full overflow-hidden">
-                      <img
-                        src={trip.image}
-                        alt={trip.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
-                      
-                      {/* Badge Top Left */}
-                      <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-slate-950/80 backdrop-blur-md text-[11px] font-bold text-cyan-300 border border-cyan-500/30 shadow-md">
-                        {trip.badge}
-                      </span>
+            {/* Empty Search State */}
+            {filteredTrips.length === 0 ? (
+              <div className="p-8 rounded-2xl bg-slate-950/80 border border-slate-800 text-center space-y-3">
+                <Search className="w-8 h-8 text-slate-500 mx-auto" />
+                <h4 className="text-sm font-bold text-white">За вашим запитом турів не знайдено</h4>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  Спробуйте змінити назву міста або країни, або скиньте активні фільтри дат.
+                </p>
+                <button
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setSearchQuery('');
+                    setFilterDuration('all');
+                    setFilterDateWeekend('all');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all"
+                >
+                  Показати всі 14 турів
+                </button>
+              </div>
+            ) : (
+              /* Tours Grid */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredTrips.map((trip) => {
+                  const isSelected = selectedTrip.id === trip.id;
+                  const isCalendarSaved = Boolean(calendarAddedTrips[trip.id]);
 
-                      {/* Price Tag Top Right */}
-                      <span className="absolute top-2.5 right-2.5 px-3 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-xs font-black text-white shadow-lg shadow-emerald-600/30 border border-emerald-400/40">
-                        {trip.price}{trip.currency}
-                      </span>
-
-                      {/* Duration Tag Bottom Left */}
-                      <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1.5 text-xs text-slate-200">
-                        <Clock className="w-3.5 h-3.5 text-amber-400" />
-                        <span className="font-semibold">{trip.duration}</span>
-                      </div>
-                    </div>
-
-                    {/* Tour Content */}
-                    <div className="p-3.5 space-y-2.5 flex-1 flex flex-col justify-between">
-                      <div>
-                        <h4 className="font-bold text-white text-sm group-hover:text-cyan-300 transition-colors line-clamp-1">
-                          {trip.title}
-                        </h4>
-                        <p className="text-[11px] text-slate-400 line-clamp-2 mt-1 leading-relaxed">
-                          {trip.description}
-                        </p>
-                      </div>
-
-                      {/* Highlights */}
-                      <div className="flex flex-wrap gap-1">
-                        {trip.highlights.slice(0, 3).map((h, i) => (
-                          <span
-                            key={i}
-                            className="px-2 py-0.5 rounded-md bg-slate-900 text-[10px] text-slate-300 border border-slate-800"
-                          >
-                            ✓ {h}
-                          </span>
-                        ))}
-                      </div>
-
-                      {/* Available Departure Dates Chips for this tour */}
-                      {trip.departureDates && trip.departureDates.length > 0 && (
-                        <div className="pt-2 border-t border-slate-800/60">
-                          <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 mb-1.5">
-                            <Calendar className="w-3 h-3 text-cyan-400" />
-                            <span>Дати виїзду:</span>
-                          </span>
-                          <div className="flex flex-wrap gap-1">
-                            {trip.departureDates.slice(0, 4).map((d) => {
-                              const isDateActive = isSelected && selectedDepartureDate === d;
-                              return (
-                                <button
-                                  key={d}
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    triggerHaptic('selection');
-                                    handleSelectTrip(trip, d);
-                                  }}
-                                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all border ${
-                                    isDateActive
-                                      ? 'bg-cyan-500 text-white border-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.4)]'
-                                      : 'bg-slate-900 text-slate-300 hover:text-white border-slate-800 hover:border-cyan-500/50'
-                                  }`}
-                                >
-                                  {d}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* CTA Button */}
-                      <div className="pt-2 flex items-center justify-between border-t border-slate-800/80">
-                        <span className="text-[11px] text-slate-400">
-                          Збір: <b className="text-slate-200">Саарланд, Люксембург, Трір</b>
+                  return (
+                    <div
+                      key={trip.id}
+                      onClick={() => handleSelectTrip(trip)}
+                      className={`group relative rounded-2xl overflow-hidden cursor-pointer border-2 transition-all duration-300 flex flex-col justify-between ${
+                        isSelected
+                          ? 'border-cyan-400 bg-slate-900/90 shadow-[0_0_20px_rgba(34,211,238,0.3)] ring-1 ring-cyan-500/50'
+                          : 'border-slate-800 hover:border-cyan-500/50 bg-slate-950/70 hover:bg-slate-900/60'
+                      }`}
+                    >
+                      {/* Tour Photo */}
+                      <div className="relative h-44 w-full overflow-hidden">
+                        <img
+                          src={trip.image}
+                          alt={trip.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
+                        
+                        {/* Badge Top Left */}
+                        <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-slate-950/80 backdrop-blur-md text-[11px] font-bold text-cyan-300 border border-cyan-500/30 shadow-md">
+                          {trip.badge}
                         </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSelectTrip(trip);
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md shadow-cyan-600/30 flex items-center gap-1 transition-all"
-                        >
-                          <span>Обрати місце</span>
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
+
+                        {/* Top Right Price & Share Action */}
+                        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => handleShareTrip(e, trip)}
+                            className="px-2.5 py-1 rounded-xl bg-slate-950/85 hover:bg-slate-900 text-slate-200 hover:text-cyan-300 border border-slate-700/80 hover:border-cyan-400/60 text-[11px] font-bold flex items-center gap-1 backdrop-blur-md shadow-md transition-all active:scale-95"
+                            title="Поділитися посиланням на тур у Telegram"
+                          >
+                            <Share2 className="w-3 h-3 text-cyan-400" />
+                            <span>Поділитися</span>
+                          </button>
+                          <span className="px-3 py-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-xs font-black text-white shadow-lg shadow-emerald-600/30 border border-emerald-400/40">
+                            {trip.price}{trip.currency}
+                          </span>
+                        </div>
+
+                        {/* Duration Tag Bottom Left */}
+                        <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1.5 text-xs text-slate-200">
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          <span className="font-semibold">{trip.duration}</span>
+                        </div>
+
+                        {/* Selected Indicator Bottom Right */}
+                        {isSelected && (
+                          <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-lg bg-cyan-500/90 text-slate-950 text-[10px] font-extrabold shadow">
+                            ✓ Обраний тур
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Tour Content */}
+                      <div className="p-3.5 space-y-2.5 flex-1 flex flex-col justify-between">
+                        <div>
+                          <h4 className="font-bold text-white text-sm group-hover:text-cyan-300 transition-colors line-clamp-1">
+                            {trip.title}
+                          </h4>
+                          <p className="text-[11px] text-slate-400 line-clamp-2 mt-1 leading-relaxed">
+                            {trip.description}
+                          </p>
+                        </div>
+
+                        {/* Highlights */}
+                        <div className="flex flex-wrap gap-1">
+                          {trip.highlights.slice(0, 3).map((h, i) => (
+                            <span
+                              key={i}
+                              className="px-2 py-0.5 rounded-md bg-slate-900 text-[10px] text-slate-300 border border-slate-800"
+                            >
+                              ✓ {h}
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Available Departure Dates Chips & Add to Calendar Button */}
+                        {trip.departureDates && trip.departureDates.length > 0 && (
+                          <div className="pt-2 border-t border-slate-800/60 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-cyan-400" />
+                                <span>Дати виїзду:</span>
+                              </span>
+
+                              {/* Add to System Calendar Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => handleAddToCalendar(e, trip)}
+                                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border transition-all active:scale-95 ${
+                                  isCalendarSaved
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                    : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 hover:text-white border-cyan-500/30 hover:border-cyan-400'
+                                }`}
+                                title="Зберегти дату виїзду в системний календар пристрою"
+                              >
+                                <CalendarPlus className="w-3 h-3" />
+                                <span>{isCalendarSaved ? 'Додано в Календар ✓' : 'Додати в Календар'}</span>
+                              </button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1">
+                              {trip.departureDates.slice(0, 4).map((d) => {
+                                const isDateActive = isSelected && selectedDepartureDate === d;
+                                return (
+                                  <button
+                                    key={d}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      triggerHaptic('selection');
+                                      handleSelectTrip(trip, d);
+                                    }}
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all border ${
+                                      isDateActive
+                                        ? 'bg-cyan-500 text-white border-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.4)]'
+                                        : 'bg-slate-900 text-slate-300 hover:text-white border-slate-800 hover:border-cyan-500/50'
+                                    }`}
+                                  >
+                                    {d}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* CTA Button */}
+                        <div className="pt-2 flex items-center justify-between border-t border-slate-800/80 gap-2">
+                          <span className="text-[11px] text-slate-400 truncate">
+                            Збір: <b className="text-slate-200">Саарланд, Люксембург, Трір</b>
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectTrip(trip);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md shadow-cyan-600/30 flex items-center gap-1 transition-all shrink-0"
+                          >
+                            <span>Обрати місце</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Customer Testimonials Carousel directly in Tours showcase */}
             <div className="pt-2">
@@ -887,18 +1051,33 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
         {/* ================= STEP 2: 3D/2D CABIN & STARLIGHT CEILING ================= */}
         {activeStep === 'seats' && (
           <div className="space-y-5 pb-12 sm:pb-6">
-            {/* Cabin Top Header */}
+            {/* Cabin Top Header with Selected Tour & Add to Calendar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 text-xs font-bold">
                     Тур: {selectedTrip.shortTitle}
                   </span>
                   <span className="text-xs text-emerald-400 font-bold">
                     {selectedTrip.price}€
                   </span>
+                  <span className="text-xs text-slate-400">
+                    • Виїзд: <b className="text-cyan-300">{selectedDepartureDate}</b>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => handleAddToCalendar(e, selectedTrip, selectedDepartureDate)}
+                    className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold flex items-center gap-1 border transition-all active:scale-95 ${
+                      calendarAddedTrips[selectedTrip.id]
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 hover:text-white border-cyan-500/40'
+                    }`}
+                  >
+                    <CalendarPlus className="w-3 h-3" />
+                    <span>{calendarAddedTrips[selectedTrip.id] ? 'Додано в Календар ✓' : 'Додати в Календар'}</span>
+                  </button>
                 </div>
-                <h3 className="text-lg font-extrabold text-white mt-1 flex items-center gap-2">
+                <h3 className="text-lg font-extrabold text-white mt-1.5 flex items-center gap-2">
                   <Armchair className="w-5 h-5 text-indigo-400" />
                   <span>Інтерактивний салон Opel Vivaro</span>
                 </h3>
@@ -912,7 +1091,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   triggerHaptic('medium');
                   setActiveStep('checkout');
                 }}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-2 self-start sm:self-auto"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-2 self-start sm:self-auto shrink-0"
               >
                 <span>Перейти до замовлення ({totalPrice}€)</span>
                 <ChevronRight className="w-4 h-4" />
@@ -920,7 +1099,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
             </div>
 
             {/* Visual Cabin Container with Starlight Ceiling Effect */}
-            <div className="relative rounded-3xl p-5 sm:p-7 border-2 border-cyan-500/40 bg-gradient-to-b from-[#0a1128] via-[#090d20] to-[#060814] shadow-2xl overflow-hidden">
+            <div className="relative rounded-3xl p-4 sm:p-7 border-2 border-cyan-500/40 bg-gradient-to-b from-[#0a1128] via-[#090d20] to-[#060814] shadow-2xl overflow-hidden">
               {/* Animated Constellation Starlight Headliner overlay */}
               {starlightCeiling && (
                 <div className="absolute inset-0 pointer-events-none">
@@ -949,12 +1128,12 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] px-2.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-200 font-semibold flex items-center gap-1 shadow-sm">
                     <Sparkles className="w-3 h-3 text-cyan-400" />
-                    Зоряне небо: УВІМКНЕНО
+                    Зоряне небо: {starlightCeiling ? 'УВІМКНЕНО' : 'ВИМКНЕНО'}
                   </span>
                 </div>
               </div>
 
-              {/* SEATS LAYOUT IN 3 ROWS */}
+              {/* SEATS LAYOUT IN 3 ROWS WITH FRAMER MOTION ANIMATIONS */}
               <div className="space-y-4 max-w-xl mx-auto">
                 {/* --- 1-Й РЯД (ВОДІЙ + 2 МІСЦЯ) --- */}
                 <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-amber-500/30 space-y-2">
@@ -976,30 +1155,45 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                       <span className="text-[9px] text-slate-500">SVOI Travel</span>
                     </div>
 
-                    {/* Місце 1 (центр) */}
+                    {/* Місце 1 та 2 з плавною анімацією масштабування та світіння */}
                     {CABIN_SEATS.slice(0, 2).map((seat) => {
                       const isSelected = selectedSeat?.id === seat.id;
                       return (
-                        <button
+                        <motion.button
                           key={seat.id}
+                          type="button"
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.94 }}
+                          animate={
+                            isSelected
+                              ? {
+                                  scale: [1, 1.07, 1.03],
+                                  boxShadow: '0 0 24px rgba(251, 191, 36, 0.65), inset 0 0 12px rgba(251, 191, 36, 0.25)'
+                                }
+                              : {
+                                  scale: 1,
+                                  boxShadow: '0 0 0px rgba(251, 191, 36, 0)'
+                                }
+                          }
+                          transition={{ type: 'spring', stiffness: 360, damping: 20 }}
                           onClick={() => {
                             triggerHaptic('selection');
                             setSelectedSeat(seat);
                           }}
-                          className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center text-center group ${
+                          className={`p-3 rounded-xl border-2 transition-colors flex flex-col items-center justify-center text-center group ${
                             isSelected
-                              ? 'bg-amber-500/20 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.4)] text-white scale-[1.02]'
+                              ? 'bg-amber-500/25 border-amber-400 text-white'
                               : 'bg-slate-900/80 hover:bg-slate-850 border-amber-500/40 text-slate-200 hover:border-amber-400'
                           }`}
                         >
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs mb-1 font-bold ${
-                            isSelected ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-amber-300'
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs mb-1 font-bold transition-colors ${
+                            isSelected ? 'bg-amber-400 text-slate-950 shadow-[0_0_12px_rgba(251,191,36,0.8)]' : 'bg-slate-800 text-amber-300'
                           }`}>
                             {seat.id === 'seat-1' ? '1' : '2'}
                           </div>
                           <span className="text-xs font-bold">{seat.id === 'seat-1' ? 'Місце 1' : 'Місце 2'}</span>
                           <span className="text-[10px] text-amber-300 font-semibold">+{seat.surcharge}€ (Вікно)</span>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
@@ -1010,7 +1204,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-sky-300 flex items-center gap-1.5">
                       <Armchair className="w-3.5 h-3.5 text-sky-400" />
-                      2-й ряд (Капітанські крісла, +5..10€)
+                      2-й ряд (Комфортні сидіння, +5€)
                     </span>
                     <span className="text-[10px] text-slate-400">Широкі підлокітники</span>
                   </div>
@@ -1019,20 +1213,35 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                     {CABIN_SEATS.slice(2, 5).map((seat) => {
                       const isSelected = selectedSeat?.id === seat.id;
                       return (
-                        <button
+                        <motion.button
                           key={seat.id}
+                          type="button"
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.94 }}
+                          animate={
+                            isSelected
+                              ? {
+                                  scale: [1, 1.07, 1.03],
+                                  boxShadow: '0 0 24px rgba(56, 189, 248, 0.65), inset 0 0 12px rgba(56, 189, 248, 0.25)'
+                                }
+                              : {
+                                  scale: 1,
+                                  boxShadow: '0 0 0px rgba(56, 189, 248, 0)'
+                                }
+                          }
+                          transition={{ type: 'spring', stiffness: 360, damping: 20 }}
                           onClick={() => {
                             triggerHaptic('selection');
                             setSelectedSeat(seat);
                           }}
-                          className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center text-center group ${
+                          className={`p-3 rounded-xl border-2 transition-colors flex flex-col items-center justify-center text-center group ${
                             isSelected
-                              ? 'bg-sky-500/20 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.4)] text-white scale-[1.02]'
+                              ? 'bg-sky-500/25 border-sky-400 text-white'
                               : 'bg-slate-900/80 hover:bg-slate-850 border-sky-500/40 text-slate-200 hover:border-sky-400'
                           }`}
                         >
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs mb-1 font-bold ${
-                            isSelected ? 'bg-sky-500 text-slate-950' : 'bg-slate-800 text-sky-300'
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs mb-1 font-bold transition-colors ${
+                            isSelected ? 'bg-sky-400 text-slate-950 shadow-[0_0_12px_rgba(56,189,248,0.8)]' : 'bg-slate-800 text-sky-300'
                           }`}>
                             {seat.id.replace('seat-', '')}
                           </div>
@@ -1040,7 +1249,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                           <span className="text-[10px] text-sky-300 font-semibold">
                             {seat.surcharge > 0 ? `+${seat.surcharge}€` : '0€'}
                           </span>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
@@ -1060,20 +1269,35 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                     {CABIN_SEATS.slice(5, 8).map((seat) => {
                       const isSelected = selectedSeat?.id === seat.id;
                       return (
-                        <button
+                        <motion.button
                           key={seat.id}
+                          type="button"
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.94 }}
+                          animate={
+                            isSelected
+                              ? {
+                                  scale: [1, 1.07, 1.03],
+                                  boxShadow: '0 0 24px rgba(129, 140, 248, 0.65), inset 0 0 12px rgba(129, 140, 248, 0.25)'
+                                }
+                              : {
+                                  scale: 1,
+                                  boxShadow: '0 0 0px rgba(129, 140, 248, 0)'
+                                }
+                          }
+                          transition={{ type: 'spring', stiffness: 360, damping: 20 }}
                           onClick={() => {
                             triggerHaptic('selection');
                             setSelectedSeat(seat);
                           }}
-                          className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center text-center group ${
+                          className={`p-3 rounded-xl border-2 transition-colors flex flex-col items-center justify-center text-center group ${
                             isSelected
-                              ? 'bg-indigo-500/20 border-indigo-400 shadow-[0_0_15px_rgba(129,140,248,0.4)] text-white scale-[1.02]'
+                              ? 'bg-indigo-500/25 border-indigo-400 text-white'
                               : 'bg-slate-900/80 hover:bg-slate-850 border-indigo-500/40 text-slate-200 hover:border-indigo-400'
                           }`}
                         >
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs mb-1 font-bold ${
-                            isSelected ? 'bg-indigo-500 text-slate-950' : 'bg-slate-800 text-indigo-300'
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs mb-1 font-bold transition-colors ${
+                            isSelected ? 'bg-indigo-400 text-slate-950 shadow-[0_0_12px_rgba(129,140,248,0.8)]' : 'bg-slate-800 text-indigo-300'
                           }`}>
                             {seat.id.replace('seat-', '')}
                           </div>
@@ -1081,50 +1305,62 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                           <span className="text-[10px] text-indigo-300 font-semibold">
                             {seat.surcharge > 0 ? `+${seat.surcharge}€` : 'Включено (0€)'}
                           </span>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
                 </div>
 
                 {/* Free seating option */}
-                <button
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     triggerHaptic('light');
                     setSelectedSeat(null);
                   }}
                   className={`w-full py-2.5 px-3 rounded-xl border transition-all text-xs flex items-center justify-between ${
                     selectedSeat === null
-                      ? 'bg-emerald-950/60 border-emerald-400 text-emerald-200 shadow-[0_0_10px_rgba(52,211,153,0.3)]'
+                      ? 'bg-emerald-950/60 border-emerald-400 text-emerald-200 shadow-[0_0_14px_rgba(52,211,153,0.35)]'
                       : 'bg-slate-900/60 border-slate-700 text-slate-400 hover:text-white'
                   }`}
                 >
                   <span className="font-semibold">🎲 Без фіксації конкретного місця (вільна посадка в день виїзду)</span>
                   <span className="font-bold text-emerald-400">0€ доплати</span>
-                </button>
+                </motion.button>
               </div>
 
-              {/* Selected Seat Details Card */}
-              {selectedSeat && (
-                <div className="mt-4 p-3.5 rounded-xl bg-slate-950/90 border border-cyan-500/40 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">Обране місце:</span>
-                    <h5 className="font-bold text-white text-sm">{selectedSeat.name} ({selectedSeat.row})</h5>
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {selectedSeat.perks.map((p, idx) => (
-                        <span key={idx} className="text-[10px] text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                          ✓ {p}
-                        </span>
-                      ))}
+              {/* Selected Seat Details Card with Framer Motion Transition */}
+              <AnimatePresence mode="wait">
+                {selectedSeat && (
+                  <motion.div
+                    key={selectedSeat.id}
+                    initial={{ opacity: 0, y: 10, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                    transition={{ duration: 0.22 }}
+                    className="mt-4 p-3.5 rounded-xl bg-slate-950/90 border border-cyan-500/50 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-[0_0_20px_rgba(34,211,238,0.2)]"
+                  >
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">Обране місце:</span>
+                      <h5 className="font-bold text-white text-sm">{selectedSeat.name} ({selectedSeat.row})</h5>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {selectedSeat.perks.map((p, idx) => (
+                          <span key={idx} className="text-[10px] text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                            ✓ {p}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="text-right sm:shrink-0">
-                    <span className="text-[11px] text-slate-400 block">Доплата за місце:</span>
-                    <span className="text-base font-extrabold text-amber-300">+{selectedSeat.surcharge}€</span>
-                  </div>
-                </div>
-              )}
+                    <div className="text-right sm:shrink-0">
+                      <span className="text-[11px] text-slate-400 block">Доплата за місце:</span>
+                      <span className="text-base font-extrabold text-amber-300">+{selectedSeat.surcharge}€</span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Amenities overview */}
@@ -1241,8 +1477,8 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                     <span className="text-base font-extrabold text-cyan-300">{basePrice}€</span>
                   </div>
 
-                  {/* Selected Departure Date */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                  {/* Selected Departure Date & Quick Calendar / Share Actions */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
                     <div>
                       <span className="font-semibold text-cyan-300 flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5 text-cyan-400" />
@@ -1252,17 +1488,39 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                         {selectedDepartureDate}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setActiveStep('tours');
-                        setShowCalendarModal(true);
-                      }}
-                      className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1"
-                    >
-                      Змінити дату
-                    </button>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => handleAddToCalendar(e, selectedTrip, selectedDepartureDate)}
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1 border transition-all active:scale-95 ${
+                          calendarAddedTrips[selectedTrip.id]
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 hover:text-white border-cyan-500/40'
+                        }`}
+                      >
+                        <CalendarPlus className="w-3.5 h-3.5" />
+                        <span>{calendarAddedTrips[selectedTrip.id] ? 'Додано в Календар ✓' : 'Додати в Календар'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleShareTrip(e, selectedTrip)}
+                        className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-cyan-300 border border-slate-700 hover:border-cyan-400/50 text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95"
+                      >
+                        <Share2 className="w-3 h-3 text-cyan-400" />
+                        <span>Поділитися</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setActiveStep('tours');
+                          setShowCalendarModal(true);
+                        }}
+                        className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1 ml-1"
+                      >
+                        Змінити дату
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
@@ -1652,6 +1910,140 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
           </div>
         </div>
       )}
+
+      {/* ================= SYSTEM SHARE TO TELEGRAM MENU MODAL ================= */}
+      <AnimatePresence>
+        {shareModalTrip && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-2.5 sm:p-4"
+            onClick={() => setShareModalTrip(null)}
+          >
+            <motion.div
+              initial={{ y: 60, scale: 0.96, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: 40, scale: 0.96, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 340, damping: 26 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-[#0b1324] border-2 border-cyan-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-[0_0_50px_rgba(6,182,212,0.3)] space-y-4 text-xs"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 flex items-center justify-center">
+                    <Share2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-white">Поділитися туром у Telegram</h4>
+                    <p className="text-[11px] text-slate-400">Системне меню поширення посилання</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShareModalTrip(null)}
+                  className="w-8 h-8 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center border border-slate-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Preview of Telegram Message */}
+              <div className="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-2">
+                <div className="flex items-center gap-2.5">
+                  <img
+                    src={shareModalTrip.image}
+                    alt={shareModalTrip.shortTitle}
+                    className="w-12 h-12 rounded-xl object-cover shrink-0 border border-cyan-500/30"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">
+                      {shareModalTrip.badge}
+                    </span>
+                    <h5 className="font-bold text-white text-xs truncate">{shareModalTrip.title}</h5>
+                    <span className="text-[11px] text-emerald-400 font-extrabold">
+                      {shareModalTrip.price}{shareModalTrip.currency} • {shareModalTrip.duration}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800/80 font-mono text-[10px] text-cyan-300 break-all">
+                  https://t.me/SVOI_Bot/app?startapp=tour_{shareModalTrip.id}
+                </div>
+              </div>
+
+              {/* Simulated Telegram Quick Contacts */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold text-slate-400 block">
+                  Надіслати в Telegram-повідомлення:
+                </span>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {[
+                    { name: 'Збережене', icon: '🔖', color: 'from-cyan-500 to-blue-600' },
+                    { name: 'Друзі / Сім\'я', icon: '👨‍👩‍👧‍👦', color: 'from-indigo-500 to-purple-600' },
+                    { name: 'Чат SVOI', icon: '🚐', color: 'from-emerald-500 to-teal-600' },
+                    { name: 'Попутники', icon: '✨', color: 'from-amber-500 to-orange-600' }
+                  ].map((recipient) => (
+                    <button
+                      key={recipient.name}
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('success');
+                        setDevToast(`📨 Посилання на тур «${shareModalTrip.shortTitle}» надіслано в «${recipient.name}»!`);
+                        setTimeout(() => setDevToast(null), 4000);
+                        setShareModalTrip(null);
+                      }}
+                      className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-cyan-400/50 flex flex-col items-center gap-1.5 transition-all active:scale-95"
+                    >
+                      <div className={`w-9 h-9 rounded-full bg-gradient-to-tr ${recipient.color} flex items-center justify-center text-sm shadow-md`}>
+                        {recipient.icon}
+                      </div>
+                      <span className="text-[10px] text-slate-300 font-medium truncate w-full">
+                        {recipient.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    const shareUrl = `https://t.me/SVOI_Bot/app?startapp=tour_${shareModalTrip.id}`;
+                    navigator.clipboard?.writeText(
+                      `🚐 Приєднуйся до туру «${shareModalTrip.title}» (${shareModalTrip.price}€) з клубом SVOI! Бронювання місця без передоплати: ${shareUrl}`
+                    );
+                    setCopiedShareLink(true);
+                    setDevToast(`🔗 Посилання на тур «${shareModalTrip.shortTitle}» скопійовано!`);
+                    setTimeout(() => setDevToast(null), 3500);
+                  }}
+                  className="w-full sm:flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-500/30 font-bold flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{copiedShareLink ? 'Посилання скопійовано ✓' : 'Скопіювати посилання'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('success');
+                    setDevToast(`🚀 Відкрито системне вікно Telegram Share для туру «${shareModalTrip.shortTitle}»!`);
+                    setTimeout(() => setDevToast(null), 4000);
+                    setShareModalTrip(null);
+                  }}
+                  className="w-full sm:flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-600/30 transition-all"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Поділитися в Telegram</span>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
