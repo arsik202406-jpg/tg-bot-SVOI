@@ -19,7 +19,6 @@ interface TelegramSimulatorProps {
 
 const BOT_TOKEN = "8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM";
 const MANAGER_URL = "https://t.me/SVOI_travel_admin";
-const RESERVE_MANAGER_URL = "https://t.me/svoi_reserve_admin";
 const CHANNEL_URL = "https://t.me/+Flt_2r6vi3U4ZDg6";
 const GROUP_URL = "https://t.me/+J50liyDUHPgzYTQy";
 
@@ -71,15 +70,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         : 'bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-200 border border-cyan-400 font-bold';
     }
 
-    // 0.4. Second / Reserve Manager Button (Vibrant neon color & font-black like РЕЗЕРВ)
-    if (text.includes("ДРУГИЙ МЕНЕДЖЕР") || text.includes("РЕЗЕРВНИЙ МЕНЕДЖЕР") || text.includes("Резервний менеджер")) {
-      return styleMode === 'neon'
-        ? 'bg-gradient-to-r from-violet-950 via-purple-950 to-indigo-950 hover:from-violet-900 hover:to-indigo-900 active:bg-violet-800 text-white border-2 border-violet-400 hover:border-violet-300 shadow-[0_0_18px_rgba(167,139,250,0.7),inset_0_0_10px_rgba(167,139,250,0.3)] font-black ring-1 ring-violet-400/60'
-        : 'bg-violet-950/50 hover:bg-violet-900/70 text-violet-100 hover:text-white border border-violet-400 font-bold shadow-sm';
-    }
-
     // 0.5. Primary Manager Button (Vibrant neon color & font-black like РЕЗЕРВ)
-    if (text.includes("ЗВ'ЯЗОК З МЕНЕДЖЕРОМ") || text === "💬 МЕНЕДЖЕР" || (text.includes("МЕНЕДЖЕР") && !text.includes("ДРУГИЙ") && !text.includes("РЕЗЕРВНИЙ"))) {
+    if (text.includes("ЗВ'ЯЗОК З МЕНЕДЖЕРОМ") || text.includes("МЕНЕДЖЕР") || text.includes("Менеджер")) {
       return styleMode === 'neon'
         ? 'bg-gradient-to-r from-fuchsia-950 via-pink-950 to-rose-950 hover:from-fuchsia-900 hover:to-pink-900 active:bg-fuchsia-800 text-white border-2 border-fuchsia-400 hover:border-fuchsia-300 shadow-[0_0_18px_rgba(217,70,239,0.7),inset_0_0_10px_rgba(217,70,239,0.3)] font-black ring-1 ring-fuchsia-400/60'
         : 'bg-fuchsia-950/50 hover:bg-fuchsia-900/70 text-fuchsia-100 hover:text-white border border-fuchsia-400 font-bold shadow-sm';
@@ -224,22 +216,22 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
   const getMainKeyboard = (): InlineBtn[][] => [
     [
-      { text: '🗺 Напрямки та дати', callbackData: 'cb_trips' },
-      { text: '⚡️ РЕЗЕРВ МІСЦЯ', callbackData: 'cb_book' }
+      { text: '🌌 SVOI Mini App (3D Салон & 14 турів) ✨', callbackData: 'cb_open_miniapp' }
     ],
     [
-      { text: '⭐ Відгуки туристів', callbackData: 'cb_reviews' },
-      { text: '❓ Часті питання (FAQ)', callbackData: 'cb_faq' }
+      { text: '🔵 🗺 Напрямки та дати', callbackData: 'cb_trips' },
+      { text: '🟢 ⚡️ РЕЗЕРВ МІСЦЯ', callbackData: 'cb_book' }
     ],
     [
-      { text: '🤝 Стати партнером клубу', callbackData: 'cb_partner' }
+      { text: '🟠 ⭐ Відгуки туристів', callbackData: 'cb_reviews' },
+      { text: '🔷 ❓ Часті питання (FAQ)', callbackData: 'cb_faq' }
     ],
     [
-      { text: "💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url: MANAGER_URL },
-      { text: '💬 ДРУГИЙ МЕНЕДЖЕР', url: RESERVE_MANAGER_URL }
+      { text: '🟡 🤝 Стати партнером клубу', callbackData: 'cb_partner' }
     ],
     [
-      { text: '📢 НАШ КАНАЛ', url: CHANNEL_URL }
+      { text: "🟣 💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url: MANAGER_URL },
+      { text: '💎 📢 НАШ КАНАЛ', url: CHANNEL_URL }
     ],
     [
       { text: '👑 Керування каналом (/channel)', callbackData: 'cb_adm_channel_menu' },
@@ -1861,15 +1853,13 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
             <span className="text-[10px] text-fuchsia-400 font-mono">Fuchsia</span>
           </a>
 
-          <a
-            href={RESERVE_MANAGER_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="p-2 rounded-xl bg-violet-950/40 hover:bg-violet-900/60 text-violet-100 border-2 border-violet-400 hover:border-violet-300 shadow-[0_0_14px_rgba(167,139,250,0.35)] flex items-center justify-between transition-all group font-black"
+          <button
+            onClick={() => setShowMiniAppModal(true)}
+            className="p-2 rounded-xl bg-cyan-950/50 hover:bg-cyan-900/70 text-cyan-100 border-2 border-cyan-400 hover:border-cyan-300 shadow-[0_0_14px_rgba(34,211,238,0.45)] flex items-center justify-between transition-all group font-black"
           >
-            <span className="truncate">💬 2-й Менеджер</span>
-            <span className="text-[10px] text-violet-400 font-mono">Violet</span>
-          </a>
+            <span className="truncate">🌌 Mini App 3D</span>
+            <span className="text-[10px] text-cyan-300 font-mono">Neon</span>
+          </button>
 
           <button
             onClick={() => handleCallbackClick({ text: '⭐ Відгуки туристів', callbackData: 'cb_reviews' })}

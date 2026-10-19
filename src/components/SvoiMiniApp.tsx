@@ -220,11 +220,52 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     }
   };
 
-  // Search, Add-to-Calendar & Share states
+  // Search, Price Range Slider, Add-to-Calendar & Share states
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [maxPriceFilter, setMaxPriceFilter] = useState<number>(450);
+  const [priceSortOrder, setPriceSortOrder] = useState<'default' | 'asc' | 'desc'>('default');
   const [calendarAddedTrips, setCalendarAddedTrips] = useState<Record<string, boolean>>({});
   const [shareModalTrip, setShareModalTrip] = useState<TripItem | null>(null);
   const [copiedShareLink, setCopiedShareLink] = useState<boolean>(false);
+
+  // GitHub Pages / Public URL Binder Modal state
+  const [showUrlSetupModal, setShowUrlSetupModal] = useState<boolean>(false);
+  const [publicMiniAppUrl, setPublicMiniAppUrl] = useState<string>('https://username.github.io/svoi-miniapp/?miniapp=1');
+  const [isSavingBotUrl, setIsSavingBotUrl] = useState<boolean>(false);
+
+  const handleSavePublicUrlToBot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publicMiniAppUrl.startsWith('https://')) {
+      setDevToast('⚠️ Посилання має починатися з https://');
+      setTimeout(() => setDevToast(null), 3500);
+      return;
+    }
+    setIsSavingBotUrl(true);
+    try {
+      const urlWithParam = publicMiniAppUrl.includes('miniapp=1')
+        ? publicMiniAppUrl
+        : `${publicMiniAppUrl.replace(/\/$/, '')}/?miniapp=1`;
+      const resp = await fetch('/api/telegram/set-miniapp-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ miniAppUrl: urlWithParam })
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        triggerHaptic('success');
+        setPublicMiniAppUrl(urlWithParam);
+        setDevToast('✅ Нову адресу Mini App успішно прив’язано до @Svoi_TravelEU_bot!');
+        setShowUrlSetupModal(false);
+      } else {
+        setDevToast(`⚠️ Помилка Telegram API: ${data.description || data.error || 'Невідома помилка'}`);
+      }
+    } catch (_err) {
+      setDevToast('⚠️ Помилка з’єднання з сервером');
+    } finally {
+      setIsSavingBotUrl(false);
+      setTimeout(() => setDevToast(null), 4000);
+    }
+  };
 
   const handleAddToCalendar = (e: React.MouseEvent, trip: TripItem, dateStr?: string) => {
     e.stopPropagation();
@@ -244,9 +285,12 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     setTimeout(() => setDevToast(null), 3500);
   };
 
-  // Filtered tours by search query, duration, and calendar date
+  // Filtered tours by search query, price range slider, duration, and calendar date
   const filteredTrips = useMemo(() => {
-    return TRIPS_LIST.filter(trip => {
+    const filtered = TRIPS_LIST.filter(trip => {
+      // Price range filter
+      if (trip.price > maxPriceFilter) return false;
+
       // Search query filter (by title, shortTitle, badge/country, description, highlights)
       if (searchQuery.trim().length > 0) {
         const q = searchQuery.toLowerCase().trim();
@@ -285,7 +329,15 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       }
       return true;
     });
-  }, [searchQuery, filterDuration, filterDateWeekend]);
+
+    if (priceSortOrder === 'asc') {
+      return [...filtered].sort((a, b) => a.price - b.price);
+    }
+    if (priceSortOrder === 'desc') {
+      return [...filtered].sort((a, b) => b.price - a.price);
+    }
+    return filtered;
+  }, [searchQuery, maxPriceFilter, priceSortOrder, filterDuration, filterDateWeekend]);
 
   // Native Telegram WebApp SDK initialization and auto-detection
   useEffect(() => {
@@ -482,6 +534,20 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* GitHub Pages / Public URL Binder Button */}
+          <button
+            onClick={() => {
+              triggerHaptic('light');
+              setShowUrlSetupModal(true);
+            }}
+            className="px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-400/50 text-indigo-200 hover:text-white transition-all flex items-center gap-1 shadow-sm active:scale-95"
+            title="Налаштувати публічне посилання GitHub Pages для відкриття в Telegram"
+          >
+            <ExternalLink className="w-3 h-3 text-indigo-400 shrink-0" />
+            <span className="hidden md:inline">GitHub URL для ТГ</span>
+            <span className="md:hidden">URL ТГ</span>
+          </button>
+
           {/* Developer Mode Simulator Trigger Button */}
           <button
             onClick={handleToggleDevMode}
@@ -801,6 +867,93 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 })}
               </div>
 
+              {/* Price Range Slider & Price Sorting Controls */}
+              <div className="p-3 rounded-2xl bg-slate-950/85 border border-slate-800/90 space-y-2.5 shadow-inner">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                      💶 Діапазон цін:
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-extrabold">
+                      від 80€ до {maxPriceFilter}€
+                    </span>
+                  </div>
+
+                  {/* Sort Order Pills (Cheapest -> Most Expensive) */}
+                  <div className="flex items-center gap-1 text-[11px]">
+                    <span className="text-slate-500 hidden sm:inline mr-1">Сортування:</span>
+                    {[
+                      { id: 'default', label: 'За замовч.' },
+                      { id: 'asc', label: 'Від найдешевших ↑' },
+                      { id: 'desc', label: 'Від дорожчих ↓' }
+                    ].map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('selection');
+                          setPriceSortOrder(s.id as 'default' | 'asc' | 'desc');
+                        }}
+                        className={`px-2 py-0.5 rounded-lg font-semibold transition-all border ${
+                          priceSortOrder === s.id
+                            ? 'bg-emerald-600/30 border-emerald-400 text-emerald-200 shadow-sm'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Range Input Slider */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-mono text-slate-400 shrink-0">80€</span>
+                  <input
+                    type="range"
+                    min={80}
+                    max={450}
+                    step={10}
+                    value={maxPriceFilter}
+                    onChange={(e) => setMaxPriceFilter(Number(e.target.value))}
+                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                  />
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold shrink-0">450€</span>
+                </div>
+
+                {/* Quick Price Preset Chips */}
+                <div className="flex flex-wrap items-center justify-between gap-1.5 pt-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                    {[
+                      { price: 100, label: '🔥 До 100€ (Бюджетні)' },
+                      { price: 120, label: '✨ До 120€ (Хіти 1 день)' },
+                      { price: 150, label: '🌊 До 150€' },
+                      { price: 300, label: '🏔 До 300€ (2 дні)' },
+                      { price: 450, label: '💎 Усі ціни (до 450€)' }
+                    ].map((preset) => (
+                      <button
+                        key={preset.price}
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('selection');
+                          setMaxPriceFilter(preset.price);
+                        }}
+                        className={`px-2 py-0.5 rounded-lg font-medium transition-all border ${
+                          maxPriceFilter === preset.price
+                            ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 font-bold'
+                            : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Показано: <b className="text-cyan-300">{filteredTrips.length}</b> із {TRIPS_LIST.length}
+                  </span>
+                </div>
+              </div>
+
               {/* Quick Weekend & Date Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] scrollbar-thin">
                 <span className="text-slate-500 font-semibold shrink-0 flex items-center gap-1">
@@ -835,14 +988,15 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               </div>
 
               {/* Active Filter Notice */}
-              {(filterDateWeekend !== 'all' || searchQuery.trim().length > 0) && (
+              {(filterDateWeekend !== 'all' || searchQuery.trim().length > 0 || maxPriceFilter < 450 || priceSortOrder !== 'default') && (
                 <div className="flex items-center justify-between bg-cyan-950/40 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-xs text-cyan-200">
-                  <span className="flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="flex items-center gap-1.5 flex-wrap">
+                    <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                     <span>
                       Знайдено турів: <b>{filteredTrips.length}</b>
                       {searchQuery.trim() && <> за запитом «<b>{searchQuery}</b>»</>}
-                      {filterDateWeekend !== 'all' && <> на дати <b>{filterDateWeekend}</b></>}
+                      {maxPriceFilter < 450 && <> • ціна до <b>{maxPriceFilter}€</b></>}
+                      {filterDateWeekend !== 'all' && <> • дати <b>{filterDateWeekend}</b></>}
                     </span>
                   </span>
                   <button
@@ -850,8 +1004,11 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                       triggerHaptic('selection');
                       setFilterDateWeekend('all');
                       setSearchQuery('');
+                      setMaxPriceFilter(450);
+                      setPriceSortOrder('default');
+                      setFilterDuration('all');
                     }}
-                    className="text-[11px] underline text-cyan-400 hover:text-white"
+                    className="text-[11px] underline text-cyan-400 hover:text-white shrink-0 ml-2"
                   >
                     Скинути всі фільтри
                   </button>
@@ -861,16 +1018,22 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
             {/* Empty Search State */}
             {filteredTrips.length === 0 ? (
-              <div className="p-8 rounded-2xl bg-slate-950/80 border border-slate-800 text-center space-y-3">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="p-8 rounded-2xl bg-slate-950/80 border border-slate-800 text-center space-y-3"
+              >
                 <Search className="w-8 h-8 text-slate-500 mx-auto" />
-                <h4 className="text-sm font-bold text-white">За вашим запитом турів не знайдено</h4>
+                <h4 className="text-sm font-bold text-white">За обраними параметрами турів не знайдено</h4>
                 <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  Спробуйте змінити назву міста або країни, або скиньте активні фільтри дат.
+                  Спробуйте збільшити максимальну ціну на повзунку, змінити пошуковий запит або скинути фільтри.
                 </p>
                 <button
                   onClick={() => {
                     triggerHaptic('light');
                     setSearchQuery('');
+                    setMaxPriceFilter(450);
+                    setPriceSortOrder('default');
                     setFilterDuration('all');
                     setFilterDateWeekend('all');
                   }}
@@ -878,24 +1041,35 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 >
                   Показати всі 14 турів
                 </button>
-              </div>
+              </motion.div>
             ) : (
-              /* Tours Grid */
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredTrips.map((trip) => {
-                  const isSelected = selectedTrip.id === trip.id;
-                  const isCalendarSaved = Boolean(calendarAddedTrips[trip.id]);
+              /* Tours Grid with Framer Motion Entrance / Exit / Layout Animations */
+              <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <AnimatePresence mode="popLayout">
+                  {filteredTrips.map((trip, idx) => {
+                    const isSelected = selectedTrip.id === trip.id;
+                    const isCalendarSaved = Boolean(calendarAddedTrips[trip.id]);
 
-                  return (
-                    <div
-                      key={trip.id}
-                      onClick={() => handleSelectTrip(trip)}
-                      className={`group relative rounded-2xl overflow-hidden cursor-pointer border-2 transition-all duration-300 flex flex-col justify-between ${
-                        isSelected
-                          ? 'border-cyan-400 bg-slate-900/90 shadow-[0_0_20px_rgba(34,211,238,0.3)] ring-1 ring-cyan-500/50'
-                          : 'border-slate-800 hover:border-cyan-500/50 bg-slate-950/70 hover:bg-slate-900/60'
-                      }`}
-                    >
+                    return (
+                      <motion.div
+                        layout
+                        key={trip.id}
+                        initial={{ opacity: 0, y: 24, scale: 0.94 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -18, scale: 0.92 }}
+                        transition={{
+                          type: 'spring',
+                          stiffness: 340,
+                          damping: 26,
+                          delay: Math.min(idx * 0.035, 0.25)
+                        }}
+                        onClick={() => handleSelectTrip(trip)}
+                        className={`group relative rounded-2xl overflow-hidden cursor-pointer border-2 transition-colors duration-300 flex flex-col justify-between ${
+                          isSelected
+                            ? 'border-cyan-400 bg-slate-900/90 shadow-[0_0_20px_rgba(34,211,238,0.3)] ring-1 ring-cyan-500/50'
+                            : 'border-slate-800 hover:border-cyan-500/50 bg-slate-950/70 hover:bg-slate-900/60'
+                        }`}
+                      >
                       {/* Tour Photo */}
                       <div className="relative h-44 w-full overflow-hidden">
                         <img
@@ -1031,10 +1205,11 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                           </button>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
-              </div>
+                </AnimatePresence>
+              </motion.div>
             )}
 
             {/* Customer Testimonials Carousel directly in Tours showcase */}
@@ -2040,6 +2215,92 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   <span>Поділитися в Telegram</span>
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ================= GITHUB PAGES / PUBLIC URL SETUP MODAL ================= */}
+      <AnimatePresence>
+        {showUrlSetupModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4"
+            onClick={() => setShowUrlSetupModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 20, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-[#0b1324] border-2 border-indigo-500/50 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-[0_0_50px_rgba(99,102,241,0.3)] space-y-4 text-xs"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 flex items-center justify-center">
+                    <ExternalLink className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-white">Запуск Mini App через GitHub Pages</h4>
+                    <p className="text-[11px] text-slate-400">Безкоштовний HTTPS-хостинг для відкриття в Telegram</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowUrlSetupModal(false)}
+                  className="w-8 h-8 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center border border-slate-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-2 leading-relaxed text-slate-300">
+                <p className="font-bold text-indigo-300">
+                  ✅ Ми вже додали в проєкт файл <code>.github/workflows/deploy-pages.yml</code> та <code>base: './'</code>!
+                </p>
+                <ol className="list-decimal list-inside space-y-1.5 text-[11px]">
+                  <li>Завантажте або синхронізуйте цей репозиторій на свій <b>GitHub</b>.</li>
+                  <li>У репозиторії на GitHub відкрийте <b>Settings → Pages</b>.</li>
+                  <li>У полі <b>Source</b> оберіть <b>GitHub Actions</b> — сайт автоматично збереться за 1 хвилину!</li>
+                  <li>Скопіюйте отримане посилання виду <code>https://ваш-логін.github.io/назва-репо/?miniapp=1</code> і вставте нижче:</li>
+                </ol>
+              </div>
+
+              <form onSubmit={handleSavePublicUrlToBot} className="space-y-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                    Ваше публічне посилання (GitHub Pages / Vercel / Cloud Run):
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    value={publicMiniAppUrl}
+                    onChange={(e) => setPublicMiniAppUrl(e.target.value)}
+                    placeholder="https://username.github.io/svoi-miniapp/?miniapp=1"
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-indigo-400 rounded-xl px-3.5 py-2.5 text-white font-mono text-xs outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowUrlSetupModal(false)}
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold"
+                  >
+                    Закрити
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingBotUrl}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{isSavingBotUrl ? 'Збереження в Telegram...' : 'Прив’язати URL до @Svoi_TravelEU_bot'}</span>
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </motion.div>
         )}

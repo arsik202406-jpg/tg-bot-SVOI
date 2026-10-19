@@ -22,7 +22,9 @@ export default function App() {
   const isRealTgWebApp = typeof window !== 'undefined' && Boolean(
     (typeof (window as any).Telegram?.WebApp?.initData === 'string' && (window as any).Telegram.WebApp.initData.length > 0) ||
     window.location.hash.includes('tgWebAppData') ||
-    window.location.search.includes('tgWebApp=true')
+    window.location.search.includes('tgWebApp=true') ||
+    window.location.search.includes('miniapp=1') ||
+    window.location.search.includes('startapp=')
   );
 
   const [activeTab, setActiveTab] = useState<AppTab>(isRealTgWebApp ? 'miniapp' : 'simulator');

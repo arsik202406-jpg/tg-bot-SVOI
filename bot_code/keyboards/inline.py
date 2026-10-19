@@ -17,22 +17,25 @@ def get_main_menu_keyboard(user_id: int | None = None) -> InlineKeyboardMarkup:
 
     keyboard = [
         [
-            InlineKeyboardButton(text="🗺 Напрямки та дати", callback_data="cb_trips"),
-            InlineKeyboardButton(text="⚡️ РЕЗЕРВ МІСЦЯ", callback_data="cb_book")
+            InlineKeyboardButton(
+                text="🌌 SVOI Mini App (3D Салон & 14 турів) ✨",
+                web_app=WebAppInfo(url=settings.MINI_APP_URL)
+            )
         ],
         [
-            InlineKeyboardButton(text="⭐ Відгуки туристів", callback_data="cb_reviews"),
-            InlineKeyboardButton(text="❓ Часті питання (FAQ)", callback_data="cb_faq")
+            InlineKeyboardButton(text="🔵 🗺 Напрямки та дати", callback_data="cb_trips"),
+            InlineKeyboardButton(text="🟢 ⚡️ РЕЗЕРВ МІСЦЯ", callback_data="cb_book")
         ],
         [
-            InlineKeyboardButton(text="🤝 Стати партнером клубу", callback_data="cb_partner")
+            InlineKeyboardButton(text="🟠 ⭐ Відгуки туристів", callback_data="cb_reviews"),
+            InlineKeyboardButton(text="🔷 ❓ Часті питання (FAQ)", callback_data="cb_faq")
         ],
         [
-            InlineKeyboardButton(text="💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url=manager_url),
-            InlineKeyboardButton(text="💬 ДРУГИЙ МЕНЕДЖЕР", url="https://t.me/svoi_reserve_admin")
+            InlineKeyboardButton(text="🟡 🤝 Стати партнером клубу", callback_data="cb_partner")
         ],
         [
-            InlineKeyboardButton(text="📢 НАШ КАНАЛ", url=settings.CHANNEL_URL)
+            InlineKeyboardButton(text="🟣 💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url=manager_url),
+            InlineKeyboardButton(text="💎 📢 НАШ КАНАЛ", url=settings.CHANNEL_URL)
         ]
     ]
 
