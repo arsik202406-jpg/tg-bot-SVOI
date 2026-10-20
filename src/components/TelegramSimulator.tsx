@@ -26,32 +26,59 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
   const [viewMode, setViewMode] = useState<'mobile' | 'desktop'>('mobile');
   const [buttonBorderStyle, setButtonBorderStyle] = useState<ButtonBorderStyle>('neon');
   const [inputText, setInputText] = useState('');
-  const [fsmState, setFsmState] = useState<'idle' | 'feedback_waiting' | 'booking_waiting'>('idle');
+  const [fsmState, setFsmState] = useState<'idle' | 'feedback_waiting' | 'booking_waiting' | 'admin_date_waiting' | 'admin_poster_waiting' | 'contact_waiting'>('idle');
   const [pendingBookingTrip, setPendingBookingTrip] = useState<string | null>(null);
+  const [pendingPax, setPendingPax] = useState<string>('1');
+  const [adminEditingTripId, setAdminEditingTripId] = useState<string | null>(null);
+  const [customDatesMap, setCustomDatesMap] = useState<Record<string, string>>({});
+  const [customPostersMap, setCustomPostersMap] = useState<Record<string, string>>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showMiniAppModal, setShowMiniAppModal] = useState(false);
   const [giveawayParticipantsCount, setGiveawayParticipantsCount] = useState(14);
   const [freeSeatsMap, setFreeSeatsMap] = useState<Record<string, number>>({
-    paris: 8,
-    amsterdam: 6,
-    brugge: 5,
-    strasbourg_colmar: 7,
+    paris: 4,
     etretat_paris: 6,
-    neuschwanstein: 4,
-    disneyland: 8,
-    normandy: 5,
-    switzerland_combo: 6,
-    luxembourg_vianden: 7,
-    reims_champagne: 6,
+    amsterdam: 5,
+    bruges: 4,
+    liechtenstein: 4,
+    neuschwanstein: 3,
+    cote_dazur: 5,
+    mont_saint_michel: 6,
+    swiss_rhine_zurich: 4,
+    swiss_aare_bern: 3,
+    brussels: 5,
     prague: 5,
     alsace_strasbourg: 6,
-    como_milan: 3
+    como_milan: 2
   });
   const [waitlist, setWaitlist] = useState<Array<{ id: string; name: string; handle: string; trip: string; seats: number; date: string }>>([
     { id: 'wl-101', name: 'Олександр Т.', handle: '@alex_traveler', trip: 'Париж', seats: 2, date: 'Найближча субота' },
     { id: 'wl-102', name: 'Катерина М.', handle: '@kate_munich', trip: 'Озеро Комо + Мілан', seats: 3, date: 'Наступні вихідні' }
   ]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const getCountryFlag = (country?: string): string => {
+    const c = country || '';
+    if (c.includes('Ліхтенштейн')) return '🇱🇮';
+    if (c.includes('Франція')) return '🇫🇷';
+    if (c.includes('Голландія') || c.includes('Нідерланди')) return '🇳🇱';
+    if (c.includes('Бельгія')) return '🇧🇪';
+    if (c.includes('Німеччина')) return '🇩🇪';
+    if (c.includes('Швейцарія')) return '🇨🇭';
+    if (c.includes('Люксембург')) return '🇱🇺';
+    if (c.includes('Чехія')) return '🇨🇿';
+    if (c.includes('Італія')) return '🇮🇹';
+    return '🇪🇺';
+  };
+
+  const getTripDateLabel = (tripId: string, fallbackDates?: string[]): string => {
+    if (customDatesMap[tripId]) return customDatesMap[tripId];
+    return fallbackDates && fallbackDates.length > 0 ? fallbackDates[0] : 'Найближчі вихідні';
+  };
+
+  const getTripPosterUrl = (tripId: string, fallbackImg: string): string => {
+    return customPostersMap[tripId] || fallbackImg;
+  };
 
   // Helper to apply dynamic colored borders and glow based on button type
   const getInlineButtonStyle = (btn: InlineBtn, styleMode: ButtonBorderStyle): string => {
@@ -484,26 +511,51 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     }
 
     if (data === 'cb_trips') {
-      const tripsKeyboard: InlineBtn[][] = TRIPS_LIST.map((trip, idx) => {
-        const free = freeSeatsMap[trip.id] ?? 5;
-        const seatsLabel = free > 0 ? `${free} м.` : 'Аншлаг';
-        const cleanTitle = (trip.shortTitle || trip.title).split('(')[0].trim();
+      const tripsKeyboard: InlineBtn[][] = TRIPS_LIST.map((trip) => {
+        const free = freeSeatsMap[trip.id] ?? 4;
+        const flag = getCountryFlag(trip.country);
+        const dateStr = getTripDateLabel(trip.id, trip.departureDates);
+        const seatsLabel = free > 0 ? `🔥 ${free}/8` : '🔴 0/8';
         return [
           {
-            text: `${idx + 1}. ${cleanTitle} — ${trip.price}€ [${seatsLabel}]`,
+            text: `${flag} ${trip.shortTitle} | ${dateStr} • ${trip.price}€ (${seatsLabel})`,
             callbackData: `cb_trip_${trip.id}`
           }
         ];
       });
       tripsKeyboard.push([
-        { text: '🔙 Назад до меню', callbackData: 'cb_back' }
+        { text: '💺 ЗАБРОНЮВАТИ МІСЦЕ', callbackData: 'cb_book' }
+      ]);
+      tripsKeyboard.push([
+        { text: '🔙 Назад в меню', callbackData: 'cb_back' }
       ]);
 
       const headerText = 
-        `🗺 <b>Актуальні напрямки та розклад турів SVOI</b> 🇪🇺✨\n\n` +
-        `Усі поїздки здійснюються з <b>Саарланду, Люксембургу та Тріра</b> (зі збором прямо за адресою пасажира та підсадкою по дорозі) ` +
-        `на комфортабельному мінівені Opel Vivaro.\n\n` +
-        `👇 <i>Натисніть на напрямок для перегляду програми, лічильника місць та бронювання:</i>`;
+        `🗺 <b>Напрямки та дати поїздок SVOI — Повна інформація по програмах</b> 🇪🇺✨\n\n` +
+        `Ми організовуємо душевні авторські подорожі в камерному форматі (до 8 осіб) на комфортабельному <b>Opel Vivaro</b>:\n\n` +
+        `🌍 <b>Детальний огляд наших поїздок за країнами:</b>\n` +
+        `• 🇫🇷 <b>Франція:</b>\n` +
+        `  — <b>Ельзас + Страсбург + Кольмар (80€):</b> Маленька Франція, собор Нотр-Дам, канали Кольмара, Тарт Фламбе\n` +
+        `  — <b>Париж (120€):</b> Версальський палац, круїз на яхті по Сені, Лувр, вечірня Ейфелева вежа\n` +
+        `  — <b>Етрета + Париж (140€):</b> 5 годин на скелях Етрета біля океану + 2–3 год вечірній Париж\n` +
+        `  — <b>Мон-Сен-Мішель (2 дні, 270€):</b> острів-абатство, Сен-Мало та устриці Канкаля (готель включено)\n` +
+        `  — <b>Лазурове узбережжя (3 дні, 440€):</b> Ніцца, Монако, Монте-Карло, Канни (готель включено)\n` +
+        `• 🇧🇪 <b>Бельгія:</b>\n` +
+        `  — <b>Брюссель, Антверпен та Брюгге (90€–110€):</b> Гран-Плас, Атоміум, вокзал-палац Антверпена, Озеро Кохання та канали Брюгге\n` +
+        `• 🇳🇱 <b>Голландія (Нідерланди):</b>\n` +
+        `  — <b>Гітхорн, Заандам, Амстердам, Море (120€):</b> водне село Гітхорн, вітряки Заандама, канали Амстердама та пляж Північного моря\n` +
+        `• 🇩🇪 <b>Німеччина:</b>\n` +
+        `  — <b>Замок Нойшванштайн, Берлін, Дрезден, Штутгарт, Леголенд, Ліндау (120€):</b> баварські замки, музеї авто, парк Legoland та столичні маршрути\n` +
+        `• 🇱🇮 <b>Ліхтенштейн (3 країни за 1 день, 120€):</b>\n` +
+        `  — <b>Вадуц, Брегенц та Ліндау:</b> замок Вадуц, сцена на Боденському озері в Брегенці та острів Ліндау\n` +
+        `• 🇨🇭 <b>Швейцарія (120€):</b>\n` +
+        `  — <b>Рейнський водоспад + Цюрих + Люцерн</b> АБО <b>Ущелина Ааре + Лаутербруннен (72 водоспади) + Берн</b>\n` +
+        `• 🇮🇹 <b>Італія (2 дні, 270€):</b> <b>Озеро Комо + Мілан</b> (вілли Белладжо, катер, собор Дуомо, готель включено)\n` +
+        `• 🇨🇿 <b>Чехія (120€):</b> <b>Прага</b> (Празький Град, Карлів міст, куранти Орлой)\n\n` +
+        `<blockquote>🚐 <b>Авто:</b> 8-місний <b>Opel Vivaro</b> (клімат-контроль, USB, стеля «Зоряне небо», багаж до <code>10 кг</code>)\n` +
+        `📍 <b>Збір за адресою (Door-to-Door):</b> Саарланд, Трір та Люксембург\n` +
+        `💳 <b>Оплата:</b> <code>0% передоплати</code> на всі одноденні тури!</blockquote>\n\n` +
+        `👇 <b>Натисніть на будь-яку поїздку нижче, щоб відкрити погодинну програму, фото та забронювати місце:</b>`;
 
       editLastBotMessage(headerText, tripsKeyboard);
       return;
@@ -514,66 +566,84 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       const trip = TRIPS_LIST.find((t) => t.id === tripId);
       if (!trip) return;
 
-      const freeSeats = freeSeatsMap[trip.id] ?? 5;
-      const seatsBadge = freeSeats > 4 
-        ? `🟢 <b>Вільних місць: ${freeSeats} із 8</b>`
-        : freeSeats > 0 
-          ? `🟡 <b>Залишилося лише ${freeSeats} місця!</b>`
-          : `🔴 <b>Усі 8 місць зайняті (доступний лист очікування)</b>`;
+      const freeSeats = freeSeatsMap[trip.id] ?? 4;
+      const flag = getCountryFlag(trip.country);
+      const dateStr = getTripDateLabel(trip.id, trip.departureDates);
+      const posterUrl = getTripPosterUrl(trip.id, trip.image);
+      const highlightsList = (trip.highlights || []).map(h => `• ${h}`).join('\n');
+      const programSteps = (trip.detailedProgram || []).map(p => `🔹 ${p}`).join('\n');
+      const paymentRule = trip.duration === '1 день'
+        ? `<code>0€ передоплати</code> (оплата водієві при посадці)`
+        : `<code>готель включено у вартість</code>`;
 
       const detailText = 
-        `✨ <b>${trip.title}</b> (${trip.duration})\n` +
-        `🏷 <b>Статус:</b> ${trip.badge}\n` +
-        `💵 <b>Вартість:</b> ${trip.price}€\n\n` +
-        `📍 <b>Програма та головні враження:</b>\n` +
-        `${trip.description}\n\n` +
-        `📊 <b>Статус заповнення рейсу:</b>\n• ${seatsBadge}\n\n` +
-        `🚩 <b>Збір пасажирів:</b> За адресою (Саарланд, Трір, Люксембург) + підсадка по дорозі\n` +
-        `🚐 <b>Трансфер:</b> Opel Vivaro комфортне авто з усіма зручностями.\n\n` +
-        `👑 <i>(Панель адміна: ви можете змінювати лічильник вільних місць кнопкою нижче)</i>`;
+        `${flag} <b>${trip.title} | ${dateStr}</b>\n` +
+        `🌍 <i>Країна: ${trip.country} • Тривалість: ${trip.duration} • ${trip.badge}</i>\n\n` +
+        `📖 <b>Загальна інформація про поїздку:</b>\n${trip.description}\n\n` +
+        `🗺 <b>Детальна програма маршруту:</b>\n` +
+        `${programSteps || highlightsList}\n\n` +
+        `✨ <b>Головні враження:</b>\n${highlightsList}\n\n` +
+        `💶 <b>Вартість: ${trip.price}€</b> | 🔥 <b>Вільних місць: ${freeSeats} з 8</b>\n\n` +
+        `<blockquote>🚐 <b>Авто:</b> Opel Vivaro (8 місць, клімат-контроль, зоряне небо)\n` +
+        `📍 <b>Збір:</b> За домашньою адресою (Саарланд, Трір, Люксембург)\n` +
+        `💡 <b>Умови:</b> ${paymentRule}</blockquote>`;
 
       const keyboard: InlineBtn[][] = [];
       if (freeSeats > 0) {
         keyboard.push([
-          { text: `💺 Забронювати (${freeSeats} вільних місць)`, callbackData: `cb_book_target_${trip.id}` }
+          { text: `💺 Обрати місце та забронювати (${freeSeats} з 8)`, callbackData: `cb_book_target_${trip.id}` }
         ]);
       } else {
         keyboard.push([
-          { text: `📋 Лист очікування (місць немає)`, callbackData: `cb_waitlist_add_${trip.id}` }
+          { text: `📋 Записатися в лист очікування (0 з 8)`, callbackData: `cb_waitlist_add_${trip.id}` }
         ]);
       }
 
       keyboard.push([
         { text: '📋 Лист очікування', callbackData: `cb_waitlist_add_${trip.id}` },
-        { text: '🚐 5-8 осіб', callbackData: 'cb_custom_trip' }
+        { text: '🚐 Індивідуальний виїзд', callbackData: 'cb_custom_trip' }
+      ]);
+
+      // Admin quick controls: Seats, Date, Poster
+      keyboard.push([
+        { text: `⚙️ Місця (${freeSeats}/8)`, callbackData: `cb_adm_seats_${trip.id}` },
+        { text: `📅 Дата`, callbackData: `cb_adm_date_${trip.id}` },
+        { text: `🖼 Постер`, callbackData: `cb_adm_poster_${trip.id}` }
       ]);
 
       keyboard.push([
-        { text: `⚙️ Змінити місця (${freeSeats}/8) [Адмін]`, callbackData: `cb_adm_seats_${trip.id}` }
+        { text: '🗺 До списку напрямків', callbackData: 'cb_trips' },
+        { text: '🔙 Назад в меню', callbackData: 'cb_back' }
       ]);
 
-      keyboard.push([
-        { text: '🗺 Інші тури', callbackData: 'cb_trips' },
-        { text: '🔙 Меню', callbackData: 'cb_back' }
-      ]);
-
-      editLastBotMessage(detailText, keyboard, trip.image);
+      editLastBotMessage(detailText, keyboard, posterUrl);
       return;
     }
 
     if (data.startsWith('cb_adm_seats_')) {
       const tripId = data.replace('cb_adm_seats_', '');
       const trip = TRIPS_LIST.find((t) => t.id === tripId);
-      const currentFree = freeSeatsMap[tripId] ?? 5;
+      const currentFree = freeSeatsMap[tripId] ?? 4;
       const text = 
         `⚙️ <b>Керування місцями: ${trip?.shortTitle || tripId}</b>\n\n` +
-        `Поточна кількість вільних місць: <b>${currentFree} із 8</b>\n\n` +
-        `Оберіть нове значення (від 0 до 8):`;
+        `Поточна кількість вільних місць: <code>${currentFree} з 8</code>\n\n` +
+        `<blockquote>Оберіть нову кількість вільних місць (від 0 до 8) або скористайтеся швидкими кнопками +1 / -1:</blockquote>`;
+
+      const minusVal = Math.max(0, currentFree - 1);
+      const plusVal = Math.min(8, currentFree + 1);
 
       const keyboard: InlineBtn[][] = [
-        [0, 1, 2, 3, 4].map(n => ({ text: `${n}`, callbackData: `cb_set_seats_${tripId}_${n}` })),
-        [5, 6, 7, 8].map(n => ({ text: `${n}`, callbackData: `cb_set_seats_${tripId}_${n}` })),
-        [{ text: '🔙 Повернутися до туру', callbackData: `cb_trip_${tripId}` }]
+        [
+          { text: '➖ -1 місце', callbackData: `cb_set_seats_${tripId}_${minusVal}` },
+          { text: `Зараз: ${currentFree}/8`, callbackData: `cb_trip_${tripId}` },
+          { text: '➕ +1 місце', callbackData: `cb_set_seats_${tripId}_${plusVal}` }
+        ],
+        [0, 1, 2, 3, 4].map(n => ({ text: `${n === currentFree ? '✅ ' : ''}${n}`, callbackData: `cb_set_seats_${tripId}_${n}` })),
+        [5, 6, 7, 8].map(n => ({ text: `${n === currentFree ? '✅ ' : ''}${n}`, callbackData: `cb_set_seats_${tripId}_${n}` })),
+        [
+          { text: '🔙 До туру', callbackData: `cb_trip_${tripId}` },
+          { text: '🔙 Назад в меню', callbackData: 'cb_back' }
+        ]
       ];
 
       editLastBotMessage(text, keyboard);
@@ -582,15 +652,56 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
     if (data.startsWith('cb_set_seats_')) {
       const parts = data.split('_');
-      const tripId = parts[3];
-      const count = parseInt(parts[4], 10);
+      const count = parseInt(parts[parts.length - 1], 10);
+      const tripId = parts.slice(3, parts.length - 1).join('_');
       setFreeSeatsMap(prev => ({ ...prev, [tripId]: count }));
-      showToast(`✅ Встановлено ${count} вільних місць!`);
+      showToast(`✅ Встановлено ${count} з 8 вільних місць!`);
+      const fakeBtn: InlineBtn = { text: 'Тур', callbackData: `cb_trip_${tripId}` };
+      handleCallbackClick(fakeBtn);
+      return;
+    }
+
+    if (data.startsWith('cb_adm_date_')) {
+      const tripId = data.replace('cb_adm_date_', '');
       const trip = TRIPS_LIST.find((t) => t.id === tripId);
-      if (trip) {
-        const fakeBtn: InlineBtn = { text: 'Тур', callbackData: `cb_trip_${tripId}` };
-        handleCallbackClick(fakeBtn);
-      }
+      const curDate = getTripDateLabel(tripId, trip?.departureDates);
+      setAdminEditingTripId(tripId);
+      setFsmState('admin_date_waiting');
+
+      const text = 
+        `📅 <b>Зміна дати виїзду [Адмін]</b>\n\n` +
+        `Напрямок: <b>${trip?.shortTitle || tripId}</b>\n` +
+        `Поточна дата: <code>${curDate}</code>\n\n` +
+        `<blockquote>Введіть нову дату текстом у поле вводу нижче (наприклад: <code>25 жовтня</code> або <code>14–15 листопада</code>):</blockquote>`;
+
+      const keyboard: InlineBtn[][] = [
+        [
+          { text: '🔙 До туру', callbackData: `cb_trip_${tripId}` },
+          { text: '🔙 Назад в меню', callbackData: 'cb_back' }
+        ]
+      ];
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
+    if (data.startsWith('cb_adm_poster_')) {
+      const tripId = data.replace('cb_adm_poster_', '');
+      const trip = TRIPS_LIST.find((t) => t.id === tripId);
+      setAdminEditingTripId(tripId);
+      setFsmState('admin_poster_waiting');
+
+      const text = 
+        `🖼 <b>Зміна фото/постера туру [Адмін]</b>\n\n` +
+        `Напрямок: <b>${trip?.shortTitle || tripId}</b>\n\n` +
+        `<blockquote>Надішліть пряме посилання (URL) на нове фото у поле вводу нижче, щоб миттєво оновити обкладинку туру:</blockquote>`;
+
+      const keyboard: InlineBtn[][] = [
+        [
+          { text: '🔙 До туру', callbackData: `cb_trip_${tripId}` },
+          { text: '🔙 Назад в меню', callbackData: 'cb_back' }
+        ]
+      ];
+      editLastBotMessage(text, keyboard);
       return;
     }
 
@@ -1288,41 +1399,30 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
     if (data === 'cb_book') {
       const bookText = 
-        `💺 <b>Вибір місця в мінівені Opel Vivaro (8 пасажирських місць)</b>\n\n` +
-        `Схема розсадки:\n` +
-        `• <b>1-й ряд:</b> 2 місця поруч із водієм\n` +
-        `• <b>2-й ряд:</b> 3 місця (вікно / центр / вікно)\n` +
-        `• <b>3-й ряд:</b> 3 місця (вікно / центр / вікно)\n\n` +
-        `💵 <b>Умови:</b>\n` +
-        `• Фіксація конкретного місця по порядку: <b>+5€</b>\n` +
-        `• Без вибору місця (вільна посадка): <b>0€</b>\n\n` +
-        `👇 <i>Оберіть місце по порядку:</i>`;
+        `💺 <b>Крок 1 із 3: Спочатку оберіть тур для бронювання місця</b> 🗺✨\n\n` +
+        `<blockquote>🔥 <b>Порядок бронювання в клубі SVOI:</b>\n` +
+        `1️⃣ <b>Спочатку оберіть напрямок та дату</b> зі списку нижче\n` +
+        `2️⃣ <b>Потім оберіть місце в салоні</b> Opel Vivaro (1–8 або вільна посадка)\n` +
+        `3️⃣ <b>Підтвердіть заявку в 1 клік!</b> (<code>0% передоплати</code> на одноденні поїздки)</blockquote>\n\n` +
+        `👇 <b>Натисніть на бажаний тур, щоб перейти до вибору місця:</b>`;
 
-      const keyboard: InlineBtn[][] = [
-        [
-          { text: '💺 Місце 1 (поруч з водієм) — 5€', callbackData: 'cb_seat_1_general' },
-          { text: '💺 Місце 2 (водій, вікно) — 5€', callbackData: 'cb_seat_2_general' }
-        ],
-        [
-          { text: '💺 Місце 3 (2-й ряд, вікно) — 5€', callbackData: 'cb_seat_3_general' },
-          { text: '💺 Місце 4 (2-й ряд, центр) — 5€', callbackData: 'cb_seat_4_general' },
-          { text: '💺 Місце 5 (2-й ряд, вікно) — 5€', callbackData: 'cb_seat_5_general' }
-        ],
-        [
-          { text: '💺 Місце 6 (3-й ряд, вікно) — 5€', callbackData: 'cb_seat_6_general' },
-          { text: '💺 Місце 7 (3-й ряд, центр) — 5€', callbackData: 'cb_seat_7_general' },
-          { text: '💺 Місце 8 (3-й ряд, вікно) — 5€', callbackData: 'cb_seat_8_general' }
-        ],
-        [
-          { text: '🎲 Без вибору місця (вільна посадка) — 0€', callbackData: 'cb_seat_none_general' }
-        ],
-        [
-          { text: '🗺 Обрати тур із каталогу', callbackData: 'cb_trips' },
-          { text: '🔙 Назад до меню', callbackData: 'cb_back' }
-        ]
-      ];
+      const tripsKeyboard: InlineBtn[][] = TRIPS_LIST.map((trip) => {
+        const free = freeSeatsMap[trip.id] ?? 4;
+        const flag = getCountryFlag(trip.country);
+        const dateStr = getTripDateLabel(trip.id, trip.departureDates);
+        const seatsLabel = free > 0 ? `🔥 ${free}/8` : '🔴 0/8';
+        return [
+          {
+            text: `${flag} ${trip.shortTitle} | ${dateStr} • ${trip.price}€ (${seatsLabel})`,
+            callbackData: `cb_book_target_${trip.id}`
+          }
+        ];
+      });
+      tripsKeyboard.push([
+        { text: '🔙 Назад в меню', callbackData: 'cb_back' }
+      ]);
 
-      editLastBotMessage(bookText, keyboard);
+      editLastBotMessage(bookText, tripsKeyboard);
       return;
     }
 
@@ -1330,39 +1430,48 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       const tripId = data.replace('cb_book_target_', '');
       setPendingBookingTrip(tripId);
       const trip = TRIPS_LIST.find((t) => t.id === tripId);
-      const title = trip ? trip.title : 'Обраний тур';
+      const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
+      const title = trip ? trip.shortTitle : 'Обраний тур';
+      const dateStr = getTripDateLabel(tripId, trip?.departureDates);
+      const price = trip ? trip.price : 120;
+      const freeSeats = freeSeatsMap[tripId] ?? 4;
 
       const text = 
-        `🎯 <b>Бронювання туру: ${title}</b>\n\n` +
-        `Оберіть місце в мінівені Opel Vivaro:\n` +
-        `• 1-й ряд (поруч із водієм): 2 місця\n` +
-        `• 2-й ряд: 3 місця\n` +
-        `• 3-й ряд: 3 місця\n\n` +
-        `💵 <b>Вартість:</b>\n` +
-        `• Конкретне місце: <b>+5€</b>\n` +
-        `• Без вибору місця: <b>0€</b>\n\n` +
-        `👇 <i>Натисніть плашку потрібного місця по порядку:</i>`;
+        `💺 <b>Крок 2 із 3: Оберіть місце в салоні Opel Vivaro</b>\n\n` +
+        `${flag} <b>${title} | ${dateStr}</b>\n` +
+        `💶 <b>Базовий тариф: ${price}€</b> | 🔥 <b>Вільно: ${freeSeats} з 8</b>\n\n` +
+        `🚐 <b>Схема 8-місного салону (2+3+3):</b>\n` +
+        `• <b>1-й ряд (біля водія):</b> Місце 1 — <code>+5€ (Панорамне)</code>, Місце 2 — <code>+5€ (Вікно)</code>\n` +
+        `• <b>2-й ряд:</b> Місце 3 (ліве), Місце 4 (центр), Місце 5 (праве) — <code>+5€</code>\n` +
+        `• <b>3-й ряд:</b> Місце 6 (ліве <code>+5€</code>), Місце 7 (центр <code>0€</code>), Місце 8 (праве <code>+5€</code>)\n` +
+        `• <b>🎲 Вільна посадка:</b> без фіксації місця — <code>0€</code>\n\n` +
+        `<blockquote>👇 <b>Натисніть на потрібне місце в салоні нижче:</b></blockquote>`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '💺 Місце 1 (поруч з водієм) — 5€', callbackData: `cb_seat_1_${tripId}` },
-          { text: '💺 Місце 2 (водій, вікно) — 5€', callbackData: `cb_seat_2_${tripId}` }
+          { text: '💺 1: Панорамне (+5€)', callbackData: `cb_pax_${tripId}_seat1` },
+          { text: '💺 2: Вікно (+5€)', callbackData: `cb_pax_${tripId}_seat2` }
         ],
         [
-          { text: '💺 Місце 3 (2-й ряд, вікно) — 5€', callbackData: `cb_seat_3_${tripId}` },
-          { text: '💺 Місце 4 (2-й ряд, центр) — 5€', callbackData: `cb_seat_4_${tripId}` },
-          { text: '💺 Місце 5 (2-й ряд, вікно) — 5€', callbackData: `cb_seat_5_${tripId}` }
+          { text: '💺 3: Ліве (+5€)', callbackData: `cb_pax_${tripId}_seat3` },
+          { text: '💺 4: Центр (+5€)', callbackData: `cb_pax_${tripId}_seat4` },
+          { text: '💺 5: Праве (+5€)', callbackData: `cb_pax_${tripId}_seat5` }
         ],
         [
-          { text: '💺 Місце 6 (3-й ряд, вікно) — 5€', callbackData: `cb_seat_6_${tripId}` },
-          { text: '💺 Місце 7 (3-й ряд, центр) — 5€', callbackData: `cb_seat_7_${tripId}` },
-          { text: '💺 Місце 8 (3-й ряд, вікно) — 5€', callbackData: `cb_seat_8_${tripId}` }
+          { text: '💺 6: Ліве (+5€)', callbackData: `cb_pax_${tripId}_seat6` },
+          { text: '💺 7: Центр (0€)', callbackData: `cb_pax_${tripId}_seat7` },
+          { text: '💺 8: Праве (+5€)', callbackData: `cb_pax_${tripId}_seat8` }
         ],
         [
-          { text: '🎲 Без вибору місця (вільна посадка) — 0€', callbackData: `cb_seat_none_${tripId}` }
+          { text: '🎲 Без вибору місця (вільна посадка) — 0€', callbackData: `cb_pax_${tripId}_1` }
         ],
         [
-          { text: '🔙 Назад до опису туру', callbackData: `cb_trip_${tripId}` }
+          { text: '[ 👥 2 місця поруч ]', callbackData: `cb_pax_${tripId}_2` },
+          { text: '[ 👨‍👩‍👧 3+ місць ]', callbackData: `cb_pax_${tripId}_3` }
+        ],
+        [
+          { text: '🗺 Змінити тур', callbackData: 'cb_book' },
+          { text: '🔙 Назад в меню', callbackData: 'cb_back' }
         ]
       ];
 
@@ -1370,88 +1479,136 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       return;
     }
 
-    if (data.startsWith('cb_seat_')) {
-      const parts = data.split('_');
-      const seatCode = parts[2]; // 1..8, none
-      const tripId = parts[3];
+    if (data.startsWith('cb_pax_')) {
+      const withoutPrefix = data.replace('cb_pax_', '');
+      const lastUnderscore = withoutPrefix.lastIndexOf('_');
+      const tripId = withoutPrefix.substring(0, lastUnderscore);
+      const seatOrPax = withoutPrefix.substring(lastUnderscore + 1);
 
-      const SEAT_DESCRIPTIONS: Record<string, string> = {
-        '1': '💺 Місце 1 (1-й ряд, поруч з водієм, центр)',
-        '2': '💺 Місце 2 (1-й ряд, поруч з водієм, вікно)',
-        '3': '💺 Місце 3 (2-й ряд, біля вікна ліворуч)',
-        '4': '💺 Місце 4 (2-й ряд, по центру)',
-        '5': '💺 Місце 5 (2-й ряд, біля вікна праворуч)',
-        '6': '💺 Місце 6 (3-й ряд, біля вікна ліворуч)',
-        '7': '💺 Місце 7 (3-й ряд, по центру)',
-        '8': '💺 Місце 8 (3-й ряд, біля вікна праворуч)',
+      setPendingBookingTrip(tripId);
+      setPendingPax(seatOrPax);
+      setFsmState('contact_waiting');
+
+      const SEAT_NAMES: Record<string, { label: string; fee: number; pax: number }> = {
+        seat1: { label: '💺 Місце 1 (1-й ряд, Панорамне +5€)', fee: 5, pax: 1 },
+        seat2: { label: '💺 Місце 2 (1-й ряд, Вікно +5€)', fee: 5, pax: 1 },
+        seat3: { label: '💺 Місце 3 (2-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
+        seat4: { label: '💺 Місце 4 (2-й ряд, Центр +5€)', fee: 5, pax: 1 },
+        seat5: { label: '💺 Місце 5 (2-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
+        seat6: { label: '💺 Місце 6 (3-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
+        seat7: { label: '💺 Місце 7 (3-й ряд, Центр 0€)', fee: 0, pax: 1 },
+        seat8: { label: '💺 Місце 8 (3-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
+        '1': { label: '🎲 Вільна посадка (1 особа, 0€)', fee: 0, pax: 1 },
+        '2': { label: '👥 2 місця поруч', fee: 0, pax: 2 },
+        '3': { label: '👨‍👩‍👧 3+ місць (компанія)', fee: 0, pax: 3 }
       };
 
-      let seatName = '🎲 Без вибору місця (вільна посадка)';
-      let seatFee = 0;
-      if (seatCode !== 'none' && SEAT_DESCRIPTIONS[seatCode]) {
-        seatName = SEAT_DESCRIPTIONS[seatCode];
-        seatFee = 5;
-      }
-
+      const selectedInfo = SEAT_NAMES[seatOrPax] || SEAT_NAMES['1'];
       const trip = TRIPS_LIST.find((t) => t.id === tripId);
-      const tripTitle = trip ? trip.title : 'Індивідуальний маршрут';
+      const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
+      const title = trip ? trip.shortTitle : 'Обраний тур';
+      const dateStr = getTripDateLabel(tripId, trip?.departureDates);
+      const price = trip ? trip.price : 120;
+      const total = price * selectedInfo.pax + selectedInfo.fee;
+
+      const text = 
+        `📱 <b>Крок 3 із 3: Підтвердження в 1 клік</b>\n\n` +
+        `${flag} <b>${title} | ${dateStr}</b>\n` +
+        `💺 <b>Обране місце:</b> <code>${selectedInfo.label}</code>\n` +
+        `💶 <b>Разом до оплати:</b> <code>${total}€</code>\n` +
+        `👤 <b>Ваш профіль:</b> @alex_travel_de (визначено автоматично ✅)\n\n` +
+        `<blockquote>Натисніть зелену кнопку <b>«✅ Підтвердити заявку (@alex_travel_de)»</b> або поділіться номером кнопкою <b>«📱 Поділитися номером»</b> унизу екрана — жодного ручного вводу цифр!</blockquote>`;
+
+      const keyboard: InlineBtn[][] = [
+        [
+          { text: '✅ Підтвердити заявку (@alex_travel_de)', callbackData: `cb_confirm_fast_${tripId}_${seatOrPax}` }
+        ],
+        [
+          { text: '📱 Поділитися номером (request_contact=True)', callbackData: `cb_share_contact_${tripId}_${seatOrPax}` }
+        ],
+        [
+          { text: '🔙 Змінити місце', callbackData: `cb_book_target_${tripId}` },
+          { text: '🔙 Назад в меню', callbackData: 'cb_back' }
+        ]
+      ];
+
+      editLastBotMessage(text, keyboard);
+      return;
+    }
+
+    if (data.startsWith('cb_confirm_fast_') || data.startsWith('cb_share_contact_')) {
+      const isContactShared = data.startsWith('cb_share_contact_');
+      const prefix = isContactShared ? 'cb_share_contact_' : 'cb_confirm_fast_';
+      const rest = data.replace(prefix, '');
+      const lastUnderscore = rest.lastIndexOf('_');
+      const tripId = rest.substring(0, lastUnderscore);
+      const seatOrPax = rest.substring(lastUnderscore + 1);
+
+      const SEAT_NAMES: Record<string, { label: string; fee: number; pax: number }> = {
+        seat1: { label: '💺 Місце 1 (1-й ряд, Панорамне +5€)', fee: 5, pax: 1 },
+        seat2: { label: '💺 Місце 2 (1-й ряд, Вікно +5€)', fee: 5, pax: 1 },
+        seat3: { label: '💺 Місце 3 (2-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
+        seat4: { label: '💺 Місце 4 (2-й ряд, Центр +5€)', fee: 5, pax: 1 },
+        seat5: { label: '💺 Місце 5 (2-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
+        seat6: { label: '💺 Місце 6 (3-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
+        seat7: { label: '💺 Місце 7 (3-й ряд, Центр 0€)', fee: 0, pax: 1 },
+        seat8: { label: '💺 Місце 8 (3-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
+        '1': { label: '🎲 Вільна посадка (1 особа, 0€)', fee: 0, pax: 1 },
+        '2': { label: '👥 2 місця поруч', fee: 0, pax: 2 },
+        '3': { label: '👨‍👩‍👧 3+ місць (компанія)', fee: 0, pax: 3 }
+      };
+      const selectedInfo = SEAT_NAMES[seatOrPax] || SEAT_NAMES['1'];
+
+      setFsmState('idle');
+      const trip = TRIPS_LIST.find((t) => t.id === tripId);
+      const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
+      const tripTitle = trip ? trip.shortTitle : 'Індивідуальний маршрут';
+      const dateStr = getTripDateLabel(tripId, trip?.departureDates);
       const duration = trip ? trip.duration : '1 день';
       const basePrice = trip ? trip.price : 120;
-      const totalCost = basePrice + seatFee;
+      const totalCost = basePrice * selectedInfo.pax + selectedInfo.fee;
       const bookingCode = `SVOI-${Math.floor(1000 + Math.random() * 9000)}`;
+      const contactInfo = isContactShared ? '+49 176 84920145 (@alex_travel_de)' : '@alex_travel_de (авто-профіль)';
 
       // Log detailed lead to CRM
       const newLead: LeadItem = {
         id: `lead-${Date.now()}`,
         type: 'booking',
         bookingCode: bookingCode,
-        tripTitle: tripTitle,
+        tripTitle: `${flag} ${tripTitle} | ${dateStr}`,
         duration: duration,
-        seatType: seatName,
+        seatType: selectedInfo.label,
         basePrice: basePrice,
-        seatFee: seatFee,
+        seatFee: selectedInfo.fee,
         totalCost: totalCost,
         meetingPoint: 'Саарланд, Люксембург або Трір (збір за адресою)',
         userName: 'Олександр',
-        userHandle: '@alex_travel_de',
+        userHandle: contactInfo,
         userId: 984128574,
         timestamp: new Date().toLocaleString('uk-UA'),
         status: 'new'
       };
       onNewLead(newLead);
 
-      const managerUrlWithData = `https://t.me/SVOI_travel_admin?text=${encodeURIComponent(`Вітаю! Мій номер броні: #${bookingCode}. Тур: ${tripTitle}, ${seatName}, до оплати: ${totalCost}€.`)}`;
+      const managerUrlWithData = `https://t.me/SVOI_travel_admin?text=${encodeURIComponent(`Вітаю! Моя бронь #${bookingCode}: ${tripTitle} (${dateStr}), місце: ${selectedInfo.label}. Контакт: ${contactInfo}`)}`;
 
       const confirmText = 
-        `🎉 <b>ПІДТВЕРДЖЕННЯ БРОНЮВАННЯ #{bookingCode}</b>\n\n` +
-        `Вітаємо, <b>Олександр</b>! Вашу заявку в туристичний клуб <b>SVOI</b> успішно зафіксовано.\n\n` +
-        `📋 <b>Деталі поїздки:</b>\n` +
-        `• 🗺 <b>Напрямок:</b> ${tripTitle}\n` +
-        `• ⏱ <b>Тривалість:</b> ${duration}\n` +
-        `• 🚐 <b>Транспорт:</b> Комфортабельне авто Opel Vivaro (8 місць, кондиціонер)\n` +
-        `• 💺 <b>Обране місце:</b> ${seatName}\n` +
-        `• 📍 <b>Точка збору:</b> Саарланд, Люксембург або Трір (збір за адресою)\n\n` +
-        `🧾 <b>Розрахунок вартості:</b>\n` +
-        `• Базовий квиток туру: <b>${basePrice}€</b>\n` +
-        `• Вибір місця: <b>+${seatFee}€</b>\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `💳 <b>РАЗОМ ДО ОПЛАТИ: ${totalCost}€</b>\n` +
-        (duration === '1 день' 
-          ? `🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Оплата здійснюється при посадці.\n\n` 
-          : `🏨 <i>Передоплата потрібна лише для бронювання готелю.</i>\n\n`) +
-        `👉 <b>Наступний крок:</b> Натисніть кнопку нижче для відправлення даних менеджеру @SVOI_travel_admin для зв'язку:`;
+        `🎉 <b>ЗАЯВКУ #${bookingCode} ПРИЙНЯТО!</b>\n\n` +
+        `Дякуємо, <b>Олександр</b>! Ваше бронювання в клубі <b>SVOI</b> зафіксовано в 2 кліки.\n\n` +
+        `${flag} <b>${tripTitle} | ${dateStr}</b>\n` +
+        `• 💺 <b>Обране місце:</b> <code>${selectedInfo.label}</code>\n` +
+        `• 📱 <b>Контакт:</b> <code>${contactInfo}</code>\n` +
+        `• 📍 <b>Збір:</b> За адресою (Саарланд, Люксембург, Трір)\n` +
+        `• 💶 <b>До оплати:</b> <code>${totalCost}€</code>\n\n` +
+        `<blockquote>🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Менеджер клубу зв'яжеться з вами для уточнення адреси виїзду.</blockquote>`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '💬 Надіслати бронь менеджеру в Telegram', url: managerUrlWithData }
+          { text: '💬 Написати менеджеру в 1 клік', url: managerUrlWithData }
         ],
         [
-          { text: '❓ Часті питання (FAQ)', callbackData: 'cb_faq' },
-          { text: '📍 Точки збору', callbackData: 'cb_meeting' }
-        ],
-        [
-          { text: '🗺 Інші тури', callbackData: 'cb_trips' },
-          { text: '🔙 Головне меню', callbackData: 'cb_back' }
+          { text: '🗺 Інші напрямки та дати', callbackData: 'cb_trips' },
+          { text: '🔙 Назад в меню', callbackData: 'cb_back' }
         ]
       ];
 
@@ -1513,6 +1670,32 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
     setMessages((prev) => [...prev, userMsg]);
 
+    // Handle Admin Date Edit in Simulator
+    if (fsmState === 'admin_date_waiting' && adminEditingTripId) {
+      const targetId = adminEditingTripId;
+      setCustomDatesMap(prev => ({ ...prev, [targetId]: userText }));
+      setFsmState('idle');
+      setAdminEditingTripId(null);
+      showToast(`✅ Дату туру оновлено на: ${userText}`);
+      setTimeout(() => {
+        handleCallbackClick({ text: 'Тур', callbackData: `cb_trip_${targetId}` });
+      }, 200);
+      return;
+    }
+
+    // Handle Admin Poster Edit in Simulator
+    if (fsmState === 'admin_poster_waiting' && adminEditingTripId) {
+      const targetId = adminEditingTripId;
+      setCustomPostersMap(prev => ({ ...prev, [targetId]: userText }));
+      setFsmState('idle');
+      setAdminEditingTripId(null);
+      showToast(`✅ Постер туру успішно оновлено!`);
+      setTimeout(() => {
+        handleCallbackClick({ text: 'Тур', callbackData: `cb_trip_${targetId}` });
+      }, 200);
+      return;
+    }
+
     // Handle FSM Feedback
     if (fsmState === 'feedback_waiting') {
       setFsmState('idle');
@@ -1539,21 +1722,12 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
         const keyboard: InlineBtn[][] = [
           [
-            { text: '🔙 Назад до меню', callbackData: 'cb_back' }
+            { text: '🔙 Назад в меню', callbackData: 'cb_back' }
           ]
         ];
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `bot-fb-${Date.now()}`,
-            sender: 'bot',
-            text: thanksText,
-            time: getCurrentTime(),
-            inlineKeyboard: keyboard
-          }
-        ]);
-      }, 400);
+        editLastBotMessage(thanksText, keyboard);
+      }, 300);
       return;
     }
 
@@ -1561,24 +1735,15 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     if (userText === '/channel' || userText.toLowerCase().includes('канал') || userText.toLowerCase().includes('розіграш')) {
       setTimeout(() => {
         showChannelMenuMessage();
-      }, 300);
+      }, 250);
       return;
     }
 
-    // Default handling for /start or random text
+    // Default handling for /start or random text (edits active window to keep chat 100% clean)
     if (userText === '/start' || userText.toLowerCase().includes('старт') || userText.toLowerCase().includes('меню')) {
       setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `bot-start-${Date.now()}`,
-            sender: 'bot',
-            text: getMainWelcomeText(),
-            time: getCurrentTime(),
-            inlineKeyboard: getMainKeyboard()
-          }
-        ]);
-      }, 350);
+        editLastBotMessage(getMainWelcomeText(), getMainKeyboard());
+      }, 250);
       return;
     }
 
@@ -1825,9 +1990,9 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
                   </div>
                 )}
 
-                {/* HTML content rendering */}
+                {/* HTML content rendering with Telegram blockquote and code styling */}
                 <div
-                  className="text-xs sm:text-[13px] leading-relaxed whitespace-pre-wrap select-text"
+                  className="text-xs sm:text-[13px] leading-relaxed whitespace-pre-wrap select-text [&_blockquote]:border-l-[3px] [&_blockquote]:border-cyan-400 [&_blockquote]:bg-cyan-950/30 [&_blockquote]:pl-2.5 [&_blockquote]:py-1.5 [&_blockquote]:pr-2 [&_blockquote]:my-1.5 [&_blockquote]:rounded-r-lg [&_blockquote]:text-cyan-100/95 [&_code]:font-mono [&_code]:bg-slate-900/90 [&_code]:text-emerald-300 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:border [&_code]:border-emerald-500/30"
                   dangerouslySetInnerHTML={{ __html: msg.text }}
                 />
 
@@ -1863,6 +2028,19 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Telegram ReplyKeyboard with request_contact=True when in Step 3 of Booking */}
+        {fsmState === 'contact_waiting' && pendingBookingTrip && (
+          <div className="bg-[#17212b] border-t border-emerald-500/40 p-2 flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleCallbackClick({ text: '📱 Поділитися номером', callbackData: `cb_share_contact_${pendingBookingTrip}_${pendingPax}` })}
+              className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 active:scale-98 transition-all"
+            >
+              <span>📱 Поділитися номером (request_contact=True)</span>
+            </button>
+          </div>
+        )}
 
         {/* FSM Notice Bar (Active when waiting for user input) */}
         {fsmState === 'feedback_waiting' && (

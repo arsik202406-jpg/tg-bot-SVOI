@@ -116,28 +116,10 @@ export default function App() {
   };
 
   // If opened directly as a Telegram Mini App inside Telegram, render clean full-screen view
-  // with a top switcher to access the test preview window anytime
+  // starting immediately with the compact brand header and navigation tabs
   if (showFullWebAppOnly) {
     return (
       <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
-        {/* Quick switcher to test preview window */}
-        <div className="bg-slate-950/95 border-b border-slate-800/80 px-3 py-1.5 flex items-center justify-between text-xs sticky top-0 z-50">
-          <div className="flex items-center gap-1.5 text-cyan-300 font-semibold text-[11px]">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            <span>SVOI Telegram Mini App</span>
-          </div>
-          <button
-            onClick={() => {
-              setShowFullWebAppOnly(false);
-              setActiveTab('simulator');
-            }}
-            className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 hover:text-white border border-blue-500/40 text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm"
-          >
-            <span>📱 Тестове вікно симулятора</span>
-            <ExternalLink className="w-2.5 h-2.5" />
-          </button>
-        </div>
-
         <main className="flex-1 w-full max-w-xl mx-auto">
           <SvoiMiniApp onNewLead={handleNewLead} leads={leads} />
         </main>

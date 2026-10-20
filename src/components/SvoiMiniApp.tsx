@@ -115,19 +115,20 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
   leads = []
 }) => {
   // Navigation within Mini App
-  const [activeStep, setActiveStep] = useState<'tours' | 'seats' | 'checkout'>('tours');
+  const [activeStep, setActiveStep] = useState<'tours' | 'seats' | 'checkout' | 'my_trips'>('tours');
   const [selectedTrip, setSelectedTrip] = useState<TripItem>(TRIPS_LIST[0]);
   const [selectedSeat, setSelectedSeat] = useState<SeatOption | null>(CABIN_SEATS[1]); // Default front row window
   const [selectedDepartureDate, setSelectedDepartureDate] = useState<string>(
     TRIPS_LIST[0]?.departureDates?.[0] || '25.10.2026 (Нд)'
   );
   const [filterDuration, setFilterDuration] = useState<'all' | '1day' | 'multiday'>('all');
+  const [onlyHotToursFilter, setOnlyHotToursFilter] = useState<boolean>(false);
   const [filterDateWeekend, setFilterDateWeekend] = useState<string>('all');
   const [showCalendarModal, setShowCalendarModal] = useState<boolean>(false);
   const [calendarMonth, setCalendarMonth] = useState<'oct' | 'nov' | 'dec'>('oct');
   const [starlightCeiling, setStarlightCeiling] = useState(true);
 
-  // Form states
+  // Form states & Validation
   const [passengerName, setPassengerName] = useState('Олександр');
   const [passengerHandle, setPassengerHandle] = useState('@alex_traveler');
   const [passengerPhone, setPassengerPhone] = useState('+49 170 1234567');
@@ -135,6 +136,88 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
   const [pickupAddress, setPickupAddress] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const [touchedFields, setTouchedFields] = useState<{
+    name?: boolean;
+    handle?: boolean;
+    phone?: boolean;
+  }>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  // Validation helpers for Name, Telegram Handle (@username) and Phone Number (E.164 international format)
+  const normalizeTelegramHandle = (raw: string): string => {
+    let val = raw.trim();
+    // Convert t.me/username or https://t.me/username into @username
+    val = val.replace(/^(https?:\/\/)?(www\.)?(t\.me|telegram\.me)\//i, '@');
+    return val;
+  };
+
+  const validatePassengerName = (raw: string): string | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return "Введіть ваше ім'я для оформлення бронювання";
+    }
+    if (trimmed.length < 2) {
+      return "Ім'я повинно містити щонайменше 2 символи";
+    }
+    return null;
+  };
+
+  const validateTelegramHandle = (raw: string): string | null => {
+    const normalized = normalizeTelegramHandle(raw);
+    if (!normalized) {
+      return 'Вкажіть ваш Telegram @username для швидкого зв’язку з менеджером';
+    }
+    const withoutAt = normalized.startsWith('@') ? normalized.slice(1) : normalized;
+    if (!withoutAt) {
+      return 'Після символу @ введіть ваш нікнейм (наприклад: @alex_traveler)';
+    }
+    if (/\s/.test(withoutAt)) {
+      return 'Telegram username не може містити пробілів';
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(withoutAt)) {
+      return 'Дозволені лише латинські літери (a-z), цифри (0-9) та нижнє підкреслення (_)';
+    }
+    if (/^[0-9_]/.test(withoutAt)) {
+      return 'Telegram username повинен починатися з латинської літери';
+    }
+    if (withoutAt.endsWith('_') || withoutAt.includes('__')) {
+      return 'Username не може закінчуватися на «_» або містити подвійне «__»';
+    }
+    if (withoutAt.length < 5) {
+      return `Занадто короткий нікнейм (${withoutAt.length} симв., мінімум 5 символів після @)`;
+    }
+    if (withoutAt.length > 32) {
+      return `Занадто довгий нікнейм (${withoutAt.length} симв., максимум 32 символи)`;
+    }
+    return null;
+  };
+
+  const validatePhoneNumber = (raw: string): string | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return 'Введіть контактний номер телефону (WhatsApp / Telegram)';
+    }
+    // Check for forbidden characters (letters or special symbols other than +, -, spaces, parentheses)
+    if (!/^[+\d\s\-()]+$/.test(trimmed)) {
+      return 'Номер може містити лише цифри, знак «+», пробіли або дефіси (без літер)';
+    }
+    if (!trimmed.startsWith('+') && !trimmed.startsWith('00')) {
+      return 'Вкажіть міжнародний код країни зі знаком «+» (наприклад: +49, +352, +380)';
+    }
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    if (digitsOnly.length < 10) {
+      return `Номер занадто короткий: введено ${digitsOnly.length} цифр (потрібно від 10 до 15 цифр)`;
+    }
+    if (digitsOnly.length > 15) {
+      return `Номер занадто довгий: введено ${digitsOnly.length} цифр (максимум 15 цифр за стандартом E.164)`;
+    }
+    return null;
+  };
+
+  const nameError = validatePassengerName(passengerName);
+  const handleError = validateTelegramHandle(passengerHandle);
+  const phoneError = validatePhoneNumber(passengerPhone);
+  const isBookingFormValid = !nameError && !handleError && !phoneError;
 
   // Developer Mode Simulation States (imitate Telegram initData)
   const [isDevMode, setIsDevMode] = useState<boolean>(false);
@@ -220,24 +303,100 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     }
   };
 
-  // Search, Price Range Slider, Add-to-Calendar, Share & Trip Statistics states
+  // Search, Collapsible Filters, Price Range Slider, Add-to-Calendar, Share & Trip Statistics states
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
   const [maxPriceFilter, setMaxPriceFilter] = useState<number>(450);
   const [priceSortOrder, setPriceSortOrder] = useState<'default' | 'asc' | 'desc'>('default');
   const [calendarAddedTrips, setCalendarAddedTrips] = useState<Record<string, boolean>>({});
   const [shareModalTrip, setShareModalTrip] = useState<TripItem | null>(null);
   const [copiedShareLink, setCopiedShareLink] = useState<boolean>(false);
   const [tripDateSelections, setTripDateSelections] = useState<Record<string, string>>({});
-  const [statsWidgetExpanded, setStatsWidgetExpanded] = useState<boolean>(true);
+  const [statsWidgetExpanded, setStatsWidgetExpanded] = useState<boolean>(false);
+
+  // Admin mode & custom overrides for tour dates and posters
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
+  const [editingTripAdmin, setEditingTripAdmin] = useState<TripItem | null>(null);
+  const [adminNewPosterInput, setAdminNewPosterInput] = useState<string>('');
+  const [adminNewDatesInput, setAdminNewDatesInput] = useState<string>('');
+  const [customTripOverrides, setCustomTripOverrides] = useState<
+    Record<string, { image?: string; departureDates?: string[] }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem('svoi_trip_overrides');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const tripsWithOverrides = useMemo(() => {
+    return TRIPS_LIST.map((t) => {
+      const over = customTripOverrides[t.id];
+      if (!over) return t;
+      return {
+        ...t,
+        image: over.image && over.image.trim() ? over.image.trim() : t.image,
+        departureDates:
+          over.departureDates && over.departureDates.length > 0 ? over.departureDates : t.departureDates
+      };
+    });
+  }, [customTripOverrides]);
+
+  const handleOpenAdminTripModal = (e: React.MouseEvent, trip: TripItem) => {
+    e.stopPropagation();
+    triggerHaptic('medium');
+    setEditingTripAdmin(trip);
+    setAdminNewPosterInput(trip.image);
+    setAdminNewDatesInput((trip.departureDates || []).join(', '));
+  };
+
+  const handleSaveAdminTripChanges = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTripAdmin) return;
+    const parsedDates = adminNewDatesInput
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+
+    const updated = {
+      ...customTripOverrides,
+      [editingTripAdmin.id]: {
+        image: adminNewPosterInput.trim() || editingTripAdmin.image,
+        departureDates: parsedDates.length > 0 ? parsedDates : editingTripAdmin.departureDates
+      }
+    };
+    setCustomTripOverrides(updated);
+    try {
+      localStorage.setItem('svoi_trip_overrides', JSON.stringify(updated));
+    } catch {
+      // ignore storage errors
+    }
+    if (selectedTrip.id === editingTripAdmin.id) {
+      setSelectedTrip((prev) => ({
+        ...prev,
+        image: adminNewPosterInput.trim() || prev.image,
+        departureDates: parsedDates.length > 0 ? parsedDates : prev.departureDates
+      }));
+      if (parsedDates.length > 0) {
+        setSelectedDepartureDate(parsedDates[0]);
+      }
+    }
+    triggerHaptic('success');
+    setDevToast(`✅ Оновлено дати та постер для туру «${editingTripAdmin.shortTitle}»!`);
+    setTimeout(() => setDevToast(null), 3500);
+    setEditingTripAdmin(null);
+  };
 
   // Deterministic seat availability & occupancy calculation per tour and departure date (out of 8 seats in Opel Vivaro)
   const getTripOccupancy = (tripId: string, dateStr?: string) => {
     const totalSeats = 8;
+    const tripObj = tripsWithOverrides.find((t) => t.id === tripId);
     const targetDate =
       dateStr ||
       tripDateSelections[tripId] ||
       (selectedTrip.id === tripId ? selectedDepartureDate : undefined) ||
-      TRIPS_LIST.find((t) => t.id === tripId)?.departureDates?.[0] ||
+      tripObj?.departureDates?.[0] ||
       '25.10.2026';
 
     let hash = 0;
@@ -245,8 +404,17 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     for (let i = 0; i < key.length; i++) {
       hash = (hash * 31 + key.charCodeAt(i)) % 997;
     }
-    // Occupied seats between 2 and 7 so every tour has realistic demand and free seats
-    const occupiedSeats = 2 + (hash % 6); // 2..7 occupied -> 1..6 free seats
+    // Ensure several popular tours have <= 2 free seats (6 or 7 occupied out of 8) so "Гарячі тури" always has real items
+    const hotPresetSeats: Record<string, number> = {
+      como_milan: 7, // 1 seat left
+      neuschwanstein: 6, // 2 seats left
+      etretat_paris: 6, // 2 seats left
+      chamonix_montblanc: 7 // 1 seat left
+    };
+    const occupiedSeats =
+      hotPresetSeats[tripId] !== undefined && !tripDateSelections[tripId]
+        ? hotPresetSeats[tripId]
+        : 2 + (hash % 6); // 2..7 occupied -> 1..6 free seats
     const freeSeats = Math.max(1, totalSeats - occupiedSeats);
     const occupancyPercent = Math.round((occupiedSeats / totalSeats) * 100);
 
@@ -264,9 +432,112 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     };
   };
 
+  // User Bookings History for Tab "4. Мої поїздки" (statuses: 'new' | 'confirmed' | 'cancelled')
+  interface UserBookingRecord {
+    id: string;
+    bookingCode: string;
+    tripId: string;
+    tripTitle: string;
+    tripShortTitle: string;
+    tripImage: string;
+    countryBadge: string;
+    departureDate: string;
+    duration: string;
+    seatName: string;
+    totalPrice: number;
+    pickupPoint: string;
+    createdAt: string;
+    status: 'new' | 'confirmed' | 'cancelled';
+  }
+
+  const [myBookingsFilter, setMyBookingsFilter] = useState<'all' | 'new' | 'confirmed' | 'cancelled'>('all');
+  const [myBookings, setMyBookings] = useState<UserBookingRecord[]>(() => {
+    const defaultBookings: UserBookingRecord[] = [
+      {
+        id: 'bk-101',
+        bookingCode: 'SVOI-MINI-4829',
+        tripId: 'paris',
+        tripTitle: TRIPS_LIST[0]?.title || 'Париж (Версаль + круїз на яхті)',
+        tripShortTitle: TRIPS_LIST[0]?.shortTitle || 'Париж + Версаль',
+        tripImage: TRIPS_LIST[0]?.image || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=900&q=80',
+        countryBadge: TRIPS_LIST[0]?.badge || '🇫🇷 Франція',
+        departureDate: '25.10.2026 (Нд)',
+        duration: '1 день',
+        seatName: 'Місце 2 (1-й ряд, вікно)',
+        totalPrice: 125,
+        pickupPoint: 'Саарланд (за адресою): Bahnhofstraße 12, Saarbrücken',
+        createdAt: '18.10.2026, 14:20',
+        status: 'confirmed'
+      },
+      {
+        id: 'bk-102',
+        bookingCode: 'SVOI-MINI-7391',
+        tripId: 'como_milan',
+        tripTitle: 'Озеро Комо + Мілан + Лугано (Швейцарія & Італія)',
+        tripShortTitle: 'Комо + Мілан + Лугано',
+        tripImage: 'https://images.unsplash.com/photo-1536663815808-535e2280d2c2?auto=format&fit=crop&w=900&q=80',
+        countryBadge: '🇮🇹 Італія / 🇨🇭 Швейцарія',
+        departureDate: '07–08.11.2026 (Сб–Нд)',
+        duration: '2 дні',
+        seatName: 'Місце 1 (1-й ряд, панорамне)',
+        totalPrice: 265,
+        pickupPoint: 'Трір (за адресою)',
+        createdAt: '20.10.2026, 11:05',
+        status: 'new'
+      },
+      {
+        id: 'bk-103',
+        bookingCode: 'SVOI-MINI-2104',
+        tripId: 'brugge',
+        tripTitle: 'Середньовічний Брюгге — Північна Венеція',
+        tripShortTitle: 'Казковий Брюгге',
+        tripImage: 'https://images.unsplash.com/photo-1565060169194-19fabf63012c?auto=format&fit=crop&w=900&q=80',
+        countryBadge: '🇧🇪 Бельгія',
+        departureDate: '17.10.2026 (Сб)',
+        duration: '1 день',
+        seatName: 'Місце 5 (2-й ряд, праве вікно)',
+        totalPrice: 115,
+        pickupPoint: 'Люксембург (за адресою)',
+        createdAt: '10.10.2026, 19:45',
+        status: 'cancelled'
+      }
+    ];
+    try {
+      const saved = localStorage.getItem('svoi_user_bookings');
+      return saved ? JSON.parse(saved) : defaultBookings;
+    } catch {
+      return defaultBookings;
+    }
+  });
+
+  const handleUpdateBookingStatus = (bookingId: string, newStatus: 'new' | 'confirmed' | 'cancelled') => {
+    triggerHaptic('selection');
+    setMyBookings((prev) => {
+      const updated = prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b));
+      try {
+        localStorage.setItem('svoi_user_bookings', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+    const statusLabel =
+      newStatus === 'confirmed' ? 'Підтверджена ✅' : newStatus === 'cancelled' ? 'Скасована ❌' : 'Нова заявка 🟡';
+    setDevToast(`Статус заявки оновлено: ${statusLabel}`);
+    setTimeout(() => setDevToast(null), 3000);
+  };
+
+  // Hot Tours (trips with <= 2 free seats) automatically computed
+  const hotToursList = useMemo(() => {
+    return tripsWithOverrides.filter((trip) => {
+      const occ = getTripOccupancy(trip.id);
+      return occ.freeSeats > 0 && occ.freeSeats <= 2;
+    });
+  }, [tripsWithOverrides, tripDateSelections]);
+
   // GitHub Pages / Public URL Binder Modal state
   const [showUrlSetupModal, setShowUrlSetupModal] = useState<boolean>(false);
-  const [publicMiniAppUrl, setPublicMiniAppUrl] = useState<string>('https://username.github.io/svoi-miniapp/?miniapp=1');
+  const [publicMiniAppUrl, setPublicMiniAppUrl] = useState<string>('https://arsik202406-jpg.github.io/tg-bot-SVOI/?miniapp=1');
   const [isSavingBotUrl, setIsSavingBotUrl] = useState<boolean>(false);
 
   const handleSavePublicUrlToBot = async (e: React.FormEvent) => {
@@ -323,23 +594,30 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
   // Filtered tours by search query, price range slider, duration, and calendar date
   const filteredTrips = useMemo(() => {
-    const filtered = TRIPS_LIST.filter(trip => {
+    const filtered = tripsWithOverrides.filter(trip => {
       // Price range filter
       if (trip.price > maxPriceFilter) return false;
 
-      // Search query filter (by title, shortTitle, badge/country, description, highlights)
+      // Search query filter (by title, shortTitle, country, badge, description, highlights, detailedProgram)
       if (searchQuery.trim().length > 0) {
         const q = searchQuery.toLowerCase().trim();
         const matchTitle = trip.title.toLowerCase().includes(q) || trip.shortTitle.toLowerCase().includes(q);
-        const matchCountry = (trip.badge || '').toLowerCase().includes(q);
+        const matchCountry = (trip.country || '').toLowerCase().includes(q) || (trip.badge || '').toLowerCase().includes(q);
         const matchDesc = trip.description.toLowerCase().includes(q);
         const matchHighlights = trip.highlights.some(h => h.toLowerCase().includes(q));
-        if (!matchTitle && !matchCountry && !matchDesc && !matchHighlights) return false;
+        const matchProgram = (trip.detailedProgram || []).some(p => p.toLowerCase().includes(q));
+        if (!matchTitle && !matchCountry && !matchDesc && !matchHighlights && !matchProgram) return false;
       }
 
       // Duration filter
       if (filterDuration === '1day' && trip.duration !== '1 день') return false;
       if (filterDuration === 'multiday' && trip.duration === '1 день') return false;
+
+      // Hot tours filter (<= 2 free seats)
+      if (onlyHotToursFilter) {
+        const occ = getTripOccupancy(trip.id);
+        if (occ.freeSeats > 2 || occ.freeSeats <= 0) return false;
+      }
       
       // Date filter
       if (filterDateWeekend !== 'all') {
@@ -373,7 +651,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       return [...filtered].sort((a, b) => b.price - a.price);
     }
     return filtered;
-  }, [searchQuery, maxPriceFilter, priceSortOrder, filterDuration, filterDateWeekend]);
+  }, [tripsWithOverrides, searchQuery, maxPriceFilter, priceSortOrder, filterDuration, onlyHotToursFilter, filterDateWeekend, tripDateSelections]);
 
   // Native Telegram WebApp SDK initialization and auto-detection
   useEffect(() => {
@@ -485,6 +763,27 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
   const handleSubmitBooking = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitAttempted(true);
+    setTouchedFields({ name: true, handle: true, phone: true });
+
+    const currentNameErr = validatePassengerName(passengerName);
+    const currentHandleErr = validateTelegramHandle(passengerHandle);
+    const currentPhoneErr = validatePhoneNumber(passengerPhone);
+
+    if (currentNameErr || currentHandleErr || currentPhoneErr) {
+      triggerHaptic('heavy');
+      setDevToast('⚠️ Перевірте правильність імені, Telegram @username або номера телефону');
+      setTimeout(() => setDevToast(null), 3500);
+      return;
+    }
+
+    const cleanHandleRaw = normalizeTelegramHandle(passengerHandle);
+    const formattedHandle = cleanHandleRaw.startsWith('@') ? cleanHandleRaw : `@${cleanHandleRaw}`;
+    const formattedPhone = passengerPhone.trim().replace(/\s+/g, ' ');
+
+    setPassengerHandle(formattedHandle);
+    setPassengerPhone(formattedPhone);
+
     triggerHaptic('heavy');
     setIsSubmitting(true);
 
@@ -499,9 +798,9 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       basePrice,
       seatFee: seatSurcharge,
       totalCost: totalPrice,
-      meetingPoint: pickupAddress.trim() ? `${pickupCity}: ${pickupAddress.trim()}` : pickupCity,
-      userName: passengerName,
-      userHandle: passengerHandle.startsWith('@') ? passengerHandle : `@${passengerHandle}`,
+      meetingPoint: `${pickupAddress.trim() ? `${pickupCity}: ${pickupAddress.trim()}` : pickupCity} • Тел: ${formattedPhone}`,
+      userName: passengerName.trim(),
+      userHandle: formattedHandle,
       userId: 8450153980,
       timestamp: new Date().toLocaleString('uk-UA'),
       status: 'new'
@@ -510,6 +809,40 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     if (onNewLead) {
       onNewLead(newLead);
     }
+
+    // Save to User Bookings History (Tab 4 "Мої поїздки")
+    const userBookingEntry: UserBookingRecord = {
+      id: `bk-${Date.now()}`,
+      bookingCode,
+      tripId: selectedTrip.id,
+      tripTitle: selectedTrip.title,
+      tripShortTitle: selectedTrip.shortTitle,
+      tripImage: selectedTrip.image,
+      countryBadge: selectedTrip.badge || '🇪🇺 Європа',
+      departureDate: selectedDepartureDate,
+      duration: selectedTrip.duration,
+      seatName: selectedSeat ? selectedSeat.name : 'Вільна посадка (0€)',
+      totalPrice,
+      pickupPoint: pickupAddress.trim() ? `${pickupCity}: ${pickupAddress.trim()}` : pickupCity,
+      createdAt: new Date().toLocaleString('uk-UA', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      status: 'new'
+    };
+
+    setMyBookings((prev) => {
+      const updated = [userBookingEntry, ...prev];
+      try {
+        localStorage.setItem('svoi_user_bookings', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
 
     // Try Telegram WebApp API if running inside real Telegram
     try {
@@ -555,57 +888,45 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
         <div className="absolute inset-0 opacity-[0.07] bg-[radial-gradient(#22d3ee_1px,transparent_1px)] [background-size:24px_24px]" />
       </div>
 
-      {/* Top Telegram Mini App Header Bar */}
-      <div className="relative z-10 bg-slate-950/85 backdrop-blur-xl border-b border-cyan-500/20 px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2 sm:gap-2.5">
+      {/* Compact Brand Header Bar (Technical buttons removed for clean user experience) */}
+      <div className="relative z-10 bg-slate-950/85 backdrop-blur-xl border-b border-cyan-500/20 px-3 sm:px-4 py-2 flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2">
           <div className="relative">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-600 to-amber-400 p-[1.5px] shadow-lg shadow-cyan-500/30">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-600 to-amber-400 p-[1.5px] shadow-md shadow-cyan-500/20">
               <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center font-black text-xs text-cyan-300">
                 ✨
               </div>
             </div>
             {starlightCeiling && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-cyan-400 rounded-full animate-ping" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-cyan-400 rounded-full animate-ping" />
             )}
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide">SVOI Mini App</span>
-              <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
-                Зоряне небо 🌌
+              <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide">SVOI Travel Club</span>
+              <span className="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+                Opel Vivaro • 8 місць
               </span>
             </div>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 hidden xs:block">Opel Vivaro & 14 турів Європою</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* GitHub Pages / Public URL Binder Button */}
+        <div className="flex items-center gap-1.5">
+          {/* Admin Mode Toggle for editing dates and posters */}
           <button
             onClick={() => {
-              triggerHaptic('light');
-              setShowUrlSetupModal(true);
+              triggerHaptic('selection');
+              setIsAdminMode(!isAdminMode);
             }}
-            className="px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-bold bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-400/50 text-indigo-200 hover:text-white transition-all flex items-center gap-1 shadow-sm active:scale-95"
-            title="Налаштувати публічне посилання GitHub Pages для відкриття в Telegram"
-          >
-            <ExternalLink className="w-3 h-3 text-indigo-400 shrink-0" />
-            <span className="hidden md:inline">GitHub URL для ТГ</span>
-            <span className="md:hidden">URL ТГ</span>
-          </button>
-
-          {/* Developer Mode Simulator Trigger Button */}
-          <button
-            onClick={handleToggleDevMode}
-            className={`px-2.5 sm:px-3 py-1 rounded-xl text-[11px] font-extrabold border transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
-              isDevMode 
-                ? 'bg-amber-500/25 border-amber-400 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.4)] ring-1 ring-amber-400/50' 
-                : 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-500/40 text-amber-300 hover:text-white'
+            className={`px-2 py-1 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1 ${
+              isAdminMode
+                ? 'bg-amber-500/25 border-amber-400 text-amber-200 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
+                : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200'
             }`}
-            title="Імітувати отримання initData від Telegram WebApp SDK"
+            title="Режим адміністратора (редагування дат та постерів турів)"
           >
-            <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="truncate">{isDevMode ? '🛠 Dev Mode: ON' : '🛠 Запустити в режимі розробника'}</span>
+            <span>👑</span>
+            <span className="hidden sm:inline">{isAdminMode ? 'Адмін: ON' : 'Адмін'}</span>
           </button>
 
           {/* Starlight toggle */}
@@ -614,15 +935,15 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               triggerHaptic('soft');
               setStarlightCeiling(!starlightCeiling);
             }}
-            className={`px-2 sm:px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5 ${
+            className={`px-2 py-1 rounded-xl text-[10px] sm:text-[11px] font-semibold border transition-all flex items-center gap-1 ${
               starlightCeiling 
-                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.3)]' 
+                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 shadow-[0_0_10px_rgba(34,211,238,0.25)]' 
                 : 'bg-slate-900 border-slate-700 text-slate-400'
             }`}
             title="Увімкнути/вимкнути зоряне небо в салоні"
           >
             <Sparkles className="w-3 h-3 text-cyan-400" />
-            <span className="hidden sm:inline">Зоряне небо</span>
+            <span className="hidden xs:inline">Зоряне небо</span>
           </button>
 
           {onClose && (
@@ -631,100 +952,19 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 triggerHaptic('light');
                 onClose();
               }}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all shrink-0"
+              className="w-7 h-7 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all shrink-0"
               title="Закрити Mini App"
             >
-              <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
       </div>
 
-      {/* Dev Mode Simulated Telegram Status Banner & Inspector */}
-      {isDevMode && (
-        <div className="relative z-20 bg-amber-950/80 border-b border-amber-500/40 px-3 sm:px-4 py-2 text-xs text-amber-200 space-y-1.5 shrink-0 animate-fade-in backdrop-blur-md">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-extrabold text-amber-300 flex items-center gap-1 text-[11px]">
-                <Terminal className="w-3.5 h-3.5" />
-                <span>Telegram WebApp: initData змодельовано</span>
-              </span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-200 border border-amber-500/30 font-mono">
-                @alex_traveler_dev (ID: 845015398)
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setShowDevInspector(!showDevInspector)}
-                className="px-2 py-0.5 rounded-lg bg-amber-900/60 hover:bg-amber-800 text-[10px] text-amber-100 font-semibold border border-amber-500/40 transition-all"
-              >
-                {showDevInspector ? 'Сховати інспектор' : 'Показати JSON initData'}
-              </button>
-              <button
-                onClick={() => {
-                  triggerHaptic('success');
-                  setDevToast('✨ Тестовий Haptic Pulse (success) відтворено!');
-                  setTimeout(() => setDevToast(null), 2500);
-                }}
-                className="px-2 py-0.5 rounded-lg bg-amber-900/40 hover:bg-amber-800 text-[10px] text-amber-200 transition-all"
-                title="Перевірити тактильну вібрацію HapticFeedback"
-              >
-                Тест Haptic
-              </button>
-              <button
-                onClick={handleToggleDevMode}
-                className="w-5 h-5 rounded-md bg-amber-900/80 hover:bg-amber-800 text-amber-300 hover:text-white flex items-center justify-center text-[10px]"
-                title="Вимкнути режим розробника"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-
-          {/* Expanded Inspector Panel */}
-          {showDevInspector && (
-            <div className="mt-2 p-2.5 rounded-xl bg-slate-950/90 border border-amber-500/30 text-[11px] font-mono text-slate-300 space-y-1.5">
-              <div className="flex items-center justify-between text-[10px] text-slate-400 pb-1 border-b border-slate-800">
-                <span>Імітований об'єкт window.Telegram.WebApp.initDataUnsafe:</span>
-                <button
-                  onClick={() => {
-                    navigator.clipboard?.writeText(
-                      JSON.stringify((window as any).Telegram?.WebApp?.initDataUnsafe || {}, null, 2)
-                    );
-                    setCopiedInitData(true);
-                    setTimeout(() => setCopiedInitData(false), 2000);
-                  }}
-                  className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300"
-                >
-                  <Copy className="w-3 h-3" />
-                  <span>{copiedInitData ? 'Скопійовано!' : 'Копіювати JSON'}</span>
-                </button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
-                <div>
-                  <span className="text-amber-400">user.first_name:</span> "Олександр (Dev)"<br />
-                  <span className="text-amber-400">user.username:</span> "@alex_traveler_dev"<br />
-                  <span className="text-amber-400">user.id:</span> 845015398<br />
-                  <span className="text-amber-400">user.is_premium:</span> true
-                </div>
-                <div>
-                  <span className="text-cyan-400">platform:</span> "ios" (модельована)<br />
-                  <span className="text-cyan-400">version:</span> "7.10"<br />
-                  <span className="text-cyan-400">themeParams.bg_color:</span> "#070b14"<br />
-                  <span className="text-emerald-400">HapticFeedback:</span> Активний
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Floating Dev Toast Notification */}
+      {/* Floating Toast Notification */}
       {devToast && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-950/95 border border-amber-500/60 shadow-2xl rounded-2xl px-4 py-2 text-xs text-amber-200 flex items-center gap-2 animate-bounce">
-          <Wrench className="w-4 h-4 text-amber-400 shrink-0" />
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-950/95 border border-cyan-500/60 shadow-2xl rounded-2xl px-4 py-2 text-xs text-cyan-200 flex items-center gap-2 animate-bounce">
+          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
           <span>{devToast}</span>
         </div>
       )}
@@ -767,7 +1007,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               triggerHaptic('selection');
               setActiveStep('checkout');
             }}
-            className={`flex-1 py-1.5 px-2.5 sm:px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 shrink-0 ${
+            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1 shrink-0 ${
               activeStep === 'checkout'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 border border-emerald-400/40'
                 : 'text-slate-400 hover:text-white bg-slate-950/40'
@@ -775,6 +1015,21 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span className="truncate">3. Бронь ({totalPrice}€)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              triggerHaptic('selection');
+              setActiveStep('my_trips');
+            }}
+            className={`flex-1 py-1.5 px-2 sm:px-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-1 shrink-0 ${
+              activeStep === 'my_trips'
+                ? 'bg-amber-500 text-slate-950 font-extrabold shadow-md shadow-amber-500/30 border border-amber-300'
+                : 'text-slate-400 hover:text-white bg-slate-950/40'
+            }`}
+          >
+            <Luggage className="w-3.5 h-3.5" />
+            <span className="truncate">4. Мої поїздки ({myBookings.length})</span>
           </button>
         </div>
       </div>
@@ -784,52 +1039,58 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
         {/* ================= STEP 1: 14 TOURS SHOWCASE ================= */}
         {activeStep === 'tours' && (
           <div className="space-y-4 pb-12 sm:pb-6">
-            {/* Header intro & filters */}
-            <div className="space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
-                    <Compass className="w-5 h-5 text-cyan-400" />
-                    <span>Вітрина всіх 14 турів Європою</span>
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Оберіть тур та точну дату виїзду — 0% передоплати на одноденні поїздки!
-                  </p>
+            {/* Compact Header & Streamlined Filters (Cards immediately visible on first screen) */}
+            <div className="space-y-2.5">
+              {/* Row 1: Search Bar + Duration Filter + ⚙️ Фільтри Button */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                {/* Search Bar for Filtering by Tour Name or Destination Country */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-cyan-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Пошук туру за назвою або країною (Париж, Італія, Швейцарія)..."
+                    className="w-full bg-slate-950/90 border border-slate-800 focus:border-cyan-400 rounded-xl pl-9 pr-16 py-2 text-xs text-white placeholder:text-slate-500 outline-none transition-all shadow-inner"
+                  />
+                  {searchQuery.trim().length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setSearchQuery('');
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 hover:text-white flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  ) : (
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-mono">
+                      {filteredTrips.length}/{tripsWithOverrides.length}
+                    </span>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Calendar Modal Trigger Button */}
-                  <button
-                    onClick={() => {
-                      triggerHaptic('medium');
-                      setShowCalendarModal(true);
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600/30 to-blue-600/30 hover:from-cyan-600/50 hover:to-blue-600/50 text-cyan-300 hover:text-white border border-cyan-400/50 font-bold text-xs flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(34,211,238,0.25)]"
-                    title="Відкрити інтерактивний календар турів"
-                  >
-                    <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Календар дат</span>
-                  </button>
-
-                  {/* Filter pills */}
-                  <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800 text-xs">
+                {/* Duration Pills & Collapsible ⚙️ Фільтри Trigger */}
+                <div className="flex items-center justify-between sm:justify-end gap-1.5">
+                  <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-[11px]">
                     <button
                       onClick={() => {
                         triggerHaptic('selection');
                         setFilterDuration('all');
                       }}
-                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                      className={`px-2 py-1 rounded-lg font-semibold transition-all ${
                         filterDuration === 'all' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      Усі (14)
+                      Усі
                     </button>
                     <button
                       onClick={() => {
                         triggerHaptic('selection');
                         setFilterDuration('1day');
                       }}
-                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                      className={`px-2 py-1 rounded-lg font-semibold transition-all ${
                         filterDuration === '1day' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                       }`}
                     >
@@ -840,57 +1101,61 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                         triggerHaptic('selection');
                         setFilterDuration('multiday');
                       }}
-                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                      className={`px-2 py-1 rounded-lg font-semibold transition-all ${
                         filterDuration === 'multiday' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                       }`}
                     >
                       2-3 дні
                     </button>
                   </div>
-                </div>
-              </div>
 
-              {/* Search Bar for Filtering by Tour Name or Destination Country */}
-              <div className="relative">
-                <Search className="w-4 h-4 text-cyan-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Пошук туру за назвою або країною (наприклад: Париж, Італія, Бельгія, Швейцарія)..."
-                  className="w-full bg-slate-950/90 border border-slate-800 focus:border-cyan-400 rounded-xl pl-10 pr-24 py-2.5 text-xs sm:text-sm text-white placeholder:text-slate-500 outline-none transition-all shadow-inner focus:shadow-[0_0_15px_rgba(34,211,238,0.2)]"
-                />
-                {searchQuery.trim().length > 0 ? (
+                  {/* Collapsible Advanced Filters Button (⚙️ Фільтри) */}
                   <button
                     type="button"
                     onClick={() => {
-                      triggerHaptic('light');
-                      setSearchQuery('');
+                      triggerHaptic('selection');
+                      setShowAdvancedFilters((prev) => !prev);
                     }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 hover:text-white flex items-center gap-1 transition-all"
+                    className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all flex items-center gap-1 shrink-0 ${
+                      showAdvancedFilters || maxPriceFilter < 450 || filterDateWeekend !== 'all' || priceSortOrder !== 'default'
+                        ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-[0_0_10px_rgba(34,211,238,0.25)]'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:text-white'
+                    }`}
                   >
-                    <X className="w-3 h-3" />
-                    <span>Очистити</span>
+                    <span>⚙️ Фільтри</span>
+                    {(maxPriceFilter < 450 || filterDateWeekend !== 'all' || priceSortOrder !== 'default') && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    )}
                   </button>
-                ) : (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-mono hidden sm:inline">
-                    {filteredTrips.length} / {TRIPS_LIST.length} турів
-                  </span>
-                )}
+
+                  {/* Calendar Modal Trigger Button */}
+                  <button
+                    onClick={() => {
+                      triggerHaptic('medium');
+                      setShowCalendarModal(true);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-950/80 hover:bg-slate-900 text-cyan-300 border border-cyan-500/40 font-bold text-[11px] flex items-center gap-1 transition-all shrink-0"
+                    title="Відкрити календар дат"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                    <span className="hidden md:inline">Календар</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Quick Country Filter Tags */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] scrollbar-none">
+              {/* Row 2: Quick Country Filter Tags (Always visible) */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
                 <span className="text-slate-500 font-semibold shrink-0">Країни:</span>
                 {[
-                  { q: '', label: '🌍 Всі країни' },
+                  { q: '', label: '🌍 Всі' },
                   { q: 'Франція', label: '🇫🇷 Франція' },
-                  { q: 'Італія', label: '🇮🇹 Італія' },
-                  { q: 'Швейцарія', label: '🇨🇭 Швейцарія' },
                   { q: 'Бельгія', label: '🇧🇪 Бельгія' },
-                  { q: 'Нідерланди', label: '🇳🇱 Нідерланди' },
+                  { q: 'Голландія', label: '🇳🇱 Голландія' },
                   { q: 'Німеччина', label: '🇩🇪 Німеччина' },
-                  { q: 'Люксембург', label: '🇱🇺 Люксембург' }
+                  { q: 'Швейцарія', label: '🇨🇭 Швейцарія' },
+                  { q: 'Ліхтенштейн', label: '🇱🇮 Ліхтенштейн' },
+                  { q: 'Італія', label: '🇮🇹 Італія' },
+                  { q: 'Чехія', label: '🇨🇿 Чехія' }
                 ].map((c) => {
                   const isCountryActive = searchQuery.toLowerCase() === c.q.toLowerCase();
                   return (
@@ -901,7 +1166,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                         triggerHaptic('selection');
                         setSearchQuery(c.q);
                       }}
-                      className={`px-2.5 py-1 rounded-lg font-medium shrink-0 transition-all border ${
+                      className={`px-2 py-0.5 rounded-lg font-medium shrink-0 transition-all border ${
                         isCountryActive
                           ? 'bg-indigo-600/30 border-indigo-400 text-white font-bold shadow-sm'
                           : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:text-white'
@@ -913,137 +1178,163 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 })}
               </div>
 
-              {/* Price Range Slider & Price Sorting Controls */}
-              <div className="p-3 rounded-2xl bg-slate-950/85 border border-slate-800/90 space-y-2.5 shadow-inner">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-200 flex items-center gap-1.5">
-                      💶 Діапазон цін:
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-extrabold">
-                      від 80€ до {maxPriceFilter}€
-                    </span>
+              {/* Country Route Summary Banner when a country is selected */}
+              {searchQuery.trim().length > 0 && (() => {
+                const qLow = searchQuery.toLowerCase().trim();
+                const countrySummaryMap: Record<string, string> = {
+                  'франція': '🇫🇷 Напрямки по Франції: Ельзас і Страсбург, Етрета, Мон-Сен-Мішель, Париж та Лазурове узбережжя',
+                  'бельгія': '🇧🇪 Напрямки по Бельгії: Брюссель, Антверпен та Брюгге',
+                  'голландія': '🇳🇱 Напрямки по Голландії (Нідерландах): Гітхорн, Заандам, Амстердам та Море',
+                  'німеччина': '🇩🇪 Напрямки по Німеччині: Замок Нойшванштайн, Берлін, Дрезден, Штутгарт, Леголенд, Ліндау',
+                  'ліхтенштейн': '🇱🇮 Поїздка в Ліхтенштейн (3 країни): Вадуц, Брегенц та Ліндау',
+                  'швейцарія': '🇨🇭 Напрямки по Швейцарії: Рейнський водоспад, Цюрих, Люцерн, ущелина Ааре, Лаутербруннен, Берн',
+                  'італія': '🇮🇹 Напрямки по Італії: Озеро Комо, Белладжо, Варенна та Мілан'
+                };
+                const summaryText = countrySummaryMap[qLow];
+                if (!summaryText) return null;
+                return (
+                  <div className="px-3 py-1.5 rounded-xl bg-indigo-950/50 border border-indigo-500/40 text-[11px] text-indigo-200 font-semibold flex items-center justify-between gap-2">
+                    <span>{summaryText}</span>
+                    <span className="text-[10px] text-cyan-300 font-bold shrink-0">Знайдено: {filteredTrips.length}</span>
                   </div>
+                );
+              })()}
 
-                  {/* Sort Order Pills (Cheapest -> Most Expensive) */}
-                  <div className="flex items-center gap-1 text-[11px]">
-                    <span className="text-slate-500 hidden sm:inline mr-1">Сортування:</span>
-                    {[
-                      { id: 'default', label: 'За замовч.' },
-                      { id: 'asc', label: 'Від найдешевших ↑' },
-                      { id: 'desc', label: 'Від дорожчих ↓' }
-                    ].map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic('selection');
-                          setPriceSortOrder(s.id as 'default' | 'asc' | 'desc');
-                        }}
-                        className={`px-2 py-0.5 rounded-lg font-semibold transition-all border ${
-                          priceSortOrder === s.id
-                            ? 'bg-emerald-600/30 border-emerald-400 text-emerald-200 shadow-sm'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Range Input Slider */}
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-mono text-slate-400 shrink-0">80€</span>
-                  <input
-                    type="range"
-                    min={80}
-                    max={450}
-                    step={10}
-                    value={maxPriceFilter}
-                    onChange={(e) => setMaxPriceFilter(Number(e.target.value))}
-                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
-                  <span className="text-[10px] font-mono text-emerald-400 font-bold shrink-0">450€</span>
-                </div>
-
-                {/* Quick Price Preset Chips */}
-                <div className="flex flex-wrap items-center justify-between gap-1.5 pt-0.5">
-                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                    {[
-                      { price: 100, label: '🔥 До 100€ (Бюджетні)' },
-                      { price: 120, label: '✨ До 120€ (Хіти 1 день)' },
-                      { price: 150, label: '🌊 До 150€' },
-                      { price: 300, label: '🏔 До 300€ (2 дні)' },
-                      { price: 450, label: '💎 Усі ціни (до 450€)' }
-                    ].map((preset) => (
-                      <button
-                        key={preset.price}
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic('selection');
-                          setMaxPriceFilter(preset.price);
-                        }}
-                        className={`px-2 py-0.5 rounded-lg font-medium transition-all border ${
-                          maxPriceFilter === preset.price
-                            ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 font-bold'
-                            : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    Показано: <b className="text-cyan-300">{filteredTrips.length}</b> із {TRIPS_LIST.length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Quick Weekend & Date Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] scrollbar-thin">
-                <span className="text-slate-500 font-semibold shrink-0 flex items-center gap-1">
-                  <Filter className="w-3 h-3 text-cyan-400" />
-                  <span>Дати:</span>
-                </span>
-                {[
-                  { id: 'all', label: 'Всі дати' },
-                  { id: '24-25.10', label: '24–25 Жовтня' },
-                  { id: '31.10-01.11', label: '31 Жовтня – 01 Листопада' },
-                  { id: '07-08.11', label: '07–08 Листопада' },
-                  { id: '14-15.11', label: '14–15 Листопада' },
-                  { id: '21-22.11', label: '21–22 Листопада' },
-                  { id: '28-29.11', label: '28–29 Листопада' },
-                  { id: '12.2026', label: '❄️ Грудень 2026' }
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      triggerHaptic('selection');
-                      setFilterDateWeekend(item.id);
-                    }}
-                    className={`px-2.5 py-1 rounded-xl font-medium shrink-0 transition-all border ${
-                      filterDateWeekend === item.id
-                        ? 'bg-cyan-500/25 border-cyan-400 text-white font-bold shadow-[0_0_10px_rgba(34,211,238,0.3)]'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
-                    }`}
+              {/* Collapsible ⚙️ Фільтри Panel (Price Range Slider, Quick Price Buttons, Date Filter) */}
+              <AnimatePresence initial={false}>
+                {showAdvancedFilters && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.22 }}
+                    className="overflow-hidden"
                   >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
+                    <div className="p-3 rounded-2xl bg-slate-950/90 border border-cyan-500/30 space-y-3 shadow-inner mt-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-200">💶 Діапазон цін:</span>
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-extrabold">
+                            від 80€ до {maxPriceFilter}€
+                          </span>
+                        </div>
+
+                        {/* Sort Order Pills */}
+                        <div className="flex items-center gap-1 text-[11px]">
+                          <span className="text-slate-500 hidden sm:inline mr-1">Сортування:</span>
+                          {[
+                            { id: 'default', label: 'За замовч.' },
+                            { id: 'asc', label: 'Дешевші ↑' },
+                            { id: 'desc', label: 'Дорожчі ↓' }
+                          ].map((s) => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => {
+                                triggerHaptic('selection');
+                                setPriceSortOrder(s.id as 'default' | 'asc' | 'desc');
+                              }}
+                              className={`px-2 py-0.5 rounded-lg font-semibold transition-all border ${
+                                priceSortOrder === s.id
+                                  ? 'bg-emerald-600/30 border-emerald-400 text-emerald-200'
+                                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Range Input Slider */}
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-mono text-slate-400 shrink-0">80€</span>
+                        <input
+                          type="range"
+                          min={80}
+                          max={450}
+                          step={10}
+                          value={maxPriceFilter}
+                          onChange={(e) => setMaxPriceFilter(Number(e.target.value))}
+                          className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                        />
+                        <span className="text-[10px] font-mono text-emerald-400 font-bold shrink-0">450€</span>
+                      </div>
+
+                      {/* Quick Price Preset Chips */}
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                        {[
+                          { price: 100, label: '🔥 До 100€' },
+                          { price: 120, label: '✨ До 120€' },
+                          { price: 150, label: '🌊 До 150€' },
+                          { price: 300, label: '🏔 До 300€' },
+                          { price: 450, label: '💎 Усі ціни' }
+                        ].map((preset) => (
+                          <button
+                            key={preset.price}
+                            type="button"
+                            onClick={() => {
+                              triggerHaptic('selection');
+                              setMaxPriceFilter(preset.price);
+                            }}
+                            className={`px-2 py-0.5 rounded-lg font-medium transition-all border ${
+                              maxPriceFilter === preset.price
+                                ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 font-bold'
+                                : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Quick Weekend & Date Pills inside ⚙️ Фільтри */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto pt-1 border-t border-slate-800/80 text-[11px] scrollbar-none">
+                        <span className="text-slate-400 font-semibold shrink-0 flex items-center gap-1">
+                          <Filter className="w-3 h-3 text-cyan-400" />
+                          <span>Дати:</span>
+                        </span>
+                        {[
+                          { id: 'all', label: 'Всі дати' },
+                          { id: '24-25.10', label: '24–25.10' },
+                          { id: '31.10-01.11', label: '31.10–01.11' },
+                          { id: '07-08.11', label: '07–08.11' },
+                          { id: '14-15.11', label: '14–15.11' },
+                          { id: '21-22.11', label: '21–22.11' },
+                          { id: '28-29.11', label: '28–29.11' },
+                          { id: '12.2026', label: '❄️ Грудень' }
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              triggerHaptic('selection');
+                              setFilterDateWeekend(item.id);
+                            }}
+                            className={`px-2 py-0.5 rounded-lg font-medium shrink-0 transition-all border ${
+                              filterDateWeekend === item.id
+                                ? 'bg-cyan-500/25 border-cyan-400 text-white font-bold'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Active Filter Notice */}
-              {(filterDateWeekend !== 'all' || searchQuery.trim().length > 0 || maxPriceFilter < 450 || priceSortOrder !== 'default') && (
-                <div className="flex items-center justify-between bg-cyan-950/40 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-xs text-cyan-200">
-                  <span className="flex items-center gap-1.5 flex-wrap">
-                    <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                    <span>
-                      Знайдено турів: <b>{filteredTrips.length}</b>
-                      {searchQuery.trim() && <> за запитом «<b>{searchQuery}</b>»</>}
-                      {maxPriceFilter < 450 && <> • ціна до <b>{maxPriceFilter}€</b></>}
-                      {filterDateWeekend !== 'all' && <> • дати <b>{filterDateWeekend}</b></>}
-                    </span>
+              {(filterDateWeekend !== 'all' || searchQuery.trim().length > 0 || maxPriceFilter < 450 || priceSortOrder !== 'default' || onlyHotToursFilter) && (
+                <div className="flex items-center justify-between bg-cyan-950/40 border border-cyan-500/30 px-3 py-1 rounded-xl text-[11px] text-cyan-200">
+                  <span className="truncate">
+                    Знайдено: <b>{filteredTrips.length}</b>
+                    {onlyHotToursFilter && <> • 🔥 <b>Гарячі (≤ 2 місць)</b></>}
+                    {searchQuery.trim() && <> • «<b>{searchQuery}</b>»</>}
+                    {maxPriceFilter < 450 && <> • до <b>{maxPriceFilter}€</b></>}
+                    {filterDateWeekend !== 'all' && <> • <b>{filterDateWeekend}</b></>}
                   </span>
                   <button
                     onClick={() => {
@@ -1053,152 +1344,86 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                       setMaxPriceFilter(450);
                       setPriceSortOrder('default');
                       setFilterDuration('all');
+                      setOnlyHotToursFilter(false);
                     }}
                     className="text-[11px] underline text-cyan-400 hover:text-white shrink-0 ml-2"
                   >
-                    Скинути всі фільтри
+                    Скинути
                   </button>
                 </div>
               )}
 
-              {/* ================= WIDGET: СТАТИСТИКА ПОЇЗДОК (TRIP STATISTICS & OCCUPANCY) ================= */}
-              {(() => {
-                const statsList = filteredTrips.map((t) => {
-                  const occ = getTripOccupancy(t.id);
-                  return { trip: t, ...occ };
-                });
-                const totalFreeAcrossTrips = statsList.reduce((acc, item) => acc + item.freeSeats, 0);
-                const totalCapacityAcrossTrips = statsList.length * 8;
-                const totalOccupiedAcrossTrips = totalCapacityAcrossTrips - totalFreeAcrossTrips;
-                const avgOccupancyPercent =
-                  totalCapacityAcrossTrips > 0
-                    ? Math.round((totalOccupiedAcrossTrips / totalCapacityAcrossTrips) * 100)
-                    : 0;
-                const hotTripsCount = statsList.filter((item) => item.freeSeats <= 2).length;
+              {/* 🔥 ГАРЯЧІ ТУРИ BLOCK (Automatically filters & displays trips with <= 2 free seats) */}
+              {hotToursList.length > 0 && (
+                <div className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-r from-rose-950/60 via-amber-950/45 to-slate-950/90 border border-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.15)] space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-6 h-6 rounded-lg bg-rose-500/20 border border-rose-400/40 flex items-center justify-center text-rose-400 animate-pulse">
+                        <Flame className="w-3.5 h-3.5" />
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-xs font-black text-white tracking-wide">
+                          🔥 Гарячі тури (залишилося ≤ 2 місць)
+                        </h4>
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-rose-500/25 text-rose-200 border border-rose-400/40">
+                          {hotToursList.length} напрямки
+                        </span>
+                      </div>
+                    </div>
 
-                return (
-                  <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900/95 to-indigo-950/40 border border-cyan-500/35 shadow-[0_0_20px_rgba(34,211,238,0.1)] space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center text-cyan-300 font-bold text-sm shadow-inner">
-                          📊
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-xs sm:text-sm font-extrabold text-white tracking-tight">
-                              Статистика поїздок та вільні місця
-                            </h4>
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-[10px] font-bold text-emerald-300">
-                              Live • 8 місць у бусі
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('selection');
+                        setOnlyHotToursFilter((prev) => !prev);
+                      }}
+                      className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold border transition-all shrink-0 ${
+                        onlyHotToursFilter
+                          ? 'bg-rose-500 text-white border-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.5)]'
+                          : 'bg-slate-900/90 hover:bg-rose-950/60 text-rose-200 border-rose-500/40'
+                      }`}
+                    >
+                      {onlyHotToursFilter ? 'Показати всі тури' : 'Фільтр: Лише гарячі 🔥'}
+                    </button>
+                  </div>
+
+                  {/* Hot Tour Mini-Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-0.5">
+                    {hotToursList.map((hotTrip) => {
+                      const occ = getTripOccupancy(hotTrip.id);
+                      return (
+                        <div
+                          key={`hot-${hotTrip.id}`}
+                          onClick={() => handleSelectTrip(hotTrip, occ.targetDate)}
+                          className="group cursor-pointer p-2 rounded-xl bg-slate-950/85 hover:bg-slate-900 border border-rose-500/30 hover:border-rose-400 transition-all flex items-center gap-2.5 shadow-sm"
+                        >
+                          <img
+                            src={hotTrip.image}
+                            alt={hotTrip.shortTitle}
+                            className="w-12 h-12 rounded-lg object-cover shrink-0 border border-rose-400/30 group-hover:scale-105 transition-transform"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] font-bold text-rose-300 truncate">
+                                🔥 {occ.freeSeats === 1 ? 'Останнє 1 місце!' : `Лише ${occ.freeSeats} місця!`}
+                              </span>
+                              <span className="text-xs font-black text-emerald-400 shrink-0">
+                                {hotTrip.price}€
+                              </span>
+                            </div>
+                            <h5 className="text-xs font-extrabold text-white truncate group-hover:text-cyan-300 transition-colors">
+                              {hotTrip.shortTitle}
+                            </h5>
+                            <span className="text-[10px] text-slate-400 block truncate">
+                              📅 {occ.targetDate}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-400">
-                            Кількість доступних місць на обрану дату виїзду та заповненість кожного туру
-                          </p>
                         </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic('selection');
-                          setStatsWidgetExpanded((prev) => !prev);
-                        }}
-                        className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-semibold text-cyan-300 hover:text-white transition-all"
-                      >
-                        {statsWidgetExpanded ? 'Згорнути деталі ▲' : 'Показати всі рейси ▼'}
-                      </button>
-                    </div>
-
-                    {/* Top 3 KPI Summary Pills */}
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/90">
-                        <span className="text-[10px] text-slate-400 block">Доступно місць</span>
-                        <span className="text-sm sm:text-base font-black text-emerald-400">
-                          {totalFreeAcrossTrips} <span className="text-[10px] font-normal text-slate-500">/ {totalCapacityAcrossTrips}</span>
-                        </span>
-                      </div>
-                      <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/90">
-                        <span className="text-[10px] text-slate-400 block">Середня заповненість</span>
-                        <span className="text-sm sm:text-base font-black text-cyan-300">
-                          {avgOccupancyPercent}%
-                        </span>
-                      </div>
-                      <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/90">
-                        <span className="text-[10px] text-slate-400 block">Гарячі рейси (1–2 м.)</span>
-                        <span className="text-sm sm:text-base font-black text-amber-400">
-                          {hotTripsCount} {hotTripsCount === 1 ? 'тур' : 'тури'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Expandable Per-Tour Occupancy Progress Bars */}
-                    <AnimatePresence initial={false}>
-                      {statsWidgetExpanded && statsList.length > 0 && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.25 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="pt-1 max-h-48 overflow-y-auto pr-1 space-y-2 scrollbar-thin">
-                            {statsList.map(({ trip, freeSeats, occupiedSeats, occupancyPercent, targetDate }) => {
-                              const barColor =
-                                freeSeats <= 2
-                                  ? 'from-rose-500 to-amber-500'
-                                  : freeSeats <= 4
-                                    ? 'from-amber-400 to-cyan-400'
-                                    : 'from-emerald-400 to-cyan-500';
-                              const badgeColor =
-                                freeSeats <= 2
-                                  ? 'text-rose-300 bg-rose-500/15 border-rose-500/30'
-                                  : freeSeats <= 4
-                                    ? 'text-amber-300 bg-amber-500/15 border-amber-500/30'
-                                    : 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30';
-
-                              return (
-                                <div
-                                  key={`stat-${trip.id}`}
-                                  onClick={() => handleSelectTrip(trip, targetDate)}
-                                  className="p-2 rounded-xl bg-slate-950/90 hover:bg-slate-900 border border-slate-800/80 hover:border-cyan-500/40 cursor-pointer transition-all space-y-1.5"
-                                >
-                                  <div className="flex items-center justify-between gap-2 text-[11px]">
-                                    <div className="flex items-center gap-1.5 truncate">
-                                      <span className="font-bold text-white truncate">{trip.shortTitle}</span>
-                                      <span className="text-[10px] text-slate-400 shrink-0">• 📅 {targetDate}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                      <span className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold ${badgeColor}`}>
-                                        Вільно: {freeSeats} з 8
-                                      </span>
-                                      <span className="text-[10px] font-mono text-slate-400 w-8 text-right">
-                                        {occupancyPercent}%
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                                    <motion.div
-                                      initial={{ width: 0 }}
-                                      animate={{ width: `${occupancyPercent}%` }}
-                                      transition={{ duration: 0.5, ease: 'easeOut' }}
-                                      className={`h-full rounded-full bg-gradient-to-r ${barColor}`}
-                                    />
-                                  </div>
-                                  <div className="flex items-center justify-between text-[9px] text-slate-500">
-                                    <span>Зайнято місць: {occupiedSeats}/8</span>
-                                    <span className="text-cyan-400 hover:underline">Обрати місце в салоні →</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                      );
+                    })}
                   </div>
-                );
-              })()}
+                </div>
+              )}
             </div>
 
             {/* Empty Search State */}
@@ -1312,7 +1537,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
                         {/* Highlights */}
                         <div className="flex flex-wrap gap-1">
-                          {trip.highlights.slice(0, 3).map((h, i) => (
+                          {trip.highlights.slice(0, 4).map((h, i) => (
                             <span
                               key={i}
                               className="px-2 py-0.5 rounded-md bg-slate-900 text-[10px] text-slate-300 border border-slate-800"
@@ -1322,29 +1547,59 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                           ))}
                         </div>
 
-                        {/* Available Departure Dates Chips & Add to Calendar Button */}
+                        {/* Detailed Program Preview inside Tour Card */}
+                        {trip.detailedProgram && trip.detailedProgram.length > 0 && (
+                          <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-1">
+                            <span className="text-[10px] font-bold text-cyan-300 block">
+                              🗺 Програма поїздки та локації:
+                            </span>
+                            <ul className="space-y-0.5 text-[10px] text-slate-300 leading-snug">
+                              {trip.detailedProgram.map((step, sIdx) => (
+                                <li key={sIdx} className="flex items-start gap-1">
+                                  <span className="text-cyan-400 shrink-0">•</span>
+                                  <span>{step}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Available Departure Dates Chips & Add to Calendar / Admin Edit Buttons */}
                         {trip.departureDates && trip.departureDates.length > 0 && (
                           <div className="pt-2 border-t border-slate-800/60 space-y-2">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-wrap items-center justify-between gap-1">
                               <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
                                 <Calendar className="w-3 h-3 text-cyan-400" />
                                 <span>Дати виїзду:</span>
                               </span>
 
-                              {/* Add to System Calendar Button */}
-                              <button
-                                type="button"
-                                onClick={(e) => handleAddToCalendar(e, trip)}
-                                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border transition-all active:scale-95 ${
-                                  isCalendarSaved
-                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                    : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 hover:text-white border-cyan-500/30 hover:border-cyan-400'
-                                }`}
-                                title="Зберегти дату виїзду в системний календар пристрою"
-                              >
-                                <CalendarPlus className="w-3 h-3" />
-                                <span>{isCalendarSaved ? 'Додано в Календар ✓' : 'Додати в Календар'}</span>
-                              </button>
+                              <div className="flex items-center gap-1">
+                                {isAdminMode && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleOpenAdminTripModal(e, trip)}
+                                    className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/50 flex items-center gap-1 transition-all"
+                                    title="Змінити дати або постер туру (Адмін)"
+                                  >
+                                    <span>👑 Ред. дати / постер</span>
+                                  </button>
+                                )}
+
+                                {/* Add to System Calendar Button */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleAddToCalendar(e, trip)}
+                                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border transition-all active:scale-95 ${
+                                    isCalendarSaved
+                                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                      : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 hover:text-white border-cyan-500/30 hover:border-cyan-400'
+                                  }`}
+                                  title="Зберегти дату виїзду в системний календар пристрою"
+                                >
+                                  <CalendarPlus className="w-3 h-3" />
+                                  <span>{isCalendarSaved ? 'Додано ✓' : 'В Календар'}</span>
+                                </button>
+                              </div>
                             </div>
 
                             <div className="flex flex-wrap gap-1">
@@ -1450,12 +1705,146 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 onNewFeedbackLead={onNewLead}
               />
             </div>
+
+            {/* ================= WIDGET: СТАТИСТИКА ПОЇЗДОК (MOVED TO BOTTOM & COLLAPSED BY DEFAULT) ================= */}
+            {(() => {
+              const statsList = filteredTrips.map((t) => {
+                const occ = getTripOccupancy(t.id);
+                return { trip: t, ...occ };
+              });
+              const totalFreeAcrossTrips = statsList.reduce((acc, item) => acc + item.freeSeats, 0);
+              const totalCapacityAcrossTrips = statsList.length * 8;
+              const totalOccupiedAcrossTrips = totalCapacityAcrossTrips - totalFreeAcrossTrips;
+              const avgOccupancyPercent =
+                totalCapacityAcrossTrips > 0
+                  ? Math.round((totalOccupiedAcrossTrips / totalCapacityAcrossTrips) * 100)
+                  : 0;
+              const hotTripsCount = statsList.filter((item) => item.freeSeats <= 2).length;
+
+              return (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900/95 to-indigo-950/40 border border-cyan-500/35 shadow-[0_0_20px_rgba(34,211,238,0.08)] space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center text-cyan-300 font-bold text-sm">
+                        📊
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs sm:text-sm font-extrabold text-white tracking-tight">
+                            Статистика поїздок та вільні місця
+                          </h4>
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-[10px] font-bold text-emerald-300">
+                            {totalFreeAcrossTrips}/{totalCapacityAcrossTrips} вільно • {avgOccupancyPercent}%
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Заповненість кожного туру (8 місць у бусі) • Гарячих рейсів: {hotTripsCount}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('selection');
+                        setStatsWidgetExpanded((prev) => !prev);
+                      }}
+                      className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-semibold text-cyan-300 hover:text-white transition-all"
+                    >
+                      {statsWidgetExpanded ? 'Згорнути деталі ▲' : 'Розгорнути деталі ▼'}
+                    </button>
+                  </div>
+
+                  {/* Expandable KPI + Per-Tour Occupancy Progress Bars (Collapsed by default) */}
+                  <AnimatePresence initial={false}>
+                    {statsWidgetExpanded && statsList.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="overflow-hidden space-y-2.5"
+                      >
+                        <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                          <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/90">
+                            <span className="text-[10px] text-slate-400 block">Доступно місць</span>
+                            <span className="text-sm font-black text-emerald-400">
+                              {totalFreeAcrossTrips} <span className="text-[10px] font-normal text-slate-500">/ {totalCapacityAcrossTrips}</span>
+                            </span>
+                          </div>
+                          <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/90">
+                            <span className="text-[10px] text-slate-400 block">Середня заповненість</span>
+                            <span className="text-sm font-black text-cyan-300">{avgOccupancyPercent}%</span>
+                          </div>
+                          <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/90">
+                            <span className="text-[10px] text-slate-400 block">Гарячі рейси</span>
+                            <span className="text-sm font-black text-amber-400">{hotTripsCount}</span>
+                          </div>
+                        </div>
+
+                        <div className="max-h-48 overflow-y-auto pr-1 space-y-2 scrollbar-thin">
+                          {statsList.map(({ trip, freeSeats, occupiedSeats, occupancyPercent, targetDate }) => {
+                            const barColor =
+                              freeSeats <= 2
+                                ? 'from-rose-500 to-amber-500'
+                                : freeSeats <= 4
+                                  ? 'from-amber-400 to-cyan-400'
+                                  : 'from-emerald-400 to-cyan-500';
+                            const badgeColor =
+                              freeSeats <= 2
+                                ? 'text-rose-300 bg-rose-500/15 border-rose-500/30'
+                                : freeSeats <= 4
+                                  ? 'text-amber-300 bg-amber-500/15 border-amber-500/30'
+                                  : 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30';
+
+                            return (
+                              <div
+                                key={`stat-${trip.id}`}
+                                onClick={() => handleSelectTrip(trip, targetDate)}
+                                className="p-2 rounded-xl bg-slate-950/90 hover:bg-slate-900 border border-slate-800/80 hover:border-cyan-500/40 cursor-pointer transition-all space-y-1.5"
+                              >
+                                <div className="flex items-center justify-between gap-2 text-[11px]">
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <span className="font-bold text-white truncate">{trip.shortTitle}</span>
+                                    <span className="text-[10px] text-slate-400 shrink-0">• 📅 {targetDate}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold ${badgeColor}`}>
+                                      Вільно: {freeSeats} з 8
+                                    </span>
+                                    <span className="text-[10px] font-mono text-slate-400 w-8 text-right">
+                                      {occupancyPercent}%
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${occupancyPercent}%` }}
+                                    transition={{ duration: 0.5, ease: 'easeOut' }}
+                                    className={`h-full rounded-full bg-gradient-to-r ${barColor}`}
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between text-[9px] text-slate-500">
+                                  <span>Зайнято місць: {occupiedSeats}/8</span>
+                                  <span className="text-cyan-400 hover:underline">Обрати місце в салоні →</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })()}
           </div>
         )}
 
         {/* ================= STEP 2: 3D/2D CABIN & STARLIGHT CEILING ================= */}
         {activeStep === 'seats' && (
-          <div className="space-y-5 pb-12 sm:pb-6">
+          <div className="space-y-4 pb-12 sm:pb-6">
             {/* Cabin Top Header with Selected Tour & Add to Calendar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
               <div>
@@ -1503,8 +1892,8 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               </button>
             </div>
 
-            {/* Visual Cabin Container with Starlight Ceiling Effect */}
-            <div className="relative rounded-3xl p-4 sm:p-7 border-2 border-cyan-500/40 bg-gradient-to-b from-[#0a1128] via-[#090d20] to-[#060814] shadow-2xl overflow-hidden">
+            {/* Visual Cabin Container with Starlight Ceiling Effect (Seats Layout ON TOP immediately under button!) */}
+            <div className="relative rounded-3xl p-4 sm:p-6 border-2 border-cyan-500/40 bg-gradient-to-b from-[#0a1128] via-[#090d20] to-[#060814] shadow-2xl overflow-hidden">
               {/* Animated Constellation Starlight Headliner overlay */}
               {starlightCeiling && (
                 <div className="absolute inset-0 pointer-events-none">
@@ -1513,13 +1902,12 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   <div className="absolute top-28 left-1/3 w-1 h-1 bg-amber-200 rounded-full shadow-[0_0_8px_#fde68a] animate-ping" style={{ animationDuration: '4s' }} />
                   <div className="absolute bottom-16 right-1/4 w-1 h-1 bg-purple-300 rounded-full shadow-[0_0_8px_#d8b4fe] animate-pulse" />
                   <div className="absolute bottom-8 left-1/4 w-1.5 h-1.5 bg-white rounded-full shadow-[0_0_10px_#fff] animate-ping" style={{ animationDuration: '5s' }} />
-                  {/* Subtle Milky Way shimmer */}
                   <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/5 via-purple-500/10 to-amber-500/5 opacity-60 pointer-events-none" />
                 </div>
               )}
 
               {/* Front Windshield & Driver Cockpit */}
-              <div className="mb-6 pb-4 border-b border-cyan-500/30 flex items-center justify-between">
+              <div className="mb-4 pb-3 border-b border-cyan-500/30 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center font-bold text-xs text-slate-300">
                     🚐
@@ -1538,89 +1926,8 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 </div>
               </div>
 
-              {/* INTERACTIVE CABIN LEGEND (ЛЕГЕНДА ПОЗНАЧЕНЬ СХЕМИ САЛОНУ) */}
-              <div className="mb-5 p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800/90 space-y-2.5 shadow-inner">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-cyan-300 flex items-center gap-1.5">
-                    <Info className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Легенда позначень схеми салону Opel Vivaro:</span>
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    Схема 2 + 3 + 3 (8 пасажирів)
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                  {/* 1. Водій */}
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-slate-800">
-                    <span className="w-6 h-6 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center text-xs shrink-0">
-                      👨‍✈️
-                    </span>
-                    <div className="leading-tight">
-                      <span className="font-bold text-slate-200 block">Водій клубу</span>
-                      <span className="text-[9px] text-slate-400">Службове місце</span>
-                    </div>
-                  </div>
-
-                  {/* 2. Вільне 1-й ряд */}
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-amber-500/30">
-                    <span className="w-6 h-6 rounded-lg bg-amber-500/20 border-2 border-amber-400 text-amber-300 flex items-center justify-center text-[10px] font-bold shrink-0">
-                      1–2
-                    </span>
-                    <div className="leading-tight">
-                      <span className="font-bold text-amber-300 block">Вільне (1-й ряд)</span>
-                      <span className="text-[9px] text-slate-400">Панорамні +5€</span>
-                    </div>
-                  </div>
-
-                  {/* 3. Вільне 2-3 ряд */}
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-sky-500/30">
-                    <span className="w-6 h-6 rounded-lg bg-sky-500/20 border-2 border-sky-400 text-sky-300 flex items-center justify-center text-[10px] font-bold shrink-0">
-                      3–8
-                    </span>
-                    <div className="leading-tight">
-                      <span className="font-bold text-sky-300 block">Вільне (Салон)</span>
-                      <span className="text-[9px] text-slate-400">Комфорт +5€ / 0€</span>
-                    </div>
-                  </div>
-
-                  {/* 4. Обране крісло */}
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-emerald-500/40">
-                    <span className="w-6 h-6 rounded-lg bg-emerald-400 text-slate-950 shadow-[0_0_10px_rgba(52,211,153,0.8)] flex items-center justify-center text-xs font-black shrink-0">
-                      ✓
-                    </span>
-                    <div className="leading-tight">
-                      <span className="font-bold text-emerald-300 block">Обране місце</span>
-                      <span className="text-[9px] text-slate-400">Ваш активний вибір</span>
-                    </div>
-                  </div>
-
-                  {/* 5. Зайняте місце */}
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-rose-500/30">
-                    <span className="w-6 h-6 rounded-lg bg-rose-950/90 border border-rose-500/60 text-rose-300 flex items-center justify-center text-xs shrink-0">
-                      🔒
-                    </span>
-                    <div className="leading-tight">
-                      <span className="font-bold text-rose-300 block">Зайняте (Бронь)</span>
-                      <span className="text-[9px] text-slate-400">Вже викуплено</span>
-                    </div>
-                  </div>
-
-                  {/* 6. Вихід / Розсувні двері */}
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 border border-cyan-500/30">
-                    <span className="w-6 h-6 rounded-lg bg-cyan-950 border border-cyan-400/50 text-cyan-300 flex items-center justify-center text-xs shrink-0">
-                      🚪
-                    </span>
-                    <div className="leading-tight">
-                      <span className="font-bold text-cyan-300 block">Вихід / Посадка</span>
-                      <span className="text-[9px] text-slate-400">Розсувні двері справа</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* SEATS LAYOUT IN 3 ROWS WITH FRAMER MOTION ANIMATIONS */}
-              <div className="space-y-4 max-w-xl mx-auto">
+              {/* SEATS LAYOUT IN 3 ROWS (MOVED TO TOP IMMEDIATELY UNDER HEADER) */}
+              <div className="space-y-3.5 max-w-xl mx-auto">
                 {/* --- 1-Й РЯД (ВОДІЙ + 2 МІСЦЯ) --- */}
                 <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-amber-500/30 space-y-2">
                   <div className="flex items-center justify-between text-xs">
@@ -1641,9 +1948,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                       <span className="text-[9px] text-slate-500">SVOI Travel</span>
                     </div>
 
-                    {/* Місце 1 та 2 з плавною анімацією масштабування та світіння */}
+                    {/* Місце 1 (+5€ Панорамне) та Місце 2 (+5€ Вікно) */}
                     {CABIN_SEATS.slice(0, 2).map((seat) => {
                       const isSelected = selectedSeat?.id === seat.id;
+                      const isSeat1 = seat.id === 'seat-1';
                       return (
                         <motion.button
                           key={seat.id}
@@ -1675,10 +1983,12 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs mb-1 font-bold transition-colors ${
                             isSelected ? 'bg-amber-400 text-slate-950 shadow-[0_0_12px_rgba(251,191,36,0.8)]' : 'bg-slate-800 text-amber-300'
                           }`}>
-                            {seat.id === 'seat-1' ? '1' : '2'}
+                            {isSeat1 ? '1' : '2'}
                           </div>
-                          <span className="text-xs font-bold">{seat.id === 'seat-1' ? 'Місце 1' : 'Місце 2'}</span>
-                          <span className="text-[10px] text-amber-300 font-semibold">+{seat.surcharge}€ (Вікно)</span>
+                          <span className="text-xs font-bold">{isSeat1 ? 'Місце 1' : 'Місце 2'}</span>
+                          <span className="text-[10px] text-amber-300 font-semibold">
+                            +{seat.surcharge}€ ({isSeat1 ? 'Панорамне' : 'Вікно'})
+                          </span>
                         </motion.button>
                       );
                     })}
@@ -1856,6 +2166,44 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {/* COMPACT CABIN LEGEND MOVED TO THE BOTTOM UNDER THE SEATS */}
+              <div className="mt-4 p-2.5 rounded-2xl bg-slate-950/85 border border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold text-cyan-300 flex items-center gap-1">
+                    <Info className="w-3 h-3 text-cyan-400" />
+                    <span>Легенда позначень схеми салону:</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">2 + 3 + 3 (8 місць)</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10px]">
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-900/70 border border-slate-800">
+                    <span>👨‍✈️</span>
+                    <span className="text-slate-300 font-medium">Водій клубу</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-900/70 border border-amber-500/30">
+                    <span className="text-amber-300 font-bold">1–2</span>
+                    <span className="text-amber-200 font-medium">1-й ряд (+5€)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-900/70 border border-sky-500/30">
+                    <span className="text-sky-300 font-bold">3–8</span>
+                    <span className="text-sky-200 font-medium">Салон (+5€ / 0€)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-900/70 border border-emerald-500/30">
+                    <span className="text-emerald-400 font-black">✓</span>
+                    <span className="text-emerald-300 font-medium">Обране місце</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-900/70 border border-rose-500/30">
+                    <span>🔒</span>
+                    <span className="text-rose-300 font-medium">Зайняте (Бронь)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-900/70 border border-cyan-500/30">
+                    <span>🚪</span>
+                    <span className="text-cyan-300 font-medium">Вихід справа</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Amenities overview */}
@@ -1924,6 +2272,17 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                     <span>Відкрити діалог з менеджером</span>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
+
+                  <button
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setOrderSuccess(false);
+                      setActiveStep('my_trips');
+                    }}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold shadow-md shadow-amber-500/20"
+                  >
+                    📋 Переглянути у «4. Мої поїздки»
+                  </button>
 
                   <button
                     onClick={() => {
@@ -2039,54 +2398,205 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   </p>
                 </div>
 
-                {/* Contact Inputs */}
+                {/* Contact Inputs with Real-Time Validation */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {/* Passenger Name */}
                   <div>
-                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                      Ваше ім'я:
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-semibold text-slate-300">
+                        Ваше ім'я:
+                      </label>
+                      {!nameError ? (
+                        <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
+                          <Check className="w-3 h-3" /> Коректно
+                        </span>
+                      ) : (touchedFields.name || submitAttempted) ? (
+                        <span className="text-[10px] font-bold text-rose-400">Помилка</span>
+                      ) : null}
+                    </div>
                     <div className="relative">
                       <User className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
                       <input
                         type="text"
                         required
                         value={passengerName}
-                        onChange={(e) => setPassengerName(e.target.value)}
+                        onChange={(e) => {
+                          setPassengerName(e.target.value);
+                          setTouchedFields((prev) => ({ ...prev, name: true }));
+                        }}
+                        onBlur={() => setTouchedFields((prev) => ({ ...prev, name: true }))}
                         placeholder="Наприклад: Олена"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-white outline-none focus:border-cyan-500"
+                        className={`w-full bg-slate-950 border rounded-xl pl-9 pr-3 py-2 text-white outline-none transition-all ${
+                          nameError && (touchedFields.name || submitAttempted)
+                            ? 'border-rose-500/80 focus:border-rose-400 bg-rose-950/15'
+                            : !nameError
+                            ? 'border-emerald-500/40 focus:border-cyan-400'
+                            : 'border-slate-800 focus:border-cyan-500'
+                        }`}
                       />
                     </div>
+                    {nameError && (touchedFields.name || submitAttempted) && (
+                      <p className="text-[10px] text-rose-400 font-medium mt-1 leading-tight">
+                        ⚠️ {nameError}
+                      </p>
+                    )}
                   </div>
 
+                  {/* Telegram Username (@handle) */}
                   <div>
-                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                      Telegram Username (@):
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={passengerHandle}
-                      onChange={(e) => setPassengerHandle(e.target.value)}
-                      placeholder="@username"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono outline-none focus:border-cyan-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                      Телефон (WhatsApp / Telegram):
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-semibold text-slate-300">
+                        Telegram Username (@):
+                      </label>
+                      {!handleError ? (
+                        <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
+                          <Check className="w-3 h-3" /> Валідний @handle
+                        </span>
+                      ) : (touchedFields.handle || submitAttempted) ? (
+                        <span className="text-[10px] font-bold text-rose-400">Перевірте формат</span>
+                      ) : null}
+                    </div>
                     <div className="relative">
-                      <Phone className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
                       <input
                         type="text"
                         required
-                        value={passengerPhone}
-                        onChange={(e) => setPassengerPhone(e.target.value)}
-                        placeholder="+49 ..."
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-white outline-none focus:border-cyan-500"
+                        value={passengerHandle}
+                        onChange={(e) => {
+                          const rawVal = e.target.value;
+                          // Auto-convert pasted t.me/ links immediately
+                          const cleaned = rawVal.replace(/^(https?:\/\/)?(www\.)?(t\.me|telegram\.me)\//i, '@');
+                          setPassengerHandle(cleaned);
+                          setTouchedFields((prev) => ({ ...prev, handle: true }));
+                        }}
+                        onBlur={() => {
+                          setTouchedFields((prev) => ({ ...prev, handle: true }));
+                          const trimmed = normalizeTelegramHandle(passengerHandle);
+                          if (trimmed && !trimmed.startsWith('@')) {
+                            setPassengerHandle(`@${trimmed}`);
+                          } else if (trimmed !== passengerHandle) {
+                            setPassengerHandle(trimmed);
+                          }
+                        }}
+                        placeholder="@username (5–32 символи)"
+                        className={`w-full bg-slate-950 border rounded-xl px-3 pr-8 py-2 text-white font-mono outline-none transition-all ${
+                          handleError && (touchedFields.handle || submitAttempted)
+                            ? 'border-rose-500/80 focus:border-rose-400 bg-rose-950/15'
+                            : !handleError
+                            ? 'border-emerald-500/40 focus:border-cyan-400'
+                            : 'border-slate-800 focus:border-cyan-500'
+                        }`}
                       />
+                      {!handleError ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                      ) : null}
                     </div>
+                    {handleError && (touchedFields.handle || submitAttempted) ? (
+                      <div className="mt-1 space-y-1">
+                        <p className="text-[10px] text-rose-400 font-medium leading-tight">
+                          ⚠️ {handleError}
+                        </p>
+                        {passengerHandle.trim().length > 0 && !passengerHandle.trim().startsWith('@') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              triggerHaptic('selection');
+                              setPassengerHandle(`@${passengerHandle.trim().replace(/\s+/g, '')}`);
+                            }}
+                            className="text-[10px] text-cyan-300 hover:text-cyan-200 underline font-semibold"
+                          >
+                            + Додати символ «@» автоматично
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Латиниця, цифри або «_» (від 5 символів, напр. @alex_traveler)
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Phone Number with Country Code Quick Chips & E.164 Validation */}
+                  <div className="sm:col-span-2">
+                    <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                      <label className="text-[11px] font-semibold text-slate-300">
+                        Телефон (WhatsApp / Telegram у міжнародному форматі):
+                      </label>
+                      {!phoneError ? (
+                        <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
+                          <Check className="w-3 h-3" /> Номер підтверджено ({passengerPhone.replace(/\D/g, '').length} цифр)
+                        </span>
+                      ) : (touchedFields.phone || submitAttempted) ? (
+                        <span className="text-[10px] font-bold text-rose-400">Невірний формат номера</span>
+                      ) : null}
+                    </div>
+
+                    {/* Quick Country Prefix Helper Chips */}
+                    <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                      <span className="text-[10px] text-slate-500">Код країни:</span>
+                      {[
+                        { code: '+49 ', label: '🇩🇪 +49 (Німеччина)' },
+                        { code: '+352 ', label: '🇱🇺 +352 (Люксембург)' },
+                        { code: '+380 ', label: '🇺🇦 +380 (Україна)' },
+                        { code: '+33 ', label: '🇫🇷 +33 (Франція)' }
+                      ].map((item) => {
+                        const isActivePrefix = passengerPhone.trim().startsWith(item.code.trim());
+                        return (
+                          <button
+                            key={item.code}
+                            type="button"
+                            onClick={() => {
+                              triggerHaptic('selection');
+                              setTouchedFields((prev) => ({ ...prev, phone: true }));
+                              const stripped = passengerPhone
+                                .replace(/^\s*(\+49|\+352|\+380|\+33|\+48|\+41)\s*/, '')
+                                .replace(/^\+/, '');
+                              setPassengerPhone(`${item.code}${stripped}`);
+                            }}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition-all ${
+                              isActivePrefix
+                                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="relative">
+                      <Phone className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                      <input
+                        type="tel"
+                        required
+                        value={passengerPhone}
+                        onChange={(e) => {
+                          setPassengerPhone(e.target.value);
+                          setTouchedFields((prev) => ({ ...prev, phone: true }));
+                        }}
+                        onBlur={() => setTouchedFields((prev) => ({ ...prev, phone: true }))}
+                        placeholder="+49 170 1234567"
+                        className={`w-full bg-slate-950 border rounded-xl pl-9 pr-8 py-2 text-white font-mono outline-none transition-all ${
+                          phoneError && (touchedFields.phone || submitAttempted)
+                            ? 'border-rose-500/80 focus:border-rose-400 bg-rose-950/15'
+                            : !phoneError
+                            ? 'border-emerald-500/40 focus:border-cyan-400'
+                            : 'border-slate-800 focus:border-cyan-500'
+                        }`}
+                      />
+                      {!phoneError ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                      ) : null}
+                    </div>
+                    {phoneError && (touchedFields.phone || submitAttempted) ? (
+                      <p className="text-[10px] text-rose-400 font-medium mt-1 leading-tight">
+                        ⚠️ {phoneError}
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Формат: код країни зі знаком «+» та 10–15 цифр (наприклад: +49 170 1234567 або +380 67 1234567)
+                      </p>
+                    )}
                   </div>
 
                   <div className="sm:col-span-2 space-y-2">
@@ -2135,14 +2645,39 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   </div>
                 </div>
 
+                {/* Validation Error Summary Alert when invalid fields exist */}
+                {(submitAttempted || touchedFields.handle || touchedFields.phone || touchedFields.name) &&
+                  !isBookingFormValid && (
+                    <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/50 text-xs text-rose-200 space-y-1">
+                      <div className="font-bold text-rose-300 flex items-center gap-1.5">
+                        <span>🛡️ Перевірка контактних даних перед відправкою менеджеру:</span>
+                      </div>
+                      <ul className="list-disc list-inside text-[11px] text-rose-200/90 space-y-0.5">
+                        {nameError && <li>{nameError}</li>}
+                        {handleError && <li>{handleError}</li>}
+                        {phoneError && <li>{phoneError}</li>}
+                      </ul>
+                    </div>
+                  )}
+
                 {/* Submit button */}
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-black text-sm shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50"
+                  className={`w-full py-3.5 rounded-2xl text-white font-black text-sm shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50 ${
+                    isBookingFormValid
+                      ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 shadow-emerald-600/30'
+                      : 'bg-slate-800 hover:bg-slate-700 border border-rose-500/40 text-slate-200'
+                  }`}
                 >
                   <Send className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Відправка заявки...' : `🚀 Забронювати поїздку (${totalPrice}€)`}</span>
+                  <span>
+                    {isSubmitting
+                      ? 'Відправка заявки...'
+                      : isBookingFormValid
+                      ? `🚀 Забронювати поїздку (${totalPrice}€)`
+                      : '⚠️ Виправте контактні дані для бронювання'}
+                  </span>
                 </button>
 
                 {/* Social Proof & Customer Reviews Reassurance in Booking Flow */}
@@ -2157,16 +2692,311 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
             )}
           </div>
         )}
+
+        {/* ================= STEP 4: MY TRIPS (4. МОЇ ПОЇЗДКИ) ================= */}
+        {activeStep === 'my_trips' && (
+          <div className="space-y-4 pb-14 sm:pb-8 animate-fade-in">
+            {/* Header & Status Summary */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-950/90 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300">
+                    <Luggage className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-extrabold text-white">
+                      Історія моїх бронювань та статус заявок
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Відстежуйте статус ваших поїздок (нова, підтверджена, скасована) та дати виїздів
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter by status */}
+              <div className="flex flex-wrap items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-[11px]">
+                {[
+                  { id: 'all', label: `Усі (${myBookings.length})` },
+                  { id: 'new', label: `🟡 Нові (${myBookings.filter((b) => b.status === 'new').length})` },
+                  { id: 'confirmed', label: `🟢 Підтверджені (${myBookings.filter((b) => b.status === 'confirmed').length})` },
+                  { id: 'cancelled', label: `🔴 Скасовані (${myBookings.filter((b) => b.status === 'cancelled').length})` }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('selection');
+                      setMyBookingsFilter(tab.id as 'all' | 'new' | 'confirmed' | 'cancelled');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      myBookingsFilter === tab.id
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Bookings List */}
+            <div className="space-y-3">
+              {myBookings
+                .filter((b) => (myBookingsFilter === 'all' ? true : b.status === myBookingsFilter))
+                .map((booking) => {
+                  const statusConfig =
+                    booking.status === 'confirmed'
+                      ? {
+                          label: 'Підтверджена',
+                          dot: 'bg-emerald-400',
+                          badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+                          desc: 'Місце зафіксовано за вами. Точний час заїзду надійде за день увечері.'
+                        }
+                      : booking.status === 'cancelled'
+                      ? {
+                          label: 'Скасована',
+                          dot: 'bg-rose-400',
+                          badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+                          desc: 'Бронювання скасовано. Ви можете відновити заявку або обрати нову дату.'
+                        }
+                      : {
+                          label: 'Нова заявка',
+                          dot: 'bg-amber-400 animate-pulse',
+                          badgeClass: 'bg-amber-500/20 text-amber-200 border-amber-500/40',
+                          desc: 'Заявка прийнята в обробку менеджером клубу SVOI.'
+                        };
+
+                  return (
+                    <motion.div
+                      key={booking.id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-3.5 sm:p-4 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-cyan-500/40 transition-all shadow-lg space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={booking.tripImage}
+                            alt={booking.tripShortTitle}
+                            className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-700"
+                          />
+                          <div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-slate-900 text-cyan-300 border border-cyan-500/30 font-bold">
+                                #{booking.bookingCode}
+                              </span>
+                              <span className="text-[10px] text-slate-400">{booking.countryBadge}</span>
+                            </div>
+                            <h4 className="text-sm font-extrabold text-white mt-0.5">{booking.tripTitle}</h4>
+                            <span className="text-[10px] text-slate-500">Створено: {booking.createdAt}</span>
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <div className="flex items-center justify-between sm:justify-end gap-2">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-extrabold border flex items-center gap-1.5 ${statusConfig.badgeClass}`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${statusConfig.dot}`} />
+                            <span>Статус: {statusConfig.label}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Trip Details Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                        <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 block">📅 Дата подорожі:</span>
+                          <span className="font-extrabold text-cyan-300">{booking.departureDate}</span>
+                          <span className="text-[10px] text-slate-500 block">Тривалість: {booking.duration}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 block">💺 Місце в салоні:</span>
+                          <span className="font-bold text-white">{booking.seatName}</span>
+                          <span className="text-[10px] text-slate-500 block">📍 {booking.pickupPoint}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800/80 flex flex-col justify-between">
+                          <span className="text-[10px] text-slate-400 block">💶 Вартість поїздки:</span>
+                          <span className="text-base font-black text-emerald-400">{booking.totalPrice}€</span>
+                          <span className="text-[10px] text-emerald-300/80">0% передоплати (при посадці)</span>
+                        </div>
+                      </div>
+
+                      {/* Status explanation + Interactive actions */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-[11px]">
+                        <span className="text-slate-400 italic">{statusConfig.desc}</span>
+
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* Quick Status Switcher for Testing / Admin */}
+                          <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-xl border border-slate-800">
+                            <span className="text-[10px] text-slate-400 mr-1">Статус:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateBookingStatus(booking.id, 'new')}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all ${
+                                booking.status === 'new'
+                                  ? 'bg-amber-500 text-slate-950'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              Нова
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateBookingStatus(booking.id, 'confirmed')}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all ${
+                                booking.status === 'confirmed'
+                                  ? 'bg-emerald-500 text-slate-950'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              Підтверджена
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateBookingStatus(booking.id, 'cancelled')}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all ${
+                                booking.status === 'cancelled'
+                                  ? 'bg-rose-500 text-white'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              Скасована
+                            </button>
+                          </div>
+
+                          <a
+                            href={`https://t.me/SVOI_travel_admin?text=${encodeURIComponent(
+                              `Вітаю! Питання щодо моєї броні #${booking.bookingCode} (${booking.tripShortTitle}, ${booking.departureDate})`
+                            )}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-1.5 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-200 border border-cyan-500/40 font-bold flex items-center gap-1 transition-all"
+                          >
+                            <Send className="w-3 h-3" />
+                            <span>Менеджер</span>
+                          </a>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+            </div>
+
+            {/* CTA to book another trip */}
+            <div className="pt-2 flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('medium');
+                  setActiveStep('tours');
+                }}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-cyan-600/25"
+              >
+                <Compass className="w-4 h-4" />
+                <span>Обрати нову поїздку з каталогу турів</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Mini App Bottom Status Footer */}
-      <div className="relative z-10 bg-slate-950/90 border-t border-slate-800 px-4 py-2 text-[10px] text-slate-400 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
-          <span>Telegram WebApp SDK & Haptic Feedback Active</span>
-        </div>
-        <span>Комфортабельне авто Opel Vivaro • 8 місць</span>
-      </div>
+      {/* ================= ADMIN EDIT TOUR DATES & POSTER MODAL ================= */}
+      <AnimatePresence>
+        {editingTripAdmin && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4"
+            onClick={() => setEditingTripAdmin(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 20, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-[#0b1324] border-2 border-amber-500/50 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-[0_0_40px_rgba(245,158,11,0.25)] space-y-4 text-xs"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-400/40 flex items-center justify-center font-bold">
+                    👑
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-white">Редагування туру (Адмін)</h4>
+                    <p className="text-[11px] text-slate-400">{editingTripAdmin.shortTitle}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingTripAdmin(null)}
+                  className="w-7 h-7 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center border border-slate-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveAdminTripChanges} className="space-y-3">
+                <div>
+                  <label className="text-[11px] font-bold text-amber-300 block mb-1">
+                    📅 Дати виїзду (через кому):
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={adminNewDatesInput}
+                    onChange={(e) => setAdminNewDatesInput(e.target.value)}
+                    placeholder="25.10.2026 (Нд), 01.11.2026 (Нд), 08.11.2026 (Нд)"
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-3 py-2 text-white text-xs outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-amber-300 block mb-1">
+                    🖼 Посилання на новий постер / фото туру (URL):
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    value={adminNewPosterInput}
+                    onChange={(e) => setAdminNewPosterInput(e.target.value)}
+                    placeholder="https://images.unsplash.com/..."
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-3 py-2 text-white font-mono text-[11px] outline-none"
+                  />
+                  {adminNewPosterInput && (
+                    <div className="mt-2 h-24 w-full rounded-xl overflow-hidden border border-slate-800">
+                      <img
+                        src={adminNewPosterInput}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTripAdmin(null)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold"
+                  >
+                    Скасувати
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-extrabold shadow-lg shadow-amber-500/20"
+                  >
+                    Зберегти зміни
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ================= INTERACTIVE CALENDAR MODAL ================= */}
       {showCalendarModal && (

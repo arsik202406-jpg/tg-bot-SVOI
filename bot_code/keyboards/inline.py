@@ -1,9 +1,14 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    ReplyKeyboardMarkup,
+    KeyboardButton
+)
 try:
-    from bot_code.data.trips import TRIPS_CATALOG, get_free_seats
+    from bot_code.data.trips import TRIPS_CATALOG, get_free_seats, get_trip_date
     from bot_code.config import settings
 except ModuleNotFoundError:
-    from data.trips import TRIPS_CATALOG, get_free_seats
+    from data.trips import TRIPS_CATALOG, get_free_seats, get_trip_date
     from config import settings
 
 def get_main_menu_keyboard(user_id: int | None = None) -> InlineKeyboardMarkup:
@@ -46,101 +51,183 @@ def get_main_menu_keyboard(user_id: int | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_back_keyboard() -> InlineKeyboardMarkup:
-    """Кнопка повернення до головного меню"""
+    """Кнопка повернення до головного меню (обов'язкова в кожному підменю)"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад до меню", callback_data="cb_back")]
+            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")]
         ]
     )
 
 def get_trips_keyboard() -> InlineKeyboardMarkup:
     """
-    Список напрямків з лаконічними підписами та номерами спочатку.
-    Текст НІКОЛИ не обрізається на смартфонах!
+    Список напрямків з прапором, датою, ціною та вільними місцями.
     """
     buttons = []
     for idx, (trip_id, trip) in enumerate(TRIPS_CATALOG.items(), start=1):
         free_seats = get_free_seats(trip_id)
-        seats_label = f"{free_seats} м." if free_seats > 0 else "Аншлаг"
-        # Коротке ім'я міста без зайвих дужок
-        title = trip.get('destination') or trip.get('short_title', trip.get('title', ''))
+        seats_label = f"{free_seats}/8 м." if free_seats > 0 else "Аншлаг"
+        flag = trip.get("flag", "🇪🇺")
+        date_str = get_trip_date(trip_id)
+        title = trip.get("short_title", trip.get("title", ""))
         if "(" in title:
             title = title.split("(")[0].strip()
-        text = f"{idx}. {title} — {trip['price']}€ [{seats_label}]"
+        text = f"{flag} {title} | {date_str} • {trip['price']}€ [{seats_label}]"
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"cb_trip_{trip_id}")])
     
-    buttons.append([InlineKeyboardButton(text="🔙 Назад до меню", callback_data="cb_back")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_booking_trips_keyboard() -> InlineKeyboardMarkup:
+    """
+    Крок 1 бронювання: Спочатку обов'язковий вибір туру зі списку напрямків,
+    після чого відкривається вибір конкретного місця в салоні.
+    """
+    buttons = []
+    for trip_id, trip in TRIPS_CATALOG.items():
+        free_seats = get_free_seats(trip_id)
+        seats_label = f"🔥 {free_seats}/8" if free_seats > 0 else "🔴 0/8"
+        flag = trip.get("flag", "🇪🇺")
+        date_str = get_trip_date(trip_id)
+        title = trip.get("short_title", trip.get("title", ""))
+        if "(" in title:
+            title = title.split("(")[0].strip()
+        text = f"{flag} {title} | {date_str} • {trip['price']}€ ({seats_label})"
+        buttons.append([InlineKeyboardButton(text=text, callback_data=f"cb_book_target_{trip_id}")])
+
+    buttons.append([InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_trip_detail_keyboard(trip_id: str, is_admin: bool = False) -> InlineKeyboardMarkup:
-    """Картка туру з лаконічними кнопками бронювання, листа очікування та адмін-лічильника"""
+    """
+    Картка туру з кнопками:
+    - Забронювати місце (перехід до вибору місця для цього туру)
+    - Лист очікування / Індивідуальний виїзд
+    - Адмін-кнопки: зміна місць, зміна дати поїздки, зміна постера (фото)
+    - Повернення в меню
+    """
     free_seats = get_free_seats(trip_id)
     keyboard = []
 
     if free_seats > 0:
         keyboard.append([
             InlineKeyboardButton(
-                text=f"💺 Забронювати ({free_seats} вільних місць)", 
+                text=f"💺 Обрати місце та забронювати ({free_seats} з 8 вільних)", 
                 callback_data=f"cb_book_target_{trip_id}"
             )
         ])
     else:
         keyboard.append([
             InlineKeyboardButton(
-                text="📋 Лист очікування (місць немає)", 
+                text="📋 Записатися в лист очікування (місць немає)", 
                 callback_data=f"cb_waitlist_add_{trip_id}"
             )
         ])
 
     keyboard.append([
         InlineKeyboardButton(text="📋 Лист очікування", callback_data=f"cb_waitlist_add_{trip_id}"),
-        InlineKeyboardButton(text="🚐 5-8 осіб", callback_data="cb_custom_trip")
+        InlineKeyboardButton(text="🚐 Своя компанія (5-8 ос.)", callback_data="cb_custom_trip")
     ])
 
+    # Блок управління для адміністратора: місця, дата, постер
     if is_admin:
         keyboard.append([
             InlineKeyboardButton(
-                text=f"⚙️ Змінити місця ({free_seats}/8) [Адмін]", 
+                text=f"⚙️ Місця ({free_seats}/8) [Адмін]", 
                 callback_data=f"cb_adm_seats_{trip_id}"
+            ),
+            InlineKeyboardButton(
+                text="📅 Змінити дату [Адмін]", 
+                callback_data=f"cb_adm_date_{trip_id}"
+            )
+        ])
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🖼 Змінити постер (фото) [Адмін]", 
+                callback_data=f"cb_adm_poster_{trip_id}"
             )
         ])
 
     keyboard.append([
-        InlineKeyboardButton(text="🗺 Інші тури", callback_data="cb_trips"),
-        InlineKeyboardButton(text="🔙 Меню", callback_data="cb_back")
+        InlineKeyboardButton(text="🗺 Інші напрямки", callback_data="cb_trips"),
+        InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")
     ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_pax_keyboard(trip_id: str) -> InlineKeyboardMarkup:
+    """
+    Альтернативний вибір кількості осіб [ 1 ], [ 2 ], [ 3+ ] або перехід до схеми місць.
+    """
+    return get_seats_keyboard(trip_id)
+
+def get_contact_share_reply_keyboard() -> ReplyKeyboardMarkup:
+    """
+    Крок 3 воронки бронювання:
+    Спеціальна кнопка Telegram 📱 Поділитися номером (request_contact=True)
+    """
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📱 Поділитися номером", request_contact=True)]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+        input_field_placeholder="Натисніть кнопку нижче, щоб поділитися номером..."
+    )
+
+def get_contact_step_inline_keyboard(trip_id: str, seat_or_pax_label: str, username: str | None = None) -> InlineKeyboardMarkup:
+    """
+    Інлайн-кнопки на Кроці 3: дозволяє підтвердити бронь взагалі без вводу цифр,
+    якщо у користувача є @username у профілі, або натиснути нижню кнопку 📱 Поділитися номером.
+    """
+    user_tag = f"@{username.lstrip('@')}" if username else "профіль Telegram"
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=f"✅ Підтвердити заявку ({user_tag})",
+                callback_data=f"cb_fast_confirm_{seat_or_pax_label}_{trip_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Змінити місце в салоні", callback_data=f"cb_book_target_{trip_id}"),
+            InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")
+        ]
+    ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_seats_keyboard(trip_id: str = "general") -> InlineKeyboardMarkup:
     """
-    Клавіатура вибору місця в салоні Opel Vivaro.
-    НОМЕРИ СПОЧАТКУ, короткі назви, щоб текст НІКОЛИ не обрізався на смартфонах!
+    Крок 2 воронки бронювання (після вибору туру):
+    Клавіатура вибору конкретного місця в салоні Opel Vivaro для обраного туру.
+    Місце 1 — +5€ (Панорамне), Місце 2 — +5€ (Вікно).
     """
     keyboard = [
         # 1-й ряд (біля водія)
         [
-            InlineKeyboardButton(text="1️⃣ Водій (+5€)", callback_data=f"cb_seat_1_{trip_id}"),
-            InlineKeyboardButton(text="2️⃣ Вікно (+5€)", callback_data=f"cb_seat_2_{trip_id}")
+            InlineKeyboardButton(text="💺 1: Панорамне (+5€)", callback_data=f"cb_seat_1_{trip_id}"),
+            InlineKeyboardButton(text="💺 2: Вікно (+5€)", callback_data=f"cb_seat_2_{trip_id}")
         ],
         # 2-й ряд
         [
-            InlineKeyboardButton(text="3️⃣ Ліве (+5€)", callback_data=f"cb_seat_3_{trip_id}"),
-            InlineKeyboardButton(text="4️⃣ Центр (+5€)", callback_data=f"cb_seat_4_{trip_id}"),
-            InlineKeyboardButton(text="5️⃣ Праве (+5€)", callback_data=f"cb_seat_5_{trip_id}")
+            InlineKeyboardButton(text="💺 3: Ліве (+5€)", callback_data=f"cb_seat_3_{trip_id}"),
+            InlineKeyboardButton(text="💺 4: Центр (+5€)", callback_data=f"cb_seat_4_{trip_id}"),
+            InlineKeyboardButton(text="💺 5: Праве (+5€)", callback_data=f"cb_seat_5_{trip_id}")
         ],
         # 3-й ряд
         [
-            InlineKeyboardButton(text="6️⃣ Ліве (+5€)", callback_data=f"cb_seat_6_{trip_id}"),
-            InlineKeyboardButton(text="7️⃣ Центр (0€)", callback_data=f"cb_seat_7_{trip_id}"),
-            InlineKeyboardButton(text="8️⃣ Праве (+5€)", callback_data=f"cb_seat_8_{trip_id}")
+            InlineKeyboardButton(text="💺 6: Ліве (+5€)", callback_data=f"cb_seat_6_{trip_id}"),
+            InlineKeyboardButton(text="💺 7: Центр (0€)", callback_data=f"cb_seat_7_{trip_id}"),
+            InlineKeyboardButton(text="💺 8: Праве (+5€)", callback_data=f"cb_seat_8_{trip_id}")
         ],
-        # Вільна посадка
+        # Вільна посадка або кілька місць
         [
-            InlineKeyboardButton(text="🎲 Вільна посадка (0€)", callback_data=f"cb_seat_none_{trip_id}")
+            InlineKeyboardButton(text="🎲 Без вибору місця (вільна посадка) — 0€", callback_data=f"cb_seat_none_{trip_id}")
         ],
         [
-            InlineKeyboardButton(text="💬 Написати менеджеру", url=f"https://t.me/{settings.MANAGER_USERNAME.lstrip('@')}"),
-            InlineKeyboardButton(text="🔙 Назад", callback_data=f"cb_trip_{trip_id}" if trip_id != "general" else "cb_back")
+            InlineKeyboardButton(text="[ 👥 2 місця поруч ]", callback_data=f"cb_pax_2_{trip_id}"),
+            InlineKeyboardButton(text="[ 👨‍👩‍👧 3+ місць ]", callback_data=f"cb_pax_3_{trip_id}")
+        ],
+        [
+            InlineKeyboardButton(text="🗺 Змінити тур", callback_data="cb_book"),
+            InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -153,14 +240,17 @@ def get_admin_seats_edit_keyboard(trip_id: str) -> InlineKeyboardMarkup:
         inline_keyboard=[
             row1,
             row2,
-            [InlineKeyboardButton(text="🔙 Повернутися до туру", callback_data=f"cb_trip_{trip_id}")]
+            [
+                InlineKeyboardButton(text="🔙 До картки туру", callback_data=f"cb_trip_{trip_id}"),
+                InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")
+            ]
         ]
     )
 
 def get_faq_keyboard() -> InlineKeyboardMarkup:
     """
-    Згрупований та структурований розділ FAQ та інформації:
-    Сюди перенесено точки збору, умови, опис буса, ігри та партнерство.
+    Згрупований та структурований розділ FAQ та інформації.
+    Обов'язково має кнопку 🔙 Назад в меню.
     """
     keyboard = [
         [
@@ -180,7 +270,7 @@ def get_faq_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="✍️ Залишити побажання", callback_data="cb_feedback")
         ],
         [
-            InlineKeyboardButton(text="🔙 Повернутися в головне меню", callback_data="cb_back")
+            InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -190,7 +280,7 @@ def get_reviews_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✍️ Залишити свій відгук", callback_data="cb_feedback")],
-            [InlineKeyboardButton(text="🔙 Головне меню", callback_data="cb_back")]
+            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")]
         ]
     )
 
@@ -201,7 +291,7 @@ def get_custom_trip_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="💬 Обговорити індивідуальний виїзд", url=manager_url)],
             [InlineKeyboardButton(text="🗺 Обрати тур з розкладу", callback_data="cb_trips")],
-            [InlineKeyboardButton(text="🔙 Головне меню", callback_data="cb_back")]
+            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")]
         ]
     )
 
@@ -224,8 +314,8 @@ def get_games_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🎁 Розіграші квитків у каналі/групі", callback_data="cb_game_group_info")
         ],
         [
-            InlineKeyboardButton(text="🔙 Назад до FAQ", callback_data="cb_faq"),
-            InlineKeyboardButton(text="🏠 Головне меню", callback_data="cb_back")
+            InlineKeyboardButton(text="🔙 До FAQ", callback_data="cb_faq"),
+            InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -234,6 +324,7 @@ def get_cancel_feedback_keyboard() -> InlineKeyboardMarkup:
     """Клавіатура для скасування введення відгуку/побажання"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Скасувати введення", callback_data="cb_cancel_feedback")]
+            [InlineKeyboardButton(text="❌ Скасувати введення", callback_data="cb_cancel_feedback")],
+            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="cb_back")]
         ]
     )

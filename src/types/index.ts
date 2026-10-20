@@ -2,6 +2,7 @@ export interface TripItem {
   id: string;
   title: string;
   shortTitle: string;
+  country: string;
   price: number;
   currency: string;
   duration: string;
@@ -9,6 +10,7 @@ export interface TripItem {
   image: string;
   highlights: string[];
   description: string;
+  detailedProgram?: string[];
   pickupSaarbruecken: string;
   departureDates?: string[];
   category?: 'weekend' | 'express' | 'relax' | 'combo';

@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     BOT_USERNAME: str = Field(default="Svoi_TravelEU_bot")
     CHANNEL_URL: str = Field(default="https://t.me/+Flt_2r6vi3U4ZDg6")
     GROUP_URL: str = Field(default="https://t.me/+J50liyDUHPgzYTQy")
-    # Публічний HTTPS URL для відкриття Telegram Mini App (після натискання Deploy у Cloud Run / Vercel)
-    MINI_APP_URL: str = Field(default="https://ais-pre-5nen67xjgzawt525obtchj-694072480718.europe-west1.run.app/?miniapp=1")
+    # Публічний HTTPS URL для відкриття Telegram Mini App (GitHub Pages)
+    MINI_APP_URL: str = Field(default="https://arsik202406-jpg.github.io/tg-bot-SVOI/?miniapp=1")
     # ID каналу або @юзернейм для прямої публікації повідомлень ботом
     CHANNEL_CHAT_ID: str = Field(default="@svoi_traveleu", description="ID каналу (-100...) або @username каналу для публікацій")
 
