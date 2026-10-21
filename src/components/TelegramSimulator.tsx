@@ -41,7 +41,13 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     amsterdam: 5,
     bruges: 4,
     liechtenstein: 4,
-    neuschwanstein: 3,
+    neuschwanstein: 2,
+    berlin_dresden: 4,
+    legoland: 5,
+    stuttgart: 4,
+    europa_park: 2,
+    eltz_cochem: 5,
+    heidelberg_baden: 6,
     cote_dazur: 5,
     mont_saint_michel: 6,
     swiss_rhine_zurich: 4,
@@ -306,7 +312,13 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
   // Reusable callback handler simulating edit_text
   const handleCallbackClick = (btn: InlineBtn) => {
     if (btn.url) {
-      window.open(btn.url, '_blank');
+      const link = document.createElement('a');
+      link.href = btn.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       return;
     }
 
@@ -544,8 +556,14 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         `  — <b>Брюссель, Антверпен та Брюгге (90€–110€):</b> Гран-Плас, Атоміум, вокзал-палац Антверпена, Озеро Кохання та канали Брюгге\n` +
         `• 🇳🇱 <b>Голландія (Нідерланди):</b>\n` +
         `  — <b>Гітхорн, Заандам, Амстердам, Море (120€):</b> водне село Гітхорн, вітряки Заандама, канали Амстердама та пляж Північного моря\n` +
-        `• 🇩🇪 <b>Німеччина:</b>\n` +
-        `  — <b>Замок Нойшванштайн, Берлін, Дрезден, Штутгарт, Леголенд, Ліндау (120€):</b> баварські замки, музеї авто, парк Legoland та столичні маршрути\n` +
+        `• 🇩🇪 <b>Німеччина (окремі авторські виїзди):</b>\n` +
+        `  — <b>Замок Нойшванштайн + ущелина Партнахкламм (120€):</b> міст Марієнбрюке, озеро Альпзее та гірська ущелина з водоспадами\n` +
+        `  — <b>Берлін + Дрезден (2 дні, 240€):</b> Бранденбурзькі ворота, Рейхстаг, палац Цвінгер, Фрауенкірхе (готель включено)\n` +
+        `  — <b>Парк розваг Леголенд / LEGOLAND (115€):</b> сімейний виїзд у Гюнцбург (Мініленд та 60+ атракціонів)\n` +
+        `  — <b>Штутгарт (95€):</b> музеї Mercedes-Benz і Porsche + футуристична бібліотека\n` +
+        `  — <b>Європа-Парк / Europa-Park (95€):</b> топ-парк розваг Європи в Русті (лише ~2 год від Саарланду)\n` +
+        `  — <b>Долина Мозеля: Замок Ельц + Кохем + міст Гайєрлай (85€):</b> замок Burg Eltz, підвісний міст та дегустація Рислінгу\n` +
+        `  — <b>Гайдельберг + курорт Баден-Баден (85€):</b> замок Гайдельберга та королівські терми\n` +
         `• 🇱🇮 <b>Ліхтенштейн (3 країни за 1 день, 120€):</b>\n` +
         `  — <b>Вадуц, Брегенц та Ліндау:</b> замок Вадуц, сцена на Боденському озері в Брегенці та острів Ліндау\n` +
         `• 🇨🇭 <b>Швейцарія (120€):</b>\n` +

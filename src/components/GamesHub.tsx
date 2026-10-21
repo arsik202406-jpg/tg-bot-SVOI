@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Compass, Sparkles, Trophy, HelpCircle, CheckCircle2, 
-  XCircle, Send, Gift, Flame, Share2, ExternalLink, RefreshCw,
-  BarChart3, Vote, Award, Utensils, Mountain, Zap, Check
+  XCircle, Gift, Flame, Share2, ExternalLink, RefreshCw,
+  BarChart3, Vote, Award, Zap, Check, Gamepad2, Coins
 } from 'lucide-react';
 
 interface GeoQuest {
@@ -31,13 +31,22 @@ interface TravelPoll {
 
 interface InteractiveTriviaItem {
   id: string;
-  category: 'gastro' | 'records' | 'routes';
+  category: 'gastro' | 'records' | 'routes' | 'castles' | 'parks';
   categoryLabel: string;
   question: string;
   options: string[];
   correctIndex: number;
   explanation: string;
   rewardPoints: number;
+}
+
+interface SpeedGameChallenge {
+  id: string;
+  routeTitle: string;
+  flag: string;
+  question: string;
+  options: { label: string; isCorrect: boolean; detail: string }[];
+  bonusTip: string;
 }
 
 const GEO_QUESTS: GeoQuest[] = [
@@ -53,7 +62,49 @@ const GEO_QUESTS: GeoQuest[] = [
       { label: '🇵🇹 Мис Рока (Португалія)', isCorrect: false },
     ],
     fact: 'Це знамениті скелі Етрета в Нормандії! Ми відвідуємо цю локацію в нашому комбінованому турі «Етрета + Париж» (5 годин на скелях + 2–3 години в Парижі).',
-    secretGuide: 'Секретний гайд SVOI: Найбільш приголомшливий панорамний вид відкривається зі стежки біля каплиці Notre-Dame de la Garde, а свіжі нормандські устриці з лимоном продаються прямо на набережній біля рибалок всього від 1.5€!'
+    secretGuide: 'Секретний гайд SVOI: Найбільш приголомшливий панорамний вид відкривається зі стежки біля каплиці Notre-Dame de la Garde, а свіжі нормандські устриці з лимоном продаються прямо на набережній біля рибалок!'
+  },
+  {
+    id: 'neuschwanstein',
+    image: 'https://images.unsplash.com/photo-1534351590666-13e3e96b5017?auto=format&fit=crop&w=1200&q=80',
+    title: 'Білокам\'яний замок-казка та гірська ущелина в Баварії',
+    clue: '«Романтичний лицарський замок короля Людвіга II над озером Альпзее, який ми поєднуємо з прогулянкою скельною ущелиною з водоспадами Партнахкламм».',
+    options: [
+      { label: '🇩🇪 Замок Нойшванштайн + ущелина Партнахкламм', isCorrect: true },
+      { label: '🇦🇹 Замок Хоензальцбург (Австрія)', isCorrect: false },
+      { label: '🇨🇭 Замок Шильйон (Швейцарія)', isCorrect: false },
+      { label: '🇫🇷 Замок Шамбор (Франція)', isCorrect: false },
+    ],
+    fact: 'Це замок Нойшванштайн та ущелина Партнахкламм у Баварських Альпах! Ми їдемо сюди в окремому турі за 120€ з підйомом на міст Марієнбрюке та прогулянкою каньйоном.',
+    secretGuide: 'Секретний гайд SVOI: Найкращі фотографії виходять із підвісного моста Marienbrücke над водоспадом, а в ущелині Партнахкламм вода має смарагдовий колір навіть у похмуру погоду!'
+  },
+  {
+    id: 'burg_eltz',
+    image: 'https://images.unsplash.com/photo-1548625361-195fe57724e0?auto=format&fit=crop&w=1200&q=80',
+    title: 'Середньовічний замок у густому лісі поруч із Мозелем',
+    clue: '«Неприступна лицарська фортеця з вісьмома вежами на скелі, яка жодного разу не була зруйнована за 850 років і прикрашала стару купюру в 500 німецьких марок».',
+    options: [
+      { label: '🇩🇪 Замок Бург Ельц + Кохем (Долина Мозеля)', isCorrect: true },
+      { label: '🇩🇪 Замок Гогенцоллерн (Швабія)', isCorrect: false },
+      { label: '🇱🇺 Замок Віанден (Люксембург)', isCorrect: false },
+      { label: '🇨🇿 Замок Карлштейн (Чехія)', isCorrect: false },
+    ],
+    fact: 'Це легендарний замок Бург Ельц (Burg Eltz)! Один із найближчих та найулюбленіших маршрутів із Саарланду, Тріра та Люксембургу (85€) разом із підвісним мостом Гайєрляй та містечком Кохем.',
+    secretGuide: 'Секретний гайд SVOI: Найінстаграмніший ракурс відкривається з кам’яного містка прямо перед входом у замок вранці, коли над лісом ще тримається легкий туман!'
+  },
+  {
+    id: 'mont_saint_michel',
+    image: 'https://images.unsplash.com/photo-1509439581779-6298f75bf6e5?auto=format&fit=crop&w=1200&q=80',
+    title: 'Гранітний острів-фортеця посеред найсильніших океанських припливів',
+    clue: '«Середньовічне бенедиктинське абатство зі шпилем Архангела Михаїла, де вода під час припливу піднімається на 14 метрів зі швидкістю бігу коня».',
+    options: [
+      { label: '🇫🇷 Острів Мон-Сен-Мішель (Нормандія / Бретань)', isCorrect: true },
+      { label: '🇬🇧 Гора Святого Михаїла (Корнуолл)', isCorrect: false },
+      { label: '🇭🇷 Дубровник (Хорватія)', isCorrect: false },
+      { label: '🇮🇹 Венеціанська лагуна (Італія)', isCorrect: false },
+    ],
+    fact: 'Це Мон-Сен-Мішель — сьоме диво Західного світу! Ми вирушаємо сюди у дводенний тур (270€ з готелем), відвідуючи також місто корсарів Сен-Мало та устричну столицю Канкаль.',
+    secretGuide: 'Секретний гайд SVOI: У Канкалі свіжі устриці їдять прямо на парапеті набережної з видом на Мон-Сен-Мішель, а мушлі за давньою традицією кидають назад у море!'
   },
   {
     id: 'aare',
@@ -95,21 +146,21 @@ const GEO_QUESTS: GeoQuest[] = [
       { label: '🇩🇪 Ротенбург-об-дер-Таубер (Німеччина)', isCorrect: false },
     ],
     fact: 'Це всесвітньо відома набережна Rozenhoedkaai у Брюгге! Наш розмірений тур вихідного дня за 110€ дозволяє спокійно погуляти містом 6–7 годин.',
-    secretGuide: 'Секретний гайд SVOI: У старовинній броварні De Halve Maan під бруківкою міста прокладено справжній підземний пивопровід завдовжки 3 км! А за найкращими шоколадними трюфелями ручної роботи завітайте до крамниці The Chocolate Line.'
+    secretGuide: 'Секретний гайд SVOI: У старовинній броварні De Halve Maan під бруківкою міста прокладено справжній підземний пивопровід завдовжки 3 км!'
   },
   {
-    id: 'neuschwanstein',
-    image: 'https://images.unsplash.com/photo-1534351590666-13e3e96b5017?auto=format&fit=crop&w=1200&q=80',
-    title: 'Білокам\'яний замок-казка серед засніжених баварських піків',
-    clue: '«Романтичний лицарський замок короля Людвіга II, що послужив прообразом замку Сплячої Красуні на логотипі кіностудії Walt Disney».',
+    id: 'como_milan',
+    image: 'https://images.unsplash.com/photo-1536663815808-535e2280d2c2?auto=format&fit=crop&w=1200&q=80',
+    title: 'Аристократичне альпійське озеро з кипарисами та віллами кінозірок',
+    clue: '«Найглибше озеро Італії у формі перевернутої літери Y, на берегах якого знімали "Зоряні війни" та "Казино Рояль", а катери курсують між Белладжо і Варенною».',
     options: [
-      { label: '🇩🇪 Замок Нойшванштайн (Баварія, Німеччина)', isCorrect: true },
-      { label: '🇦🇹 Замок Хоензальцбург (Австрія)', isCorrect: false },
-      { label: '🇨🇭 Замок Шильйон (Швейцарія)', isCorrect: false },
-      { label: '🇫🇷 Замок Шамбор (Франція)', isCorrect: false },
+      { label: '🇮🇹 Озеро Комо + Мілан (Італія)', isCorrect: true },
+      { label: '🇮🇹 Озеро Гарда (Італія)', isCorrect: false },
+      { label: '🇨🇭 Женевське озеро (Швейцарія)', isCorrect: false },
+      { label: '🇦🇹 Озеро Вольфгангзее (Австрія)', isCorrect: false },
     ],
-    fact: 'Це замок Нойшванштайн у Баварських Альпах! Ми їдемо сюди в розміреному турі за 120€ з підйомом на оглядовий міст Марієнбрюке та прогулянкою біля озера Альпзее.',
-    secretGuide: 'Секретний гайд SVOI: Найкращі фотографії виходять із підвісного моста Marienbrücke над ущелиною Поллат. Обов\'язково скуштуйте свіжий баварський брецель внизу біля озера!'
+    fact: 'Це розкішне озеро Комо в Італії! У нашому 2-денному турі «Комо + Мілан» (270€ з готелем) ми катаємося корабликом між Белладжо та Варенною й гуляємо біля собору Дуомо.',
+    secretGuide: 'Секретний гайд SVOI: Найромантичніша стежка у Варенні називається Passeggiata degli Innamorati («Променад закоханих») — вона нависає прямо над водою озера!'
   }
 ];
 
@@ -130,7 +181,7 @@ const QUIZ_ITEMS = [
   },
   {
     id: 'q3',
-    country: '🇱🇮 Ліхтенштейн (3 країни за 1 день)',
+    country: '🇱🇮 Ліхтенштейн (Вадуц, Брегенц, Ліндау)',
     question: 'Чи правда, що всю державу Ліхтенштейн із княжим замком одного разу можна було орендувати на добу?',
     isTrue: true,
     explanation: 'Правда! У 2011 році князівство Ліхтенштейн запустило акцію: за $70,000 на добу компанія до 150 осіб могла символічно орендувати всю державу з ключами від міста та дегустацією вин.'
@@ -148,6 +199,34 @@ const QUIZ_ITEMS = [
     question: 'Чи правда, що в усьому Люксембурзі проїзд у потягах, трамваях і автобусах на 100% безкоштовний навіть для туристів?',
     isTrue: true,
     explanation: 'Правда! Люксембург став першою країною у світі, яка скасувала оплату за громадський транспорт по всій території країни.'
+  },
+  {
+    id: 'q6',
+    country: '🇩🇪 Німеччина (Штутгарт)',
+    question: 'Чи правда, що у Штутгарті знаходяться одночасно головні штаб-квартири та музеї і Mercedes-Benz, і Porsche?',
+    isTrue: true,
+    explanation: 'Правда! Штутгарт вважається колискою світового автомобілебудування — саме тут Карл Бенц та Готліб Даймлер створили перші авто, а ми відвідуємо обидва музеї в нашому турі за 90€!'
+  },
+  {
+    id: 'q7',
+    country: '🇳🇱 Голландія (Гітхорн)',
+    question: 'Чи правда, що у старовинній частині села Гітхорн повністю заборонені автомобілі, а листоноша розвозить пошту човном?',
+    isTrue: true,
+    explanation: 'Правда! У Гітхорні замість вулиць — водні канали та 176 дерев’яних містків, а пересуваються мешканці на безшумних електрочовнах (флюстерботах).'
+  },
+  {
+    id: 'q8',
+    country: '🇩🇪 Німеччина (Замок Нойшванштайн)',
+    question: 'Чи правда, що замок Нойшванштайн був побудований у XII столітті для лицарських турнірів?',
+    isTrue: false,
+    explanation: 'Неправда! Попри середньовічний вигляд, замок Нойшванштайн почали будувати лише у 1869 році для баварського короля-романтика Людвіга II, і в ньому вже тоді були телефон, центральне опалення та водопровід!'
+  },
+  {
+    id: 'q9',
+    country: '🇩🇪 Німеччина (Європа-Парк)',
+    question: 'Чи правда, що Європа-Парк у Русті має більше тематичних зон європейських країн, ніж будь-який інший парк світу?',
+    isTrue: true,
+    explanation: 'Правда! У парку відтворено архітектуру, кухню та атракціони 19 європейських країн, і він 9 разів поспіль отримував нагороду Golden Ticket Award як найкращий парк розваг планети!'
   }
 ];
 
@@ -156,13 +235,39 @@ const INITIAL_TRAVEL_POLLS: TravelPoll[] = [
     id: 'poll-weekend-dest',
     category: '🗺 Голосування за маршрут вікенду',
     question: 'Куди б ви найбільше хотіли вирушити з клубом SVOI у найближчі вихідні?',
-    totalVotes: 148,
+    totalVotes: 184,
     isAnonymous: false,
     options: [
-      { id: 'opt-1', label: '🇨🇭 Швейцарія: Лаутербруннен + ущелина Ааре (120€)', votes: 54, badge: '🔥 Лідер' },
-      { id: 'opt-2', label: '🇫🇷 Скелі Етрета над Атлантикою + Париж (140€)', votes: 41 },
-      { id: 'opt-3', label: '🇧🇪 Середньовічний Брюгге: канали та шоколад (110€)', votes: 32 },
-      { id: 'opt-4', label: '🇮🇹 Озеро Комо + Мілан + Лугано на 2 дні (260€)', votes: 21 }
+      { id: 'opt-1', label: '🇨🇭 Швейцарія: Лаутербруннен + ущелина Ааре (120€)', votes: 62, badge: '🔥 Лідер' },
+      { id: 'opt-2', label: '🇩🇪 Замок Нойшванштайн + ущелина Партнахкламм (120€)', votes: 49, badge: 'Хіт Баварії' },
+      { id: 'opt-3', label: '🇫🇷 Скелі Етрета над Атлантикою + Париж (140€)', votes: 43 },
+      { id: 'opt-4', label: '🇮🇹 Озеро Комо + Мілан на 2 дні (270€)', votes: 30 }
+    ]
+  },
+  {
+    id: 'poll-saar-lux-nearby',
+    category: '📍 Близькі тури із Саарланду та Люксембургу (до 2.5 год)',
+    question: 'Який короткий одноденний маршрут поруч із домом вам подобається найбільше?',
+    totalVotes: 142,
+    isAnonymous: false,
+    options: [
+      { id: 'sl-1', label: '🎢 Європа-Парк (Europa-Park у Русті) — 95€', votes: 51, badge: 'Топ-1' },
+      { id: 'sl-2', label: '🏰 Замок Бург Ельц + Кохем + міст Гайєрляй — 85€', votes: 42 },
+      { id: 'sl-3', label: '🍷 Ельзас: Страсбург та пряниковий Кольмар — 80€', votes: 31 },
+      { id: 'sl-4', label: '🏎️ Штутгарт (Музеї Mercedes-Benz і Porsche) — 90€', votes: 18 }
+    ]
+  },
+  {
+    id: 'poll-germany-split',
+    category: '🇩🇪 Подорожі Німеччиною',
+    question: 'Яку з наших окремих програм по Німеччині ви оберете наступною?',
+    totalVotes: 127,
+    isAnonymous: false,
+    options: [
+      { id: 'ge-1', label: '🏰 Нойшванштайн + ущелина Партнахкламм (120€)', votes: 48, badge: 'Вибір туристів' },
+      { id: 'ge-2', label: '🏛 Берлін + бароковий Дрезден і Бастай (2 дні, 190€)', votes: 34 },
+      { id: 'ge-3', label: '🧱 Парк розваг Леголенд (Legoland Deutschland, 110€)', votes: 26 },
+      { id: 'ge-4', label: '🌲 Гайдельберг + Баден-Баден у Шварцвальді (85€)', votes: 19 }
     ]
   },
   {
@@ -189,6 +294,19 @@ const INITIAL_TRAVEL_POLLS: TravelPoll[] = [
       { id: 'ga-2', label: '🦪 Свіжі нормандські устриці на березі в Етрета', votes: 26 },
       { id: 'ga-3', label: '🍕 Ельзаський пиріг Тарт Фламбе з печі у Страсбурзі', votes: 20 },
       { id: 'ga-4', label: '🧀 Швейцарське сирне фондю з видом на Альпи', votes: 12 }
+    ]
+  },
+  {
+    id: 'poll-family-kids',
+    category: '👨‍👩‍👧 Сімейні виїзди та парки розваг',
+    question: 'Куди ви б охочіше поїхали всією родиною на вихідних?',
+    totalVotes: 89,
+    isAnonymous: false,
+    options: [
+      { id: 'fk-1', label: '🎢 Europa-Park (19 країн та американські гірки)', votes: 37, badge: 'Сімейний хіт' },
+      { id: 'fk-2', label: '🧱 Legoland Deutschland (світ LEGO у Гюнцбурзі)', votes: 28 },
+      { id: 'fk-3', label: '🛶 Гітхорн (катання на човнах) + Амстердам', votes: 15 },
+      { id: 'fk-4', label: '🏎️ Музеї Porsche і Mercedes у Штутгарті', votes: 9 }
     ]
   }
 ];
@@ -228,30 +346,30 @@ const INTERACTIVE_TRIVIA: InteractiveTriviaItem[] = [
     id: 'tr-3',
     category: 'routes',
     categoryLabel: '🌍 3 країни за 1 день',
-    question: 'Які 3 країни (окрім Німеччини на старті) ми відвідуємо за 1 день у нашому альпійському комбо-турі до Вадуца?',
+    question: 'Які 3 міста у 3 різних країнах ми відвідуємо за один день у нашому альпійському комбо-турі до Ліхтенштейну?',
     options: [
-      '🇨🇭 Швейцарія + 🇱🇮 Ліхтенштейн + 🇦🇹 Австрія',
-      '🇫🇷 Франція + 🇧🇪 Бельгія + 🇳🇱 Нідерланди',
-      '🇮🇹 Італія + 🇨🇭 Швейцарія + 🇫🇷 Франція',
-      '🇱🇺 Люксембург + 🇧🇪 Бельгія + 🇫🇷 Франція'
+      '🇱🇮 Вадуц + 🇦🇹 Брегенц + 🇩🇪 Ліндау',
+      '🇫🇷 Страсбург + 🇧🇪 Брюссель + 🇳🇱 Амстердам',
+      '🇮🇹 Мілан + 🇨🇭 Цюрих + 🇫🇷 Ніцца',
+      '🇱🇺 Люксембург + 🇧🇪 Антверпен + 🇫🇷 Париж'
     ],
     correctIndex: 0,
-    explanation: 'У турі «Ліхтенштейн: 3 країни за 1 день» (120€) ми гуляємо столицею Ліхтенштейну Вадуцом, швейцарськими Альпами та австрійським Брегенцом на Боденському озері!',
+    explanation: 'У турі «Ліхтенштейн: Вадуц, Брегенц та Ліндау» (120€) ми гуляємо столицею князівства Вадуцом, австрійським Брегенцом та німецьким містом-островом Ліндау на Боденському озері!',
     rewardPoints: 25
   },
   {
     id: 'tr-4',
-    category: 'records',
-    categoryLabel: '🚠 Вершини Європи',
-    question: 'На яку висоту піднімає канатна дорога Егюій-дю-Міді в нашому турі «Шамоні — Монблан» всього за 20 хвилин?',
+    category: 'castles',
+    categoryLabel: '🏰 Замки Німеччини',
+    question: 'З якою природною пам’яткою Баварії ми поєднуємо поїздку до казкового замку Нойшванштайн?',
     options: [
-      '🏔 3 842 метри над рівнем моря',
-      '🏔 1 950 метрів над рівнем моря',
-      '🏔 2 500 метрів над рівнем моря',
-      '🏔 4 810 метрів над рівнем моря'
+      '🏞 Скельна ущелина з водоспадами Партнахкламм',
+      '🌋 Вулкан Айфель',
+      '🏖 Острів Рюген у Балтійському морі',
+      '🏜 Люнебурзька пустище'
     ],
     correctIndex: 0,
-    explanation: 'Вершина Егюій-дю-Міді розташована на висоті 3 842 м! Там знаходиться знаменитий скляний куб «Крок у порожнечу» прямо навпроти піку Монблан.',
+    explanation: 'У нашому баварському турі (120€) ми поєднуємо Замок Нойшванштайн та міст Марієнбрюке з прогулянкою мальовничою альпійською ущелиною Партнахкламм (Partnachklamm)!',
     rewardPoints: 25
   },
   {
@@ -268,11 +386,107 @@ const INTERACTIVE_TRIVIA: InteractiveTriviaItem[] = [
     correctIndex: 0,
     explanation: 'Гарячі стропвафлі (Stroopwafels) печуть просто перед вами на ринках Амстердама та в селі вітряків Заансе-Сханс!',
     rewardPoints: 25
+  },
+  {
+    id: 'tr-6',
+    category: 'parks',
+    categoryLabel: '🎢 Парки та автомузеї',
+    question: 'Скільки приблизно мільйонів кубиків LEGO використано для побудови мініатюрних міст у парку Legoland Deutschland у Гюнцбурзі?',
+    options: [
+      '🧱 Понад 25 мільйонів кубиків LEGO',
+      '🧱 Близько 100 тисяч кубиків',
+      '🧱 Рівно 1 мільйон кубиків',
+      '🧱 500 тисяч кубиків'
+    ],
+    correctIndex: 0,
+    explanation: 'Лише в зоні Miniland у німецькому Леголенді використано понад 25 мільйонів кубиків LEGO для детального відтворення Венеції, Берліна, альпійських замків та портів!',
+    rewardPoints: 25
+  },
+  {
+    id: 'tr-7',
+    category: 'castles',
+    categoryLabel: '🌉 Долина Мозеля',
+    question: 'Яку довжину має знаменитий підвісний канатний міст Гайєрляй (Geierlay), який ми відвідуємо в турі разом із замком Бург Ельц та Кохемом?',
+    options: [
+      '🌉 360 метрів на висоті 100 метрів над каньйоном',
+      '🌉 50 метрів через струмок',
+      '🌉 1 200 метрів через Рейн',
+      '🌉 95 метрів біля замку'
+    ],
+    correctIndex: 0,
+    explanation: 'Міст Geierlay простягається на 360 метрів на запаморочливій висоті 100 метрів — це одне з найяскравіших місць для фото поруч із Саарландом та Люксембургом!',
+    rewardPoints: 25
+  },
+  {
+    id: 'tr-8',
+    category: 'routes',
+    categoryLabel: '🏎️ Штутгарт',
+    question: 'Скільки поверхів має футуристична спіральна будівля музею Mercedes-Benz у Штутгарті, де представлено понад 160 автомобілів?',
+    options: [
+      '🏢 9 поверхів у формі подвійної спіралі ДНК',
+      '🏢 2 поверхи у старовинному ангарі',
+      '🏢 4 підземні поверхи',
+      '🏢 15 поверхів у скляній вежі'
+    ],
+    correctIndex: 0,
+    explanation: 'Архітектура музею Mercedes-Benz у Штутгарті побудована за принципом подвійної спіралі ДНК на 9 поверхах: ви піднімаєтеся ліфтом-капсулою у 1886 рік і спускаєтеся крізь епохи до сьогодення!',
+    rewardPoints: 25
+  }
+];
+
+const SPEED_GAME_CHALLENGES: SpeedGameChallenge[] = [
+  {
+    id: 'sg-1',
+    routeTitle: 'Саарбрюккен ➔ Страсбург (Ельзас)',
+    flag: '🇫🇷',
+    question: 'Яка вартість та час у дорозі нашого найближчого туру до французького Страсбурга та Кольмара?',
+    options: [
+      { label: '💶 80€ • лише ~1.5 год до Страсбурга', isCorrect: true, detail: 'Найближчий та найлегший виїзд вихідного дня!' },
+      { label: '💶 160€ • 5 годин у дорозі', isCorrect: false, detail: 'Страсбург розташований значно ближче до Саарланду!' },
+      { label: '💶 220€ • 2 дні з готелем', isCorrect: false, detail: 'Це одноденний тур за 80€ без передоплати.' }
+    ],
+    bonusTip: '💡 Порада: Ідеальний перший тур для знайомства з клубом SVOI — виїзд о 07:30 ранку!'
+  },
+  {
+    id: 'sg-2',
+    routeTitle: 'Саарланд / Люксембург ➔ Замок Ельц + Кохем',
+    flag: '🇩🇪',
+    question: 'Які 3 топ-локації входять у наш одноденний тур Долиною Мозеля за 85€?',
+    options: [
+      { label: '🏰 Замок Бург Ельц + 🌉 міст Гайєрляй + 🍷 містечко Кохем', isCorrect: true, detail: 'Три легендарні локації Мозеля за один насичений день!' },
+      { label: '🏛 Берлін + Дрезден + Лейпциг', isCorrect: false, detail: 'Берлін та Дрезден — це окремий дводенний тур у Саксонію.' },
+      { label: '🎢 Леголенд + Мюнхен', isCorrect: false, detail: 'Леголенд — це окремий сімейний тур до Гюнцбурга.' }
+    ],
+    bonusTip: '💡 Порада: Замок Ельц і міст Гайєрляй знаходяться всього за ~1.5–2 години від Тріра та Люксембургу!'
+  },
+  {
+    id: 'sg-3',
+    routeTitle: 'Баварія: Замок Нойшванштайн + ущелина',
+    flag: '🏰',
+    question: 'З чим ми поєднуємо огляд замку Нойшванштайн у нашій окремій баварській поїздці (120€)?',
+    options: [
+      { label: '🏞 Із прогулянкою альпійською ущелиною Партнахкламм та озером Альпзее', isCorrect: true, detail: 'Замок + міст Марієнбрюке + каньйон із водоспадами!' },
+      { label: '🚢 Із поромом до Англії', isCorrect: false, detail: 'Нойшванштайн знаходиться в Баварських Альпах на півдні Німеччини.' },
+      { label: '🗼 Із вечірнім Парижем', isCorrect: false, detail: 'Париж поєднується зі скелями Етрета або Версалем.' }
+    ],
+    bonusTip: '💡 Порада: На всі одноденні поїздки клубу діє правило 0% передоплати!'
+  },
+  {
+    id: 'sg-4',
+    routeTitle: 'Голландія: 4 локації за 1 день',
+    flag: '🇳🇱',
+    question: 'Які саме локації охоплює наш тур до Голландії за 120€?',
+    options: [
+      { label: '🛶 Гітхорн + 🌷 Заандам + 🚲 Амстердам + 🌊 Північне море', isCorrect: true, detail: 'Повний маршрут: водне село, вітряки, столиця та узбережжя моря!' },
+      { label: 'Лише 2 години на вокзалі Амстердама', isCorrect: false, detail: 'Ми дивимося аж 4 топові локації за день!' },
+      { label: 'Брюссель і Люксембург', isCorrect: false, detail: 'Брюссель, Антверпен і Брюгге — це наш бельгійський тур.' }
+    ],
+    bonusTip: '💡 Порада: У Гітхорні ми катаємося на човнах, а на березі Північного моря куштуємо свіжий голландський оселедець!'
   }
 ];
 
 export const GamesHub: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'polls' | 'geo' | 'quiz' | 'giveaways'>('polls');
+  const [activeTab, setActiveTab] = useState<'polls' | 'geo' | 'quiz' | 'speedgame' | 'giveaways'>('polls');
 
   // Interactive Polls & Multi-Quiz State
   const [polls, setPolls] = useState<TravelPoll[]>(INITIAL_TRAVEL_POLLS);
@@ -281,7 +495,7 @@ export const GamesHub: React.FC = () => {
   const [selectedTriviaOption, setSelectedTriviaOption] = useState<number | null>(null);
   const [triviaScore, setTriviaScore] = useState(0);
   const [answeredTriviaIds, setAnsweredTriviaIds] = useState<Record<string, boolean>>({});
-  const [triviaCategoryFilter, setTriviaCategoryFilter] = useState<'all' | 'gastro' | 'records' | 'routes'>('all');
+  const [triviaCategoryFilter, setTriviaCategoryFilter] = useState<'all' | 'gastro' | 'records' | 'routes' | 'castles' | 'parks'>('all');
   const [pollToast, setPollToast] = useState<string | null>(null);
 
   // Geo-Detective State
@@ -292,6 +506,10 @@ export const GamesHub: React.FC = () => {
   // True/False Quiz State
   const [quizIndex, setQuizIndex] = useState(0);
   const [userQuizAnswer, setUserQuizAnswer] = useState<boolean | null>(null);
+
+  // Speed Route Game State
+  const [speedIndex, setSpeedIndex] = useState(0);
+  const [selectedSpeedOpt, setSelectedSpeedOpt] = useState<number | null>(null);
 
   // Group Giveaway Simulator
   const [raffleParticipants] = useState([
@@ -306,6 +524,7 @@ export const GamesHub: React.FC = () => {
 
   const currentGeo = GEO_QUESTS[geoIndex];
   const currentQuiz = QUIZ_ITEMS[quizIndex];
+  const currentSpeed = SPEED_GAME_CHALLENGES[speedIndex];
 
   const filteredTrivia = INTERACTIVE_TRIVIA.filter(
     (item) => triviaCategoryFilter === 'all' || item.category === triviaCategoryFilter
@@ -372,6 +591,9 @@ export const GamesHub: React.FC = () => {
   const handleGeoAnswer = (idx: number, isCorrect: boolean) => {
     setSelectedGeoOption(idx);
     setGeoResult(isCorrect ? 'correct' : 'wrong');
+    if (isCorrect) {
+      setTriviaScore((prev) => prev + 20);
+    }
   };
 
   const handleNextGeo = () => {
@@ -382,11 +604,28 @@ export const GamesHub: React.FC = () => {
 
   const handleQuizAnswer = (answer: boolean) => {
     setUserQuizAnswer(answer);
+    if (answer === currentQuiz.isTrue) {
+      setTriviaScore((prev) => prev + 15);
+    }
   };
 
   const handleNextQuiz = () => {
     setUserQuizAnswer(null);
     setQuizIndex((prev) => (prev + 1) % QUIZ_ITEMS.length);
+  };
+
+  const handleSpeedAnswer = (idx: number, isCorrect: boolean) => {
+    if (selectedSpeedOpt !== null) return;
+    setSelectedSpeedOpt(idx);
+    if (isCorrect) {
+      setTriviaScore((prev) => prev + 25);
+      triggerToast('🎯 Точно в ціль! +25 XP за знання маршрутів із Саарланду та Люксембургу!');
+    }
+  };
+
+  const handleNextSpeed = () => {
+    setSelectedSpeedOpt(null);
+    setSpeedIndex((prev) => (prev + 1) % SPEED_GAME_CHALLENGES.length);
   };
 
   const runRaffle = () => {
@@ -419,14 +658,14 @@ export const GamesHub: React.FC = () => {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-white tracking-wide">
-                  Ігри, Вікторини та Опитування в Telegram-боті
+                  Ігри, Квізи та Опитування клубу SVOI
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[11px] font-bold">
                   Бали гравця: {triviaScore} XP
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Інтерактивні вікторини з конфеті, живі опитування про маршрути, Гео-Детектив та розіграші місць
+                8 бліц-вікторин, 6 опитувань спільноти, 8 локацій «Гео-Детектива», 9 фактів «Правда/Неправда» та гра «Маршрут-Експерт»
               </p>
             </div>
           </div>
@@ -443,7 +682,7 @@ export const GamesHub: React.FC = () => {
             }`}
           >
             <Vote className="w-3.5 h-3.5" />
-            Вікторини & Опитування ({INTERACTIVE_TRIVIA.length + polls.length})
+            Квізи & Опитування ({INTERACTIVE_TRIVIA.length + polls.length})
           </button>
 
           <button
@@ -471,6 +710,18 @@ export const GamesHub: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setActiveTab('speedgame')}
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+              activeTab === 'speedgame'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Gamepad2 className="w-3.5 h-3.5" />
+            Гра «Маршрут-Експерт» ({SPEED_GAME_CHALLENGES.length})
+          </button>
+
+          <button
             onClick={() => setActiveTab('giveaways')}
             className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
               activeTab === 'giveaways'
@@ -484,7 +735,7 @@ export const GamesHub: React.FC = () => {
         </div>
       </div>
 
-      {/* ================= TAB 0: ВІКТОРИНИ ТА ОПИТУВАННЯ ПРО ПОДОРОЖІ (NEW) ================= */}
+      {/* ================= TAB 0: ВІКТОРИНИ ТА ОПИТУВАННЯ ПРО ПОДОРОЖІ ================= */}
       {activeTab === 'polls' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Multi-Option Travel Trivia Quiz */}
@@ -497,7 +748,7 @@ export const GamesHub: React.FC = () => {
                   </span>
                   <div>
                     <h3 className="text-base font-bold text-white">
-                      Інтерактивна бліц-вікторина мандрівника
+                      Інтерактивна бліц-вікторина мандрівника ({INTERACTIVE_TRIVIA.length} питань)
                     </h3>
                     <p className="text-[11px] text-slate-400">
                       Відповідайте на запитання про Європу та заробляйте бали на знижку й безкоштовний вибір місця
@@ -513,11 +764,13 @@ export const GamesHub: React.FC = () => {
                 </div>
               </div>
 
-              {/* Category Filter Pills */}
+              {/* Category Filter Buttons */}
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 {[
-                  { id: 'all', label: '🌍 Усі теми (5)' },
+                  { id: 'all', label: `🌍 Усі теми (${INTERACTIVE_TRIVIA.length})` },
                   { id: 'gastro', label: '🍽 Гастро-Європа' },
+                  { id: 'castles', label: '🏰 Замки та Мозель' },
+                  { id: 'parks', label: '🎢 Парки розваг' },
                   { id: 'records', label: '🏔 Альпійські рекорди' },
                   { id: 'routes', label: '🚐 Маршрути SVOI' }
                 ].map((cat) => (
@@ -542,7 +795,7 @@ export const GamesHub: React.FC = () => {
               {/* Active Trivia Question Card */}
               <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-4">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold">
+                  <span className="text-indigo-300 font-semibold">
                     {currentTrivia.categoryLabel}
                   </span>
                   <span className="text-slate-500 font-mono">
@@ -667,16 +920,16 @@ export const GamesHub: React.FC = () => {
                   </span>
                   <div>
                     <h3 className="text-base font-bold text-white">
-                      Опитування спільноти про подорожі
+                      Опитування спільноти ({polls.length} опитувань)
                     </h3>
                     <p className="text-[11px] text-slate-400">
-                      Голосуйте за напрямки — бачите миттєвий розподіл голосів як у Telegram Polls
+                      Голосуйте за напрямки — миттєвий розподіл голосів як у Telegram Polls
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[680px] overflow-y-auto pr-1">
                 {polls.map((poll) => {
                   const userVotedOptionId = votedPolls[poll.id];
                   return (
@@ -687,7 +940,7 @@ export const GamesHub: React.FC = () => {
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="font-bold text-purple-300">{poll.category}</span>
                         <span className="text-slate-500">
-                          {poll.isAnonymous ? 'Анонімне опитування' : 'Публічне опитування'} • {poll.totalVotes} голосів
+                          {poll.isAnonymous ? 'Анонімне' : 'Публічне'} • {poll.totalVotes} голосів
                         </span>
                       </div>
 
@@ -728,8 +981,8 @@ export const GamesHub: React.FC = () => {
                                   {isChosen && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
                                   <span>{opt.label}</span>
                                   {opt.badge && (
-                                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
-                                      {opt.badge}
+                                    <span className="text-amber-300 text-[10px] font-bold">
+                                      · {opt.badge}
                                     </span>
                                   )}
                                 </span>
@@ -875,7 +1128,7 @@ export const GamesHub: React.FC = () => {
                   className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-all flex items-center justify-center gap-1.5"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Наступна загадка
+                  Наступна загадка ({geoIndex + 1}/{GEO_QUESTS.length})
                 </button>
               </div>
             )}
@@ -896,22 +1149,32 @@ export const GamesHub: React.FC = () => {
               </div>
             )}
 
-            {/* How to use this in chat */}
+            {/* Quick Location Selector Grid */}
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 text-xs text-slate-300 space-y-3 shadow-xl">
-              <div className="flex items-center gap-2 font-bold text-white text-sm">
-                <Flame className="w-4 h-4 text-orange-400" />
-                <span>Навіщо ця гра вашому клубу?</span>
+              <div className="flex items-center justify-between font-bold text-white text-sm">
+                <span className="flex items-center gap-2">
+                  <Flame className="w-4 h-4 text-orange-400" />
+                  <span>Усі {GEO_QUESTS.length} загадок Гео-Детектива:</span>
+                </span>
               </div>
-              <p className="text-slate-400 leading-relaxed">
-                У Європі люди часто їдуть в електричках або відпочивають вечорами. Красиве фото затишної вулички, каньйону або замку із запитанням <b>«Хто перший вгадає?»</b> миттєво підіймає активність у коментарях!
-              </p>
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
-                <div className="font-semibold text-white">Приз без фінансових втрат:</div>
-                <div className="text-slate-400 leading-relaxed">
-                  • <b>«Картка Пріоритету»</b>: безкоштовний вибір будь-якого місця в авто (+5€ цінності).<br />
-                  • <b>Секретний гайд</b> містом в особисті повідомлення.<br />
-                  • Знижка 10% на першу поїздку.
-                </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {GEO_QUESTS.map((q, idx) => (
+                  <button
+                    key={q.id}
+                    onClick={() => {
+                      setGeoIndex(idx);
+                      setSelectedGeoOption(null);
+                      setGeoResult(null);
+                    }}
+                    className={`p-2 rounded-xl border text-left text-[11px] truncate transition-all ${
+                      idx === geoIndex
+                        ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    #{idx + 1}. {q.options[0].label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -923,7 +1186,7 @@ export const GamesHub: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+              <span className="text-xs font-semibold text-blue-300">
                 {currentQuiz.country}
               </span>
               <span className="text-xs text-slate-500 font-mono">
@@ -970,7 +1233,7 @@ export const GamesHub: React.FC = () => {
                 <div className="flex items-center gap-2">
                   {userQuizAnswer === currentQuiz.isTrue ? (
                     <span className="text-emerald-400 font-bold flex items-center gap-1.5 text-sm">
-                      <CheckCircle2 className="w-4 h-4" /> Ви абсолютно праві!
+                      <CheckCircle2 className="w-4 h-4" /> Ви абсолютно праві! (+15 XP)
                     </span>
                   ) : (
                     <span className="text-amber-400 font-bold flex items-center gap-1.5 text-sm">
@@ -986,7 +1249,7 @@ export const GamesHub: React.FC = () => {
                     onClick={handleNextQuiz}
                     className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all"
                   >
-                    Наступний факт
+                    Наступний факт ({quizIndex + 1}/{QUIZ_ITEMS.length})
                   </button>
                 </div>
               </div>
@@ -996,27 +1259,131 @@ export const GamesHub: React.FC = () => {
           <div className="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl text-xs space-y-3 text-slate-300">
             <h4 className="font-bold text-white text-sm flex items-center gap-1.5">
               <Share2 className="w-4 h-4 text-blue-400" />
-              Як публікувати вікторину в групі?
+              Усі питання «Правда чи Неправда» ({QUIZ_ITEMS.length}):
             </h4>
-            <p className="text-slate-400 leading-relaxed">
-              У Telegram є вбудований режим опитувань <b>«Вікторина» (Quiz Poll)</b>:
-            </p>
-            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px] text-blue-300">
-              <code>bot.send_poll(</code><br />
-              <code>  chat_id='@group',</code><br />
-              <code>  question='Чи правда, що...',</code><br />
-              <code>  options=['👍 Правда', '👎 Неправда'],</code><br />
-              <code>  type='quiz', correct_option_id=0</code><br />
-              <code>)</code>
+            <div className="space-y-1.5">
+              {QUIZ_ITEMS.map((item, idx) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setQuizIndex(idx);
+                    setUserQuizAnswer(null);
+                  }}
+                  className={`w-full p-2 rounded-xl border text-left text-[11px] truncate transition-all ${
+                    idx === quizIndex
+                      ? 'bg-blue-500/20 border-blue-400 text-blue-200 font-bold'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  #{idx + 1}. {item.country}
+                </button>
+              ))}
             </div>
-            <p className="text-slate-400">
-              При правильній відповіді у підписника прямо в Telegram вибухає святкове конфеті!
-            </p>
           </div>
         </div>
       )}
 
-      {/* TAB 3: РОЗІГРАШІ В ГРУПІ */}
+      {/* TAB 3: ГРА «МАРШРУТ-ЕКСПЕРТ» (NEW MINI-GAME) */}
+      {activeTab === 'speedgame' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                  <Coins className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {currentSpeed.flag} {currentSpeed.routeTitle}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Перевірте, як добре ви знаєте наші маршрути із Саарланду та Люксембургу
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-mono text-purple-300">
+                Раунд #{speedIndex + 1} / {SPEED_GAME_CHALLENGES.length}
+              </span>
+            </div>
+
+            <h4 className="text-base font-bold text-white leading-relaxed">
+              {currentSpeed.question}
+            </h4>
+
+            <div className="space-y-2.5">
+              {currentSpeed.options.map((opt, idx) => {
+                const isPicked = selectedSpeedOpt === idx;
+                let style = 'bg-slate-950 hover:bg-slate-900 border-slate-800 text-slate-200';
+                if (selectedSpeedOpt !== null) {
+                  if (opt.isCorrect) {
+                    style = 'bg-emerald-950/80 border-emerald-400 text-emerald-200 font-bold';
+                  } else if (isPicked) {
+                    style = 'bg-rose-950/80 border-rose-500 text-rose-200';
+                  } else {
+                    style = 'opacity-45 bg-slate-950 border-slate-800 text-slate-500';
+                  }
+                }
+                return (
+                  <button
+                    key={idx}
+                    disabled={selectedSpeedOpt !== null}
+                    onClick={() => handleSpeedAnswer(idx, opt.isCorrect)}
+                    className={`w-full p-3.5 rounded-xl border text-left text-xs sm:text-sm transition-all space-y-1 ${style}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span>{opt.label}</span>
+                      {selectedSpeedOpt !== null && opt.isCorrect && (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      )}
+                    </div>
+                    {selectedSpeedOpt !== null && (
+                      <p className="text-[11px] text-slate-300 font-normal pt-1">{opt.detail}</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedSpeedOpt !== null && (
+              <div className="p-4 rounded-xl bg-slate-950 border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs animate-fade-in">
+                <span className="text-purple-200">{currentSpeed.bonusTip}</span>
+                <button
+                  onClick={handleNextSpeed}
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold shrink-0 transition-all"
+                >
+                  Наступний маршрут →
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl text-xs space-y-3">
+            <h4 className="font-bold text-white text-sm">Популярні тури із Саарланду та Люксембургу:</h4>
+            <p className="text-slate-400 leading-relaxed">
+              Завдяки розташуванню на стику кордонів Німеччини, Франції та Люксембургу наші пасажири добираються до топових локацій Європи всього за 1.5–3.5 години:
+            </p>
+            <ul className="space-y-2 text-slate-300">
+              <li className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <b>🇫🇷 Ельзас (Страсбург + Кольмар)</b> — 80€ (~1.5 год)
+              </li>
+              <li className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <b>🏰 Замок Бург Ельц + Кохем + Мозель</b> — 85€ (~1.5 год)
+              </li>
+              <li className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <b>🌲 Гайдельберг + Баден-Баден</b> — 85€ (~1.5–2 год)
+              </li>
+              <li className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <b>🎢 Європа-Парк (Europa-Park у Русті)</b> — 95€ (~2 год)
+              </li>
+              <li className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <b>🏎️ Штутгарт (Mercedes + Porsche)</b> — 90€ (~2.5 год)
+              </li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: РОЗІГРАШІ В ГРУПІ */}
       {activeTab === 'giveaways' && (
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">

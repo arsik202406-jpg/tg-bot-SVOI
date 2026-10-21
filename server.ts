@@ -88,23 +88,31 @@ async function startServer() {
     }
   });
 
+  // Bind port 3000 immediately so readiness probes succeed without waiting for Vite cold-start
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`SVOI Travel server running on http://0.0.0.0:${port}`);
+    startLiveTelegramBotPolling();
+  });
+
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   } else {
-    const vite = await createViteServer({
+    const vitePromise = createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
-    app.use(vite.middlewares);
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
   }
-
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`SVOI Travel server running on http://0.0.0.0:${port}`);
-    startLiveTelegramBotPolling();
-  });
 }
 
 // Live Telegram Bot Polling so @Svoi_TravelEU_bot immediately responds with single-window message editing,
@@ -123,7 +131,13 @@ const liveSeatsOverride: Record<string, number> = {
   amsterdam: 5,
   bruges: 4,
   liechtenstein: 4,
-  neuschwanstein: 3,
+  neuschwanstein: 2,
+  berlin_dresden: 4,
+  legoland: 5,
+  stuttgart: 4,
+  europa_park: 2,
+  eltz_cochem: 5,
+  heidelberg_baden: 6,
   cote_dazur: 5,
   mont_saint_michel: 6,
   swiss_rhine_zurich: 4,
@@ -258,10 +272,13 @@ function getGamesMarkup() {
       ],
       [
         { text: '🍽 Гастро-Квіз «Смаки Європи»', callback_data: 'cb_game_gastro' },
-        { text: '💶 Інтуїція: Цифри та рекорди', callback_data: 'cb_game_price' },
+        { text: '💶 Експерт маршрутів (Час і Ціни)', callback_data: 'cb_game_price' },
       ],
       [
-        { text: '🎒 Тест: Підбір ідеального туру', callback_data: 'cb_game_match' },
+        { text: '📊 Опитування мандрівників', callback_data: 'cb_game_poll' },
+        { text: '🎒 Підбір ідеального туру', callback_data: 'cb_game_match' },
+      ],
+      [
         { text: '🎰 Колесо Фортуни SVOI', callback_data: 'cb_game_wheel' },
       ],
       [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
@@ -274,7 +291,7 @@ const WELCOME_HTML =
   `<blockquote>🚐 <b>Комфортабельні поїздки Європою на Opel Vivaro (8 місць)</b> із Саарланду, Тріра та Люксембургу прямо від вашого дому (Door-to-Door)!\n` +
   `💳 <b>Правило клубу:</b> <code>0% передоплати</code> на всі одноденні поїздки (оплата при посадці)!</blockquote>\n\n` +
   `✨ <b>Наші головні переваги:</b>\n` +
-  `• <b>14 авторських турів:</b> Париж, Амстердам, Брюгге, Швейцарія, Комо, Лазурове узбережжя\n` +
+  `• <b>20 авторських турів:</b> Париж, Амстердам, Брюгге, Швейцарія, Комо, Нойшванштайн, Європа-Парк, Берлін, Леголенд, Штутгарт, Долина Мозеля\n` +
   `• <b>Заявка в 1–2 кліки:</b> без необхідності друкувати текст вручну\n` +
   `• <b>Салон із зоряним LED-небом:</b> бронь конкретного місця лише <code>5€</code> (або <code>0€</code> вільна посадка)\n\n` +
   `👇 <b>Оберіть розділ нижче:</b>`;
@@ -374,7 +391,7 @@ async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto
       ? `<code>0€ передоплати</code> (оплата при посадці)`
       : `<code>готель включено у вартість</code>`;
 
-  const cardCaption =
+  const rawCaption =
     `${flag} <b>${trip.title} | ${dateStr}</b>\n` +
     `🌍 <i>Країна: ${trip.country} • Тривалість: ${trip.duration}</i>\n\n` +
     `📖 <b>Загальна інформація:</b>\n${trip.description}\n\n` +
@@ -382,6 +399,8 @@ async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto
     `${programSteps || highlightsList}\n\n` +
     `💶 <b>Ціна: ${trip.price}€</b> | 🔥 <b>Місць: ${freeSeats} з 8</b>\n\n` +
     `<blockquote>🚐 <b>Авто:</b> Opel Vivaro (8 місць) • 📍 Збір за адресою (Саарланд, Трір, Люксембург) • 💡 ${paymentRule}</blockquote>`;
+  // Guard against Telegram 1024-char photo caption limit
+  const cardCaption = rawCaption.length <= 1020 ? rawCaption : rawCaption.slice(0, 1015) + '...';
 
   const rows: any[][] = [];
   if (freeSeats > 0) {
@@ -757,8 +776,14 @@ async function startLiveTelegramBotPolling() {
               `  — <b>Брюссель, Антверпен та Брюгге (90€–110€):</b> Гран-Плас, Атоміум, вокзал-палац Антверпена, Озеро Кохання та канали Брюгге\n` +
               `• 🇳🇱 <b>Голландія (Нідерланди):</b>\n` +
               `  — <b>Гітхорн, Заандам, Амстердам, Море (120€):</b> водне село Гітхорн, вітряки Заандама, канали Амстердама та пляж Північного моря\n` +
-              `• 🇩🇪 <b>Німеччина:</b>\n` +
-              `  — <b>Замок Нойшванштайн, Берлін, Дрезден, Штутгарт, Леголенд, Ліндау (120€):</b> баварські замки, музеї авто, парк Legoland та столичні маршрути\n` +
+              `• 🇩🇪 <b>Німеччина (окремі авторські виїзди):</b>\n` +
+              `  — <b>Замок Нойшванштайн + ущелина Партнахкламм (120€):</b> міст Марієнбрюке, озеро Альпзее та гірська ущелина з водоспадами\n` +
+              `  — <b>Берлін + Дрезден (2 дні, 240€):</b> Бранденбурзькі ворота, Рейхстаг, палац Цвінгер, Фрауенкірхе (готель включено)\n` +
+              `  — <b>Парк розваг Леголенд / LEGOLAND (115€):</b> сімейний виїзд у Гюнцбург (Мініленд та 60+ атракціонів)\n` +
+              `  — <b>Штутгарт (95€):</b> музеї Mercedes-Benz і Porsche + футуристична бібліотека\n` +
+              `  — <b>Європа-Парк / Europa-Park (95€):</b> топ-парк розваг Європи в Русті (лише ~2 год від Саарланду)\n` +
+              `  — <b>Долина Мозеля: Замок Ельц + Кохем + міст Гайєрлай (85€):</b> замок Burg Eltz, підвісний міст та дегустація Рислінгу\n` +
+              `  — <b>Гайдельберг + курорт Баден-Баден (85€):</b> замок Гайдельберга та королівські терми\n` +
               `• 🇱🇮 <b>Ліхтенштейн (3 країни за 1 день, 120€):</b>\n` +
               `  — <b>Вадуц, Брегенц та Ліндау:</b> замок Вадуц, сцена на Боденському озері в Брегенці та острів Ліндау\n` +
               `• 🇨🇭 <b>Швейцарія (120€):</b>\n` +
@@ -1054,6 +1079,141 @@ async function startLiveTelegramBotPolling() {
                 inline_keyboard: [[{ text: '🔙 Назад в меню', callback_data: 'cb_adm_channel_menu' }]],
               },
             );
+          } else if (cbData === 'cb_reviews') {
+            const reviewsText =
+              `⭐ <b>Відгуки туристів клубу SVOI Travel</b> 💬✨\n\n` +
+              `Реальні враження наших мандрівників про поїздки на Opel Vivaro:\n\n` +
+              `• <b>Олена К. (Саарбрюккен) — Париж:</b>\n` +
+              `⭐⭐⭐⭐⭐ <i>«Забрали прямо біля дому, мінівен дуже м'який і чистий, зоряне небо в салоні створило справжню казку!»</i>\n\n` +
+              `• <b>Михайло та Юлія (Трір) — Замок Нойшванштайн + ущелина:</b>\n` +
+              `⭐⭐⭐⭐⭐ <i>«Неймовірні краєвиди з мосту Марієнбрюке та прогулянка гірською ущелиною Партнахкламм. Група всього 8 людей — дуже душевно!»</i>\n\n` +
+              `• <b>Тетяна В. (Люксембург) — Озеро Комо + Мілан:</b>\n` +
+              `⭐⭐⭐⭐⭐ <i>«Два дні італійського щастя! Вілли Белладжо та прогулянка на катері перевершили всі очікування.»</i>`;
+            await smartEditMessage(chatId, msgId, hasPhoto, reviewsText, {
+              inline_keyboard: [
+                [{ text: '🗺 Обрати поїздку', callback_data: 'cb_trips' }],
+                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
+              ],
+            });
+          } else if (cbData === 'cb_faq') {
+            const faqText =
+              `❓ <b>Часті питання про поїздки клубу SVOI (FAQ)</b> 💡\n\n` +
+              `• 📍 <b>Звідки виїзд (Door-to-Door):</b> забираємо та розвозимо за домашньою адресою по <b>Саарланду, Тріру та Люксембургу</b>! Можлива підсадка від 4-х осіб з Кайзерслаутерна, Мангейма, Франкфурта, Карлсруе, Страсбурга.\n` +
+              `• 💳 <b>Оплата:</b> <code>0% передоплати</code> на всі одноденні поїздки (оплата водієві при посадці). Для 2–3 денних турів готель включено у вартість.\n` +
+              `• 🚐 <b>Автомобіль:</b> комфортабельний 8-місний <b>Opel Vivaro</b> (клімат-контроль, USB, відкидні спинки, стеля «Зоряне небо»).\n` +
+              `• 🧳 <b>Багаж:</b> до <code>10 кг</code> у багажне відділення + ручна поклажа в салон.\n` +
+              `• 💺 <b>Вибір місця:</b> фіксація конкретного місця (1–8) — лише <code>5€</code>, вільна посадка — <code>0€</code>.`;
+            await smartEditMessage(chatId, msgId, hasPhoto, faqText, {
+              inline_keyboard: [
+                [
+                  { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
+                  { text: '💺 Забронювати місце', callback_data: 'cb_book' },
+                ],
+                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
+              ],
+            });
+          } else if (cbData === 'cb_partner') {
+            const partnerText =
+              `🤝 <b>Партнерська програма & Співпраця з клубом SVOI</b> 💼\n\n` +
+              `• 👥 <b>Приведи друзів:</b> зберіть компанію від 4 осіб та отримайте бонусну знижку на поїздку!\n` +
+              `• 🚐 <b>Індивідуальний чартер (5–8 осіб):</b> оренда всього мінівена Opel Vivaro з водієм під вашу компанію в будь-яку дату.\n` +
+              `• 📸 <b>Для блогерів та авторів:</b> спільні творчі виїзди за яскраві рілси та огляди.\n\n` +
+              `📩 Зв'язок напряму з організатором: @SVOI_travel_admin`;
+            await smartEditMessage(chatId, msgId, hasPhoto, partnerText, {
+              inline_keyboard: [
+                [{ text: "💬 Написати організатору", url: 'https://t.me/SVOI_travel_admin' }],
+                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
+              ],
+            });
+          } else if (cbData === 'cb_custom_trip') {
+            const customText =
+              `🚐 <b>Індивідуальний виїзд компанією (5–8 осіб)</b> 👑\n\n` +
+              `Повний комфортабельний 8-місний мінівен <b>Opel Vivaro</b> з персональним водієм у вашому розпорядженні!\n\n` +
+              `• 📅 Будь-яка зручна для вас дата (будні або вихідні)\n` +
+              `• 📍 Адресний збір від вашого під'їзду (Door-to-Door)\n` +
+              `• 🗺 Гнучкий маршрут та зупинки за вашим бажанням\n` +
+              `<blockquote>💶 Вартість оренди всього авто з водієм: від <code>550€</code> за день залежно від маршруту.</blockquote>`;
+            await smartEditMessage(chatId, msgId, hasPhoto, customText, {
+              inline_keyboard: [
+                [{ text: '💬 Обговорити індивідуальний виїзд', url: 'https://t.me/SVOI_travel_admin' }],
+                [{ text: '🗺 До списку напрямків', callback_data: 'cb_trips' }],
+                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
+              ],
+            });
+          } else if (cbData.startsWith('waitlist_add_')) {
+            const tripId = cbData.replace('waitlist_add_', '');
+            const trip = TRIPS_LIST.find((t) => t.id === tripId);
+            const firstName = cb.from?.first_name || 'Мандрівник';
+            const username = cb.from?.username ? `@${cb.from.username}` : firstName;
+            await tgApi('sendMessage', {
+              chat_id: ADMIN_ID,
+              parse_mode: 'HTML',
+              text:
+                `📋 <b>Новий запис у Лист очікування!</b>\n` +
+                `🗺 <b>Тур:</b> ${trip?.shortTitle || tripId}\n` +
+                `👤 <b>Клієнт:</b> ${firstName} (${username})`,
+            });
+            const wlText =
+              `✅ <b>Вас додано до листа очікування!</b> 📋✨\n\n` +
+              `Напрямок: <b>${trip?.title || tripId}</b>\n` +
+              `Як тільки звільниться місце або буде призначено додатковий виїзд — менеджер одразу повідомить вас!`;
+            await smartEditMessage(chatId, msgId, hasPhoto, wlText, {
+              inline_keyboard: [
+                [{ text: '🗺 Інші напрямки та дати', callback_data: 'cb_trips' }],
+                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
+              ],
+            });
+          } else if (cbData === 'cb_adm_waitlist') {
+            const wlAdminText =
+              `📋 <b>Лист очікування пасажирів (SVOI Waitlist)</b>\n\n` +
+              `• <b>#1 | Париж</b> — Олександр Т. (@alex_traveler) • 2 місця\n` +
+              `• <b>#2 | Озеро Комо + Мілан</b> — Катерина М. (@kate_munich) • 3 місця\n\n` +
+              `<i>Нові заявки з листа очікування автоматично надходять у цей чат адміністратора.</i>`;
+            await smartEditMessage(chatId, msgId, hasPhoto, wlAdminText, {
+              inline_keyboard: [
+                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
+              ],
+            });
+          } else if (cbData === 'cb_adm_gw_pick') {
+            const pool =
+              activeGiveaway.participants.length > 0
+                ? activeGiveaway.participants
+                : [
+                    { user_id: 1, username: '@alex_traveler', first_name: 'Олександр' },
+                    { user_id: 2, username: '@elena_voyage', first_name: 'Олена' },
+                  ];
+            const winner = pool[Math.floor(Math.random() * pool.length)];
+            const winText =
+              `🎊🏆 <b>ПІДСУМКИ РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n\n` +
+              `Приз: 🎁 <b>${activeGiveaway.prize}</b>\n` +
+              `🥳 <b>ПЕРЕМОЖЕЦЬ: ${winner.first_name} (${winner.username})!</b> 🎉\n\n` +
+              `Вітаємо! Менеджер клубу @SVOI_travel_admin зв'яжеться з вами для вручення сертифіката!`;
+            await tgApi('sendMessage', {
+              chat_id: currentChannelTarget,
+              text: winText,
+              parse_mode: 'HTML',
+            });
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `✅ <b>Переможця обрано та опубліковано:</b> ${winner.first_name} (${winner.username})`,
+              getChannelAdminMarkup(),
+            );
+          } else if (cbData === 'cb_adm_send_quiz') {
+            const pollRes: any = await tgApi('sendPoll', {
+              chat_id: currentChannelTarget,
+              question: 'У якому місті ми відвідуємо музеї Mercedes-Benz і Porsche в окремому одноденному турі SVOI?',
+              options: ['Мюнхен', 'Штутгарт 🏎', 'Франкфурт', 'Берлін'],
+              type: 'quiz',
+              correct_option_id: 1,
+              explanation: 'У Штутгарті знаходяться штаб-квартири та легендарні музеї Mercedes-Benz і Porsche!',
+              is_anonymous: true,
+            });
+            const statusMsg = pollRes.ok
+              ? `✅ <b>Інтерактивний Telegram Quiz успішно опубліковано в <code>${currentChannelTarget}</code>!</b> 🧠🎉`
+              : `⚠️ Не вдалося опублікувати квіз у <code>${currentChannelTarget}</code>: <code>${pollRes.description || 'перевірте права бота в каналі'}</code>`;
+            await smartEditMessage(chatId, msgId, hasPhoto, statusMsg, getChannelAdminMarkup());
           } else if (cbData === 'cb_adm_set_channel') {
             chatSessions[chatId] = { mode: 'waiting_channel_id' };
             await smartEditMessage(
@@ -1072,10 +1232,57 @@ async function startLiveTelegramBotPolling() {
               chatId,
               msgId,
               hasPhoto,
-              `🎮 <b>Ігровий клуб та вікторини SVOI Travel (6 ігор)</b> 🏆\n\n` +
-                `Оберіть гру або вікторину нижче та вигравайте бонуси для майбутніх поїздок:`,
+              `🎮 <b>Ігровий клуб, Квізи та Опитування SVOI Travel</b> 🏆\n\n` +
+                `Оберіть вікторину, гру або опитування нижче та вигравайте приємні бонуси для майбутніх поїздок:`,
               getGamesMarkup(),
             );
+          } else if (cbData === 'cb_game_geo') {
+            const geoQuizzes = [
+              `🕵️ <b>ГЕО-ДЕТЕКТИВ SVOI:</b>\n\nЗамок Ельц (Burg Eltz) захований у лісовій долині й зображувався на купюрі 500 німецьких марок. Скільки часу триває дорога до нього з Саарланду чи Люксембургу?\n\n✅ <b>Відповідь:</b> Лише <b>1.5–2 години</b>! Вартість поїздки (Замок Ельц + Кохем + підвісний міст Гайєрлай) — <b>85€</b>.`,
+              `🕵️ <b>ГЕО-ДЕТЕКТИВ SVOI:</b>\n\nУ якому місті за 1 день можна відвідати штаб-квартири та легендарні музеї одразу двох автогігантів — <b>Mercedes-Benz та Porsche</b>?\n\n✅ <b>Відповідь:</b> У <b>Штутгарті (Німеччина)</b>! Окрема одноденна поїздка з клубом SVOI — <b>95€</b>.`,
+              `🕵️ <b>ГЕО-ДЕТЕКТИВ SVOI:</b>\n\nЯкий казковий замок короля Людвіга II ми поєднуємо в одну поїздку з альпійською гірською ущелиною <b>Партнахкламм</b>?\n\n✅ <b>Відповідь:</b> <b>Замок Нойшванштайн (Баварія)</b>!`,
+            ];
+            const picked = geoQuizzes[Math.floor(Math.random() * geoQuizzes.length)];
+            await smartEditMessage(chatId, msgId, hasPhoto, picked, getGamesMarkup());
+          } else if (cbData === 'cb_game_quiz') {
+            const tfQuizzes = [
+              `🧠 <b>ПРАВДА ЧИ НЕПРАВДА:</b>\n\nПоїздка в замок Нойшванштайн + ущелину Партнахкламм, поїздка в Берлін, поїздка в Леголенд та поїздка в Штутгарт — це <b>чотири різні окремі тури</b>?\n\n✅ <b>ПРАВДА!</b> Кожен із цих напрямків — окрема авторська подорож.`,
+              `🧠 <b>ПРАВДА ЧИ НЕПРАВДА:</b>\n\nЧи правда, що з Саарланду та Люксембургу до найкращого парку розваг Європи — <b>Europa-Park (Руст)</b> — їхати менше ніж 2.5 години?\n\n✅ <b>ПРАВДА!</b> Тому це один із найпопулярніших одноденних виїздів вихідного дня!`,
+              `🧠 <b>ПРАВДА ЧИ НЕПРАВДА:</b>\n\nЧи правда, що в турі до Ліхтенштейну ми за 1 день відвідуємо одразу 3 країни: Ліхтенштейн (Вадуц), Австрію (Брегенц) та Німеччину (Ліндау)?\n\n✅ <b>ПРАВДА!</b> 3 держави за один вихідний!`,
+            ];
+            const picked = tfQuizzes[Math.floor(Math.random() * tfQuizzes.length)];
+            await smartEditMessage(chatId, msgId, hasPhoto, picked, getGamesMarkup());
+          } else if (cbData === 'cb_game_gastro') {
+            const gastroQuizzes = [
+              `🍽 <b>ГАСТРО-КВІЗ «СМАКИ ЄВРОПИ»:</b>\n\nДе під час нашого туру по долині Мозеля (Замок Ельц + Кохем) ми куштуємо справжнє вино з крутих схилів?\n\n🍷 <b>Відповідь:</b> У містечку <b>Кохем</b> — знаменитий мозельський <b>Рислінг</b>!`,
+              `🍽 <b>ГАСТРО-КВІЗ «СМАКИ ЄВРОПИ»:</b>\n\nЯкий гастрономічний хіт чекає на вас у турі в Ельзас і Страсбург (80€)?\n\n🍕 <b>Відповідь:</b> <b>Тарт фламбе (Flammkuchen)</b> з вершками, цибулею та беконом з дров'яної печі!`,
+            ];
+            const picked = gastroQuizzes[Math.floor(Math.random() * gastroQuizzes.length)];
+            await smartEditMessage(chatId, msgId, hasPhoto, picked, getGamesMarkup());
+          } else if (cbData === 'cb_game_price') {
+            const priceQuizzes = [
+              `💶 <b>ЕКСПЕРТ МАРШРУТІВ (ЧАС І ЦІНИ):</b>\n\n• 🇫🇷 <b>Ельзас + Страсбург:</b> <code>80€</code> (~1.5 год у дорозі)\n• 🇩🇪 <b>Замок Ельц + Кохем + міст Гайєрлай:</b> <code>85€</code> (~1.5 год у дорозі)\n• 🇩🇪 <b>Гайдельберг + Баден-Баден:</b> <code>85€</code> (~1.5 год у дорозі)\n• 🇩🇪 <b>Європа-Парк / Штутгарт:</b> <code>95€</code> (~2 год у дорозі)\n• 🇩🇪 <b>Леголенд:</b> <code>115€</code>\n• 🇩🇪 <b>Нойшванштайн + ущелина:</b> <code>120€</code>\n• 🇩🇪 <b>Берлін + Дрезден (2 дні з готелем):</b> <code>240€</code>`,
+            ];
+            await smartEditMessage(chatId, msgId, hasPhoto, priceQuizzes[0], getGamesMarkup());
+          } else if (cbData === 'cb_game_poll') {
+            const pollText =
+              `📊 <b>ОПИТУВАННЯ КЛУБУ SVOI TRAVEL:</b>\n\n` +
+              `<b>Який тур із Саарланду та Люксембургу ви б обрали на найближчі вихідні?</b>\n` +
+              `• 🎢 Європа-Парк (Руст) — <b>31%</b>\n` +
+              `• 🏰 Долина Мозеля: Замок Ельц + Кохем — <b>26%</b>\n` +
+              `• ♨️ Гайдельберг + терми Баден-Бадена — <b>24%</b>\n` +
+              `• 🏎 Штутгарт: Музеї Mercedes і Porsche — <b>19%</b>\n\n` +
+              `<blockquote>Відкрийте <b>🚀 SVOI Mini App</b> або вкладку ігор на сайті, щоб проголосувати у всіх 6 опитуваннях!</blockquote>`;
+            await smartEditMessage(chatId, msgId, hasPhoto, pollText, getGamesMarkup());
+          } else if (cbData === 'cb_game_match') {
+            const matchText =
+              `🎒 <b>ПІДБІР ІДЕАЛЬНОГО ТУРУ З СААРЛАНДУ ТА ЛЮКСЕМБУРГУ:</b>\n\n` +
+              `• <b>Хочете близько (1.5–2 год) і без втоми:</b> Ельзас + Страсбург (80€), Замок Ельц + Кохем (85€), Гайдельберг + Баден-Баден (85€)\n` +
+              `• <b>Хочете драйву та емоцій з родиною:</b> Європа-Парк (95€) або Леголенд (115€)\n` +
+              `• <b>Любите автомобілі та технології:</b> Штутгарт — Mercedes & Porsche (95€)\n` +
+              `• <b>Мрієте про Альпи та замки:</b> Замок Нойшванштайн + ущелина (120€) або Швейцарія (120€)\n` +
+              `• <b>Вікенд на 2–3 дні з готелем:</b> Берлін + Дрезден (240€), Комо + Мілан (270€), Мон-Сен-Мішель (270€)`;
+            await smartEditMessage(chatId, msgId, hasPhoto, matchText, getGamesMarkup());
           } else if (cbData === 'cb_game_wheel') {
             const prizes = [
               '💺 Безкоштовний вибір будь-якого місця в 1-му або 2-му ряду (код: WHEEL-SEAT5)',
