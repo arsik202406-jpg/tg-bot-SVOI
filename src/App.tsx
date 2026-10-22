@@ -224,7 +224,7 @@ export default function App() {
                 </div>
 
                 <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400">
-                  Токен: <code className="text-slate-300 font-mono text-[10px]">8969834514:AAHl3mDZU00jnc...</code>
+                  Токен: <code className="text-slate-300 font-mono text-[10px]">8969834514:AAGg--******** (Захищено)</code>
                 </div>
               </div>
 

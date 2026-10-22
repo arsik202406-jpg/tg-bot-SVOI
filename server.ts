@@ -26,11 +26,12 @@ async function startServer() {
   // API endpoint to verify Telegram Bot token directly
   app.post('/api/telegram/verify', async (req, res) => {
     const { token } = req.body;
-    if (!token) {
+    const botToken = !token || token.includes('*') ? DEFAULT_BOT_TOKEN : token.trim();
+    if (!botToken) {
       return res.status(400).json({ ok: false, error: 'Token is required' });
     }
     try {
-      const resp = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      const resp = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
       const data = await resp.json();
       res.json(data);
     } catch (e: any) {
@@ -41,11 +42,12 @@ async function startServer() {
   // API endpoint to send a real test message or notification to admin
   app.post('/api/telegram/send-message', async (req, res) => {
     const { token, chatId, text, parseMode } = req.body;
-    if (!token || !chatId || !text) {
+    const botToken = !token || token.includes('*') ? DEFAULT_BOT_TOKEN : token.trim();
+    if (!botToken || !chatId || !text) {
       return res.status(400).json({ ok: false, error: 'token, chatId and text are required' });
     }
     try {
-      const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      const resp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -64,7 +66,7 @@ async function startServer() {
   // API endpoint to update MenuButtonWebApp URL in Telegram Bot
   app.post('/api/telegram/set-miniapp-url', async (req, res) => {
     const { token, miniAppUrl } = req.body;
-    const botToken = token || '8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM';
+    const botToken = !token || token.includes('*') ? DEFAULT_BOT_TOKEN : token.trim();
     if (!miniAppUrl || !miniAppUrl.startsWith('https://')) {
       return res.status(400).json({ ok: false, error: 'Вкажіть публічний HTTPS URL (починається з https://)' });
     }
@@ -117,12 +119,14 @@ async function startServer() {
 
 // Live Telegram Bot Polling so @Svoi_TravelEU_bot immediately responds with single-window message editing,
 // unified tour cards, 1-2 click booking ([1], [2], [3+], request_contact=True, auto @username), and admin date/poster/seats controls
-const DEFAULT_BOT_TOKEN = process.env.BOT_TOKEN || '8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM';
+const DEFAULT_BOT_TOKEN = process.env.BOT_TOKEN || '8969834514:AAGg--q9hqQQIQooZUkCbhenT9ykhuCc6D0';
 const ADMIN_ID = Number(process.env.ADMIN_ID) || 8450153980;
 let currentMiniAppUrl =
   process.env.MINI_APP_URL ||
   'https://arsik202406-jpg.github.io/tg-bot-SVOI/?miniapp=1';
 let currentChannelTarget = process.env.CHANNEL_CHAT_ID || '@svoi_traveleu';
+let currentGroupTarget = process.env.GROUP_CHAT_ID || '';
+let currentGroupTitle = 'Група SVOI Travel';
 
 // Dynamic tour overrides for Admin (seats, dates, posters)
 const liveSeatsOverride: Record<string, number> = {
@@ -182,7 +186,9 @@ function getLiveFreeSeats(tripId: string): number {
 interface ChatSessionState {
   mode:
     | 'waiting_gw_prize'
+    | 'waiting_gw_prize_group'
     | 'waiting_channel_id'
+    | 'waiting_group_id'
     | 'waiting_admin_date'
     | 'waiting_admin_poster'
     | 'waiting_booking_contact'
@@ -196,6 +202,7 @@ const activeGiveaway = {
   id: 'gw_active',
   prize: 'Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼',
   participants: [] as Array<{ user_id: number; username: string; first_name: string }>,
+  winner: null as { user_id: number; username: string; first_name: string } | null,
   is_active: true,
 };
 
@@ -220,7 +227,7 @@ function getMainMenuMarkup(userId?: number) {
 
   if (isAdmin) {
     rows.push([
-      { text: '👑 Керування каналом (/channel)', callback_data: 'cb_adm_channel_menu' },
+      { text: '👑 Канал і Група (/channel)', callback_data: 'cb_adm_channel_menu' },
       { text: '📋 Лист очікування', callback_data: 'cb_adm_waitlist' },
     ]);
   }
@@ -252,12 +259,27 @@ function getChannelAdminMarkup() {
   return {
     inline_keyboard: [
       [
-        { text: '🎁 Запустити новий РОЗІГРАШ', callback_data: 'cb_adm_gw_new' },
-        { text: '🏆 Вибрати переможця', callback_data: 'cb_adm_gw_pick' },
+        { text: '👥 Опублікувати розіграш у ГРУПІ', callback_data: 'cb_adm_gw_new_group' },
+      ],
+      [
+        { text: '📢 Опублікувати розіграш у КАНАЛІ', callback_data: 'cb_adm_gw_new' },
+      ],
+      [
+        { text: '🚀 Миттєвий пост розіграшу в ГРУПУ', callback_data: 'cb_adm_gw_pub_group_now' },
+      ],
+      [
+        { text: '🏆 Обрати переможця розіграшу [Адмін]', callback_data: 'cb_adm_gw_pick' },
+      ],
+      [
+        { text: '👥 Опублікувати переможця в ГРУПІ', callback_data: 'cb_adm_pub_winner_group' },
+        { text: '📢 У КАНАЛІ', callback_data: 'cb_adm_pub_winner_channel' },
+      ],
+      [
+        { text: '⚙️ Прив’язати ГРУПУ', callback_data: 'cb_adm_set_group' },
+        { text: '⚙️ Прив’язати КАНАЛ', callback_data: 'cb_adm_set_channel' },
       ],
       [
         { text: '🧠 Надіслати вікторину (Квіз)', callback_data: 'cb_adm_send_quiz' },
-        { text: '⚙️ Прив’язати закритий канал', callback_data: 'cb_adm_set_channel' },
       ],
       [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
     ],
@@ -483,21 +505,33 @@ async function startLiveTelegramBotPolling() {
       for (const update of data.result || []) {
         offset = update.update_id + 1;
 
-        // 1. Auto-detect private channel ID (-100...)
+        // 1. Auto-detect private channel ID (-100...) and Group ID (-100... / -...)
         if (update.channel_post && update.channel_post.chat) {
           currentChannelTarget = String(update.channel_post.chat.id);
         }
         if (update.my_chat_member && update.my_chat_member.chat) {
           const ch = update.my_chat_member.chat;
-          if (ch.type === 'channel' || ch.type === 'supergroup') {
+          if (ch.type === 'channel') {
             currentChannelTarget = String(ch.id);
             await tgApi('sendMessage', {
               chat_id: ADMIN_ID,
               parse_mode: 'HTML',
               text:
                 `🎉 <b>Канал «${ch.title || 'SVOI'}» автоматично прив'язано!</b>\n` +
-                `🆔 Числовий ID: <code>${currentChannelTarget}</code>\n` +
-                `Тепер усі розіграші з /channel публікуватимуться прямо туди!`,
+                `🆔 Числовий ID каналу: <code>${currentChannelTarget}</code>\n` +
+                `Тепер усі публікації в канал з /channel працюють автоматично!`,
+            });
+          } else if (ch.type === 'group' || ch.type === 'supergroup') {
+            currentGroupTarget = String(ch.id);
+            currentGroupTitle = ch.title || 'Група SVOI Travel';
+            await tgApi('sendMessage', {
+              chat_id: ADMIN_ID,
+              parse_mode: 'HTML',
+              text:
+                `🎉 <b>Групу «${currentGroupTitle}» автоматично прив'язано!</b> 👥\n` +
+                `🆔 Числовий ID групи: <code>${currentGroupTarget}</code>\n` +
+                `Тепер ви можете публікувати розіграші та підсумки переможців прямо в групу в 1 клік!`,
+              reply_markup: getChannelAdminMarkup(),
             });
           }
         }
@@ -506,9 +540,69 @@ async function startLiveTelegramBotPolling() {
         if (update.message) {
           const msg = update.message;
           const chatId: number = msg.chat.id;
+          const chatType: string = msg.chat.type || 'private';
           const userId: number = msg.from?.id || 0;
           const text: string = (msg.text || '').trim();
           const session = chatSessions[chatId] || { mode: null };
+
+          // Auto-capture Group ID whenever any message happens in a group/supergroup where the bot is present
+          if (chatType === 'group' || chatType === 'supergroup') {
+            const wasUnbound = !currentGroupTarget;
+            currentGroupTarget = String(chatId);
+            currentGroupTitle = msg.chat.title || 'Група SVOI Travel';
+
+            if (wasUnbound) {
+              await tgApi('sendMessage', {
+                chat_id: ADMIN_ID,
+                parse_mode: 'HTML',
+                text:
+                  `✅ <b>Групу «${currentGroupTitle}» автоматично розпізнано та прив'язано!</b> 👥\n` +
+                  `🆔 ID групи: <code>${currentGroupTarget}</code>\n\n` +
+                  `Тепер у меню /channel плашка «👥 Опублікувати розіграш у ГРУПІ» публікує пости прямо сюди!`,
+                reply_markup: getChannelAdminMarkup(),
+              });
+            }
+
+            // Commands inside the group for Admin
+            if (text.startsWith('/bind_group') && userId === ADMIN_ID) {
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                parse_mode: 'HTML',
+                text: `✅ <b>Групу «${currentGroupTitle}» (<code>${currentGroupTarget}</code>) успішно прив'язано для розіграшів SVOI!</b> 🎉`,
+              });
+              continue;
+            }
+
+            if (text.startsWith('/giveaway') && userId === ADMIN_ID) {
+              const count = activeGiveaway.participants.length;
+              const gwText =
+                `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ У ГРУПІ ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
+                `Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n` +
+                `🎁 <b>${activeGiveaway.prize}</b>\n\n` +
+                `<b>Умови участі максимально прості:</b>\n` +
+                `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
+                `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (${count})»</b> нижче!\n\n` +
+                `<i>Бот автоматично реєструє кожного учасника. Після завершення адміністратор обере переможця кнопкою нижче!</i>`;
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                text: gwText,
+                parse_mode: 'HTML',
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: `🎉 Брати участь! (${count})`, callback_data: 'gw_join_gw_active' }],
+                    [{ text: '👑 Вибрати переможця [Тільки Адмін]', callback_data: 'gw_admin_pick_inline' }],
+                    [{ text: '💺 Забронювати місце в турі', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
+                  ],
+                },
+              });
+              continue;
+            }
+
+            // Ignore regular chat messages in the group so the bot doesn't spam the group
+            if (!text.startsWith('/start@') && !text.startsWith('/menu@')) {
+              continue;
+            }
+          }
 
           // Handle shared contact (request_contact=True) in Step 3 of booking
           if (msg.contact) {
@@ -583,21 +677,37 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
-          // Check if user forwarded a post from their private channel
+          // Check if user forwarded a post from their private channel or group
           const fwdChat = msg.forward_origin?.chat || msg.forward_from_chat;
-          if (fwdChat && (fwdChat.type === 'channel' || fwdChat.type === 'supergroup')) {
-            currentChannelTarget = String(fwdChat.id);
-            chatSessions[chatId] = { mode: null };
-            await tgApi('sendMessage', {
-              chat_id: chatId,
-              parse_mode: 'HTML',
-              text:
-                `✅ <b>Закритий канал успішно розпізнано та прив'язано!</b> 🎉\n\n` +
-                `📢 Назва: <b>${fwdChat.title || 'Канал SVOI'}</b>\n` +
-                `🆔 Числовий ID: <code>${currentChannelTarget}</code>\n\n` +
-                `Тепер натискайте «🎁 Запустити новий РОЗІГРАШ» — пости підуть прямо в ваш канал!`,
-              reply_markup: getChannelAdminMarkup(),
-            });
+          if (fwdChat && (fwdChat.type === 'channel' || fwdChat.type === 'supergroup' || fwdChat.type === 'group')) {
+            if (fwdChat.type === 'channel' && session.mode !== 'waiting_group_id') {
+              currentChannelTarget = String(fwdChat.id);
+              chatSessions[chatId] = { mode: null };
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                parse_mode: 'HTML',
+                text:
+                  `✅ <b>Закритий канал успішно розпізнано та прив'язано!</b> 🎉\n\n` +
+                  `📢 Назва: <b>${fwdChat.title || 'Канал SVOI'}</b>\n` +
+                  `🆔 Числовий ID: <code>${currentChannelTarget}</code>\n\n` +
+                  `Тепер натискайте «📢 Опублікувати розіграш у КАНАЛІ» — пости підуть прямо в ваш канал!`,
+                reply_markup: getChannelAdminMarkup(),
+              });
+            } else {
+              currentGroupTarget = String(fwdChat.id);
+              currentGroupTitle = fwdChat.title || 'Група SVOI Travel';
+              chatSessions[chatId] = { mode: null };
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                parse_mode: 'HTML',
+                text:
+                  `✅ <b>Групу успішно розпізнано та прив'язано!</b> 👥🎉\n\n` +
+                  `💬 Назва: <b>${currentGroupTitle}</b>\n` +
+                  `🆔 Числовий ID групи: <code>${currentGroupTarget}</code>\n\n` +
+                  `Тепер натискайте «👥 Опублікувати розіграш у ГРУПІ» або «🚀 Миттєвий пост розіграшу в ГРУПУ»!`,
+                reply_markup: getChannelAdminMarkup(),
+              });
+            }
             continue;
           }
 
@@ -640,15 +750,23 @@ async function startLiveTelegramBotPolling() {
 
           if (text.startsWith('/channel')) {
             chatSessions[chatId] = { mode: null };
+            const grpStatus = currentGroupTarget
+              ? `<code>${currentGroupTarget}</code> (${currentGroupTitle}) ✅`
+              : `<i>ще не прив'язана (напишіть будь-яке повідомлення в групі з ботом)</i>`;
             await tgApi('sendMessage', {
               chat_id: chatId,
               parse_mode: 'HTML',
               text:
-                `📢 <b>Центр керування Telegram-каналом SVOI Travel</b>\n\n` +
-                `🎯 Цільовий канал: <code>${currentChannelTarget}</code>\n` +
-                `🎁 Активний розіграш: <b>${activeGiveaway.prize}</b>\n` +
-                `👥 Учасників: <b>${activeGiveaway.participants.length}</b>\n\n` +
-                `💡 <i>Якщо ваш канал приватний (за посиланням t.me/+...), просто перешліть сюди будь-який пост із каналу — бот автоматично збереже його числовий ID (-100...)!</i>`,
+                `📢 <b>Центр керування Каналом та Групою SVOI Travel [Адмін-панель]</b>\n\n` +
+                `👥 <b>Цільова ГРУПА:</b> ${grpStatus}\n` +
+                `📢 <b>Цільовий КАНАЛ:</b> <code>${currentChannelTarget}</code>\n` +
+                `🎁 <b>Активний розіграш:</b> <b>${activeGiveaway.prize}</b>\n` +
+                `🙋‍♂️ <b>Учасників зареєстровано:</b> <b>${activeGiveaway.participants.length}</b>\n` +
+                (activeGiveaway.winner
+                  ? `🏆 <b>Обраний переможець:</b> <b>${activeGiveaway.winner.first_name} (${activeGiveaway.winner.username})</b>\n\n`
+                  : `\n`) +
+                `<blockquote>💡 <b>Чому розіграш міг не виходити в групі раніше?</b>\n` +
+                `Закрита група за посиланням <code>t.me/+...</code> вимагає числового ID (<code>-100...</code>). Тепер додана окрема плашка <b>«👥 Опублікувати розіграш у ГРУПІ»</b> та кнопка <b>«🏆 Обрати переможця розіграшу [Адмін]»</b> з публікацією результатів у групу!</blockquote>`,
               reply_markup: getChannelAdminMarkup(),
             });
             continue;
@@ -666,10 +784,37 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
-          if (session.mode === 'waiting_gw_prize' && text) {
+          if (session.mode === 'waiting_group_id' && text) {
+            chatSessions[chatId] = { mode: null };
+            if (text.includes('t.me/+')) {
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                parse_mode: 'HTML',
+                text:
+                  `⚠️ <b>Ви надіслали запрошувальне посилання (t.me/+...)!</b>\n\n` +
+                  `Telegram Bot API не приймає посилання <code>t.me/+...</code> замість ID. Щоб прив'язати групу за 2 секунди:\n` +
+                  `1️⃣ Переконайтеся, що бот <b>@Svoi_TravelEU_bot</b> доданий у вашу групу.\n` +
+                  `2️⃣ <b>Напишіть у групі будь-яке повідомлення</b> (або команду <code>/bind_group</code> чи <code>/giveaway</code>) — бот миттєво сам визначить числовий ID <code>-100...</code> вашої групи!`,
+                reply_markup: getChannelAdminMarkup(),
+              });
+              continue;
+            }
+            currentGroupTarget = text;
+            await tgApi('sendMessage', {
+              chat_id: chatId,
+              parse_mode: 'HTML',
+              text: `✅ <b>Цільову групу збережено:</b> <code>${currentGroupTarget}</code>`,
+              reply_markup: getChannelAdminMarkup(),
+            });
+            continue;
+          }
+
+          if ((session.mode === 'waiting_gw_prize' || session.mode === 'waiting_gw_prize_group') && text) {
+            const isGroupTarget = session.mode === 'waiting_gw_prize_group';
             chatSessions[chatId] = { mode: null };
             activeGiveaway.prize = text;
             activeGiveaway.participants = [];
+            activeGiveaway.winner = null;
             activeGiveaway.is_active = true;
 
             const gwText =
@@ -677,19 +822,42 @@ async function startLiveTelegramBotPolling() {
               `Ми розігруємо неймовірний приз:\n` +
               `🎁 <b>${text}</b>\n\n` +
               `<b>Умови участі максимально прості:</b>\n` +
-              `1️⃣ Бути підписаним на наш офіційний канал\n` +
+              `1️⃣ Бути учасником нашої спільноти SVOI Travel\n` +
               `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (0)»</b> нижче!\n\n` +
-              `<i>Бот автоматично перевіряє підписку та рахує учасників. Переможця визначить рандом!</i>`;
+              `<i>Бот автоматично реєструє учасників. Після завершення адміністратор обере переможця кнопкою нижче!</i>`;
 
             const gwMarkup = {
               inline_keyboard: [
                 [{ text: '🎉 Брати участь! (0)', callback_data: 'gw_join_gw_active' }],
+                [{ text: '👑 Вибрати переможця [Тільки Адмін]', callback_data: 'gw_admin_pick_inline' }],
                 [{ text: '💺 Забронювати місце', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
               ],
             };
 
+            const targetChat = isGroupTarget ? currentGroupTarget : currentChannelTarget;
+            const targetLabel = isGroupTarget ? `групу ${currentGroupTitle} (${currentGroupTarget || 'не прив’язана'})` : `канал ${currentChannelTarget}`;
+
+            if (!targetChat) {
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                parse_mode: 'HTML',
+                text:
+                  `⚠️ <b>Група ще не прив'язана числовим ID!</b>\n\n` +
+                  `Оскільки ваша група закрита (за посиланням <code>t.me/+...</code>), просто <b>напишіть у вашій групі будь-яке слово або команду <code>/giveaway</code></b> (бот має бути учасником/адміном групи) — бот за 1 секунду запам'ятає ID групи та опублікує розіграш!\n\n` +
+                  `👇 А поки ось ваша готова картка розіграшу (її також можна переслати або протестувати тут):`,
+                reply_markup: getChannelAdminMarkup(),
+              });
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                text: gwText,
+                parse_mode: 'HTML',
+                reply_markup: gwMarkup,
+              });
+              continue;
+            }
+
             const pubRes: any = await tgApi('sendMessage', {
-              chat_id: currentChannelTarget,
+              chat_id: targetChat,
               text: gwText,
               parse_mode: 'HTML',
               reply_markup: gwMarkup,
@@ -699,7 +867,9 @@ async function startLiveTelegramBotPolling() {
               await tgApi('sendMessage', {
                 chat_id: chatId,
                 parse_mode: 'HTML',
-                text: `✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в канал <code>${currentChannelTarget}</code>!</b> 🎉`,
+                text:
+                  `✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в ${targetLabel}!</b> 🎉\n\n` +
+                  `Учасники вже можуть тиснути <b>«🎉 Брати участь!»</b>, а ви в будь-який момент можете натиснути <b>«👑 Вибрати переможця [Тільки Адмін]»</b> прямо під постом у групі або тут у панелі!`,
                 reply_markup: getChannelAdminMarkup(),
               });
             } else {
@@ -707,10 +877,17 @@ async function startLiveTelegramBotPolling() {
                 chat_id: chatId,
                 parse_mode: 'HTML',
                 text:
-                  `⚠️ <b>Помилка публікації в <code>${currentChannelTarget}</code>:</b>\n` +
+                  `⚠️ <b>Не вдалося опублікувати в <code>${targetChat}</code>:</b>\n` +
                   `<code>${pubRes.description || 'chat not found'}</code>\n\n` +
-                  `Перешліть сюди в бот будь-який пост зі свого каналу — бот миттєво збереже числовий ID <code>-100...</code>!`,
+                  `💡 <b>Як виправити за 5 секунд:</b>\n` +
+                  `Переконайтеся, що бот @Svoi_TravelEU_bot доданий у вашу групу/канал як учасник або адміністратор, і напишіть у групі команду <code>/giveaway</code> або будь-яке повідомлення — бот автоматично збереже числовий ID <code>-100...</code>!`,
                 reply_markup: getChannelAdminMarkup(),
+              });
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                text: gwText,
+                parse_mode: 'HTML',
+                reply_markup: gwMarkup,
               });
             }
             continue;
@@ -723,7 +900,21 @@ async function startLiveTelegramBotPolling() {
           const userId: number = cb.from?.id || 0;
           const cbData: string = cb.data || '';
 
+          // Auto-capture group ID if callback was clicked inside a group/supergroup
+          if (cb.message?.chat && (cb.message.chat.type === 'group' || cb.message.chat.type === 'supergroup')) {
+            currentGroupTarget = String(cb.message.chat.id);
+            currentGroupTitle = cb.message.chat.title || 'Група SVOI Travel';
+          }
+
           if (cbData.startsWith('gw_join_')) {
+            if (!activeGiveaway.is_active) {
+              await tgApi('answerCallbackQuery', {
+                callback_query_id: cb.id,
+                text: '⏳ Цей розіграш уже завершено! Переможця визначено.',
+                show_alert: true,
+              });
+              continue;
+            }
             const exists = activeGiveaway.participants.some((p) => p.user_id === userId);
             if (!exists) {
               activeGiveaway.participants.push({
@@ -736,8 +927,8 @@ async function startLiveTelegramBotPolling() {
             await tgApi('answerCallbackQuery', {
               callback_query_id: cb.id,
               text: exists
-                ? `✅ Ви вже зареєстровані у розіграші!`
-                : `🎉 Вітаємо! Ви успішно зареєстровані! Учасників: ${count}`,
+                ? `✅ Ви вже зареєстровані у розіграші! Усього учасників: ${count}`
+                : `🎉 Вітаємо, ${cb.from?.first_name || 'Мандрівник'}! Ви успішно зареєстровані в розіграші! Ваш номер: #${count}`,
               show_alert: true,
             });
             if (chatId && msgId) {
@@ -747,7 +938,60 @@ async function startLiveTelegramBotPolling() {
                 reply_markup: {
                   inline_keyboard: [
                     [{ text: `🎉 Брати участь! (${count})`, callback_data: 'gw_join_gw_active' }],
+                    [{ text: '👑 Вибрати переможця [Тільки Адмін]', callback_data: 'gw_admin_pick_inline' }],
                     [{ text: '💺 Забронювати місце', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
+                  ],
+                },
+              });
+            }
+            continue;
+          }
+
+          // Inline Admin-only button right on the giveaway post in the Group/Channel
+          if (cbData === 'gw_admin_pick_inline') {
+            if (userId !== ADMIN_ID) {
+              await tgApi('answerCallbackQuery', {
+                callback_query_id: cb.id,
+                text: '⛔ Ця кнопка доступна виключно для адміністратора клубу SVOI Travel!',
+                show_alert: true,
+              });
+              continue;
+            }
+
+            const pool =
+              activeGiveaway.participants.length > 0
+                ? activeGiveaway.participants
+                : [
+                    { user_id: 1, username: '@alex_traveler', first_name: 'Олександр' },
+                    { user_id: 2, username: '@elena_voyage', first_name: 'Олена' },
+                  ];
+            const winner = pool[Math.floor(Math.random() * pool.length)];
+            activeGiveaway.winner = winner;
+            activeGiveaway.is_active = false;
+
+            await tgApi('answerCallbackQuery', {
+              callback_query_id: cb.id,
+              text: `🏆 Переможця обрано: ${winner.first_name} (${winner.username})! Опубліковано в чаті!`,
+              show_alert: true,
+            });
+
+            const winText =
+              `🎊🏆 <b>УВАГА! ОФІЦІЙНІ ПІДСУМКИ РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n\n` +
+              `🎁 <b>Приз:</b> ${activeGiveaway.prize}\n` +
+              `👥 <b>Усього учасників:</b> ${pool.length}\n\n` +
+              `✨ <b>Переможцем стає:</b>\n` +
+              `🥳 <b>${winner.first_name} (${winner.username})!</b> 🎉🎉🎉\n\n` +
+              `Щиро вітаємо з перемогою! Напишіть адміністратору @SVOI_travel_admin для отримання вашого призу! 🚐✨`;
+
+            if (chatId) {
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                text: winText,
+                parse_mode: 'HTML',
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: '💬 Написати організатору (@SVOI_travel_admin)', url: 'https://t.me/SVOI_travel_admin' }],
+                    [{ text: '🗺 Напрямки та дати поїздок', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
                   ],
                 },
               });
@@ -1058,24 +1302,115 @@ async function startLiveTelegramBotPolling() {
             });
           } else if (cbData === 'cb_adm_channel_menu') {
             chatSessions[chatId] = { mode: null };
+            const grpStatus = currentGroupTarget
+              ? `<code>${currentGroupTarget}</code> (${currentGroupTitle}) ✅`
+              : `<i>не прив'язана (напишіть будь-яке повідомлення в групі з ботом)</i>`;
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `📢 <b>Центр керування Telegram-каналом SVOI Travel</b>\n\n` +
-                `🎯 Цільовий канал: <code>${currentChannelTarget}</code>\n` +
-                `🎁 Поточний розіграш: <b>${activeGiveaway.prize}</b>\n` +
-                `👥 Учасників: <b>${activeGiveaway.participants.length}</b>\n\n` +
-                `Оберіть дію:`,
+              `📢 <b>Центр керування Каналом та Групою SVOI Travel [Адмін]</b>\n\n` +
+                `👥 <b>Цільова ГРУПА:</b> ${grpStatus}\n` +
+                `📢 <b>Цільовий КАНАЛ:</b> <code>${currentChannelTarget}</code>\n` +
+                `🎁 <b>Поточний розіграш:</b> <b>${activeGiveaway.prize}</b>\n` +
+                `🙋‍♂️ <b>Учасників:</b> <b>${activeGiveaway.participants.length}</b>\n` +
+                (activeGiveaway.winner
+                  ? `🏆 <b>Обраний переможець:</b> <b>${activeGiveaway.winner.first_name} (${activeGiveaway.winner.username})</b>\n\n`
+                  : `\n`) +
+                `Оберіть дію на плашці адміністратора:`,
               getChannelAdminMarkup(),
             );
+          } else if (cbData === 'cb_adm_gw_new_group') {
+            chatSessions[chatId] = { mode: 'waiting_gw_prize_group' };
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `👥 <b>Запуск нового РОЗІГРАШУ в ГРУПУ (${currentGroupTarget || currentGroupTitle})</b>\n\n` +
+                `Напишіть у відповідь: <b>який приз розігрується?</b>\n` +
+                `<i>Наприклад: Безкоштовне місце в турі до Парижа 🥐🗼</i>\n\n` +
+                `Бот одразу опублікує розіграш у групу з кнопками <b>«🎉 Брати участь!»</b> та <b>«👑 Вибрати переможця [Тільки Адмін]»</b>!`,
+              {
+                inline_keyboard: [
+                  [{ text: '🚀 Опублікувати поточний розіграш у ГРУПУ зараз', callback_data: 'cb_adm_gw_pub_group_now' }],
+                  [{ text: '🔙 Назад в меню', callback_data: 'cb_adm_channel_menu' }],
+                ],
+              },
+            );
+          } else if (cbData === 'cb_adm_gw_pub_group_now') {
+            activeGiveaway.is_active = true;
+            const count = activeGiveaway.participants.length;
+            const gwText =
+              `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ У ГРУПІ ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
+              `Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n` +
+              `🎁 <b>${activeGiveaway.prize}</b>\n\n` +
+              `<b>Умови участі максимально прості:</b>\n` +
+              `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
+              `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (${count})»</b> нижче!\n\n` +
+              `<i>Бот автоматично рахує учасників. Після завершення адміністратор обере переможця кнопкою нижче!</i>`;
+
+            const gwMarkup = {
+              inline_keyboard: [
+                [{ text: `🎉 Брати участь! (${count})`, callback_data: 'gw_join_gw_active' }],
+                [{ text: '👑 Вибрати переможця [Тільки Адмін]', callback_data: 'gw_admin_pick_inline' }],
+                [{ text: '💺 Забронювати місце', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
+              ],
+            };
+
+            if (!currentGroupTarget) {
+              await smartEditMessage(
+                chatId,
+                msgId,
+                hasPhoto,
+                `⚠️ <b>Група ще не прив'язана числовим ID!</b>\n\n` +
+                  `Оскільки ваша група використовує закрите посилання <code>https://t.me/+J50liyDUHPgzYTQy</code>, Telegram Bot API вимагає числовий ID групи (<code>-100...</code>).\n\n` +
+                  `👉 <b>Як прив'язати за 2 секунди:</b>\n` +
+                  `1️⃣ Додайте бота <b>@Svoi_TravelEU_bot</b> у вашу групу.\n` +
+                  `2️⃣ Напишіть у групі будь-яке повідомлення або команду <code>/giveaway</code> — бот миттєво сам визначить ID групи й опублікує розіграш!\n\n` +
+                  `👇 Нижче також надіслано готову картку розіграшу з активними кнопками:`,
+                getChannelAdminMarkup(),
+              );
+              await tgApi('sendMessage', {
+                chat_id: chatId,
+                text: gwText,
+                parse_mode: 'HTML',
+                reply_markup: gwMarkup,
+              });
+            } else {
+              const pubRes: any = await tgApi('sendMessage', {
+                chat_id: currentGroupTarget,
+                text: gwText,
+                parse_mode: 'HTML',
+                reply_markup: gwMarkup,
+              });
+              if (pubRes.ok) {
+                await smartEditMessage(
+                  chatId,
+                  msgId,
+                  hasPhoto,
+                  `✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в групу «${currentGroupTitle}» (<code>${currentGroupTarget}</code>)!</b> 👥🎉\n\n` +
+                    `Коли всі учасники натиснуть «🎉 Брати участь!», натисніть кнопку <b>«👑 Вибрати переможця [Тільки Адмін]»</b> прямо під постом у групі або тут у панелі!`,
+                  getChannelAdminMarkup(),
+                );
+              } else {
+                await smartEditMessage(
+                  chatId,
+                  msgId,
+                  hasPhoto,
+                  `⚠️ <b>Не вдалося опублікувати в групу <code>${currentGroupTarget}</code>:</b>\n` +
+                    `<code>${pubRes.description || 'перевірте права бота в групі'}</code>\n\n` +
+                    `Переконайтеся, що бот @Svoi_TravelEU_bot є учасником/адміністратором групи, та напишіть у групі <code>/giveaway</code>.`,
+                  getChannelAdminMarkup(),
+                );
+              }
+            }
           } else if (cbData === 'cb_adm_gw_new') {
             chatSessions[chatId] = { mode: 'waiting_gw_prize' };
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `🎁 <b>Запуск нового РОЗІГРАШУ в канал <code>${currentChannelTarget}</code></b>\n\n` +
+              `📢 <b>Запуск нового РОЗІГРАШУ в КАНАЛ <code>${currentChannelTarget}</code></b>\n\n` +
                 `Напишіть у відповідь: <b>який приз розігрується?</b>\n` +
                 `<i>Наприклад: Безкоштовне місце в турі до Парижа 🥐🗼</i>`,
               {
@@ -1178,6 +1513,7 @@ async function startLiveTelegramBotPolling() {
               ],
             });
           } else if (cbData === 'cb_adm_gw_pick') {
+            if (userId !== ADMIN_ID) continue;
             const pool =
               activeGiveaway.participants.length > 0
                 ? activeGiveaway.participants
@@ -1186,21 +1522,100 @@ async function startLiveTelegramBotPolling() {
                     { user_id: 2, username: '@elena_voyage', first_name: 'Олена' },
                   ];
             const winner = pool[Math.floor(Math.random() * pool.length)];
-            const winText =
-              `🎊🏆 <b>ПІДСУМКИ РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n\n` +
-              `Приз: 🎁 <b>${activeGiveaway.prize}</b>\n` +
-              `🥳 <b>ПЕРЕМОЖЕЦЬ: ${winner.first_name} (${winner.username})!</b> 🎉\n\n` +
-              `Вітаємо! Менеджер клубу @SVOI_travel_admin зв'яжеться з вами для вручення сертифіката!`;
-            await tgApi('sendMessage', {
-              chat_id: currentChannelTarget,
-              text: winText,
-              parse_mode: 'HTML',
+            activeGiveaway.winner = winner;
+            activeGiveaway.is_active = false;
+
+            const previewCard =
+              `🏆 <b>ПЕРЕМОЖЦЯ РОЗІГРАШУ ОБРАНО [Панель Адміна]!</b> 🎉\n\n` +
+              `🎁 <b>Приз:</b> ${activeGiveaway.prize}\n` +
+              `👥 <b>Усього учасників:</b> ${pool.length}\n` +
+              `🥳 <b>Переможець:</b> <b>${winner.first_name} (${winner.username})</b>\n\n` +
+              `👇 <b>Куди опублікувати офіційний пост із вітанням переможця?</b>`;
+
+            await smartEditMessage(chatId, msgId, hasPhoto, previewCard, {
+              inline_keyboard: [
+                [{ text: '👥 Опублікувати переможця в ГРУПІ', callback_data: 'cb_adm_pub_winner_group' }],
+                [{ text: '📢 Опублікувати переможця в КАНАЛІ', callback_data: 'cb_adm_pub_winner_channel' }],
+                [{ text: '🔥 Опублікувати І В ГРУПІ, І В КАНАЛІ', callback_data: 'cb_adm_pub_winner_both' }],
+                [{ text: '🔄 Переобрати іншого переможця', callback_data: 'cb_adm_gw_pick' }],
+                [{ text: '🔙 До панелі /channel', callback_data: 'cb_adm_channel_menu' }],
+              ],
             });
+          } else if (
+            cbData === 'cb_adm_pub_winner_group' ||
+            cbData === 'cb_adm_pub_winner_channel' ||
+            cbData === 'cb_adm_pub_winner_both'
+          ) {
+            if (userId !== ADMIN_ID) continue;
+            const pool =
+              activeGiveaway.participants.length > 0
+                ? activeGiveaway.participants
+                : [
+                    { user_id: 1, username: '@alex_traveler', first_name: 'Олександр' },
+                    { user_id: 2, username: '@elena_voyage', first_name: 'Олена' },
+                  ];
+            const winner = activeGiveaway.winner || pool[Math.floor(Math.random() * pool.length)];
+            activeGiveaway.winner = winner;
+
+            const winText =
+              `🎊🏆 <b>УВАГА! ОФІЦІЙНІ ПІДСУМКИ РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n\n` +
+              `🎁 <b>Приз:</b> ${activeGiveaway.prize}\n` +
+              `👥 <b>Усього брало участь:</b> ${pool.length} учасників\n\n` +
+              `✨ <b>Генератор випадкових чисел обрав переможця:</b>\n` +
+              `🥳 <b>ПЕРЕМОЖЕЦЬ: ${winner.first_name} (${winner.username})!</b> 🎉🎉🎉\n\n` +
+              `Щиро вітаємо з перемогою! Напишіть організатору @SVOI_travel_admin для отримання сертифіката! 🚐✨`;
+
+            const winMarkup = {
+              inline_keyboard: [
+                [{ text: '💬 Написати організатору (@SVOI_travel_admin)', url: 'https://t.me/SVOI_travel_admin' }],
+                [{ text: '🗺 Напрямки та дати поїздок', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
+              ],
+            };
+
+            const resultsLog: string[] = [];
+
+            if (cbData === 'cb_adm_pub_winner_group' || cbData === 'cb_adm_pub_winner_both') {
+              if (currentGroupTarget) {
+                const gRes: any = await tgApi('sendMessage', {
+                  chat_id: currentGroupTarget,
+                  text: winText,
+                  parse_mode: 'HTML',
+                  reply_markup: winMarkup,
+                });
+                resultsLog.push(
+                  gRes.ok
+                    ? `✅ Опубліковано в <b>ГРУПІ «${currentGroupTitle}»</b> (<code>${currentGroupTarget}</code>)`
+                    : `⚠️ Помилка публікації в групу <code>${currentGroupTarget}</code>: ${gRes.description || 'перевірте права бота'}`,
+                );
+              } else {
+                resultsLog.push(
+                  `⚠️ Група ще не прив'язана числовим ID (напишіть будь-яке повідомлення в групі з ботом або <code>/bind_group</code>)`,
+                );
+              }
+            }
+
+            if (cbData === 'cb_adm_pub_winner_channel' || cbData === 'cb_adm_pub_winner_both') {
+              const cRes: any = await tgApi('sendMessage', {
+                chat_id: currentChannelTarget,
+                text: winText,
+                parse_mode: 'HTML',
+                reply_markup: winMarkup,
+              });
+              resultsLog.push(
+                cRes.ok
+                  ? `✅ Опубліковано в <b>КАНАЛІ</b> (<code>${currentChannelTarget}</code>)`
+                  : `⚠️ Помилка публікації в канал <code>${currentChannelTarget}</code>: ${cRes.description || 'перевірте права бота'}`,
+              );
+            }
+
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `✅ <b>Переможця обрано та опубліковано:</b> ${winner.first_name} (${winner.username})`,
+              `🏆 <b>Звіт про публікацію переможця ${winner.first_name} (${winner.username}):</b>\n\n` +
+                resultsLog.join('\n\n') +
+                `\n\n👇 <i>Копія поста переможця:</i>\n\n` +
+                winText,
               getChannelAdminMarkup(),
             );
           } else if (cbData === 'cb_adm_send_quiz') {
@@ -1217,6 +1632,22 @@ async function startLiveTelegramBotPolling() {
               ? `✅ <b>Інтерактивний Telegram Quiz успішно опубліковано в <code>${currentChannelTarget}</code>!</b> 🧠🎉`
               : `⚠️ Не вдалося опублікувати квіз у <code>${currentChannelTarget}</code>: <code>${pollRes.description || 'перевірте права бота в каналі'}</code>`;
             await smartEditMessage(chatId, msgId, hasPhoto, statusMsg, getChannelAdminMarkup());
+          } else if (cbData === 'cb_adm_set_group') {
+            chatSessions[chatId] = { mode: 'waiting_group_id' };
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `⚙️ <b>Прив'язка закритої ГРУПИ для публікації розіграшів та переможців</b>\n\n` +
+                `Поточна група: <code>${currentGroupTarget || 'ще не прив’язана'}</code>\n\n` +
+                `👉 <b>Як прив'язати групу (3 прості способи):</b>\n` +
+                `1️⃣ <b>Автоматично:</b> просто напишіть будь-яке повідомлення або команду <code>/bind_group</code> у вашій групі, де доданий бот @Svoi_TravelEU_bot!\n` +
+                `2️⃣ <b>Пересиланням:</b> перешліть сюди будь-яке повідомлення з групи.\n` +
+                `3️⃣ <b>Вручну:</b> надішліть числовий ID групи (починається з <code>-100...</code>).`,
+              {
+                inline_keyboard: [[{ text: '🔙 Назад в меню', callback_data: 'cb_adm_channel_menu' }]],
+              },
+            );
           } else if (cbData === 'cb_adm_set_channel') {
             chatSessions[chatId] = { mode: 'waiting_channel_id' };
             await smartEditMessage(

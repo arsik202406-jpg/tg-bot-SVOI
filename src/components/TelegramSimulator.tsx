@@ -17,7 +17,6 @@ interface TelegramSimulatorProps {
   leads?: LeadItem[];
 }
 
-const BOT_TOKEN = "8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM";
 const MANAGER_URL = "https://t.me/SVOI_travel_admin";
 const CHANNEL_URL = "https://t.me/+Flt_2r6vi3U4ZDg6";
 const GROUP_URL = "https://t.me/+J50liyDUHPgzYTQy";
@@ -348,26 +347,28 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       return;
     }
 
-    if (data === 'cb_adm_gw_new') {
+    if (data === 'cb_adm_gw_new' || data === 'cb_adm_gw_new_group') {
+      const isGroup = data === 'cb_adm_gw_new_group';
+      const targetName = isGroup ? 'ГРУПІ «Клуб мандрівників SVOI» 👥' : 'КАНАЛІ SVOI Travel 📢';
       const gwText = 
-        `🎁 <b>Запуск нового РОЗІГРАШУ в каналі</b>\n\n` +
+        `🎉🔥 <b>РОЗІГРАШ ОПУБЛІКОВАНО В ${targetName}!</b> 🌍✨\n\n` +
         `Ми розігруємо:\n` +
-        `🏆 <b>Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼</b>\n\n` +
+        `🎁 <b>Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼</b>\n\n` +
         `<b>Умови участі для підписників:</b>\n` +
         `1️⃣ Бути підписаним на офіційний канал SVOI\n` +
         `2️⃣ Бути учасником групи клубу\n` +
-        `3️⃣ Натиснути кнопку «🎉 Брати участь!»\n\n` +
-        `<i>Бот автоматично перевіряє підписку через get_chat_member та рахує учасників у реальному часі!</i>`;
+        `3️⃣ Натиснути кнопку «🎉 Брати участь!» нижче\n\n` +
+        `<blockquote>👑 <b>Плашка Адміністратора:</b> нижче під постом розміщена кнопка <b>«👑 Вибрати переможця [Тільки Адмін]»</b> — звичайні учасники не можуть її натиснути, а адмін після завершення обирає нею переможця і публікує підсумки в групу!</blockquote>`;
 
       const keyboard: InlineBtn[][] = [
         [
           { text: `🎉 Брати участь! (${giveawayParticipantsCount})`, callbackData: 'cb_sim_join_gw' }
         ],
         [
-          { text: '🏆 4. Вибрати переможця розіграшу', callbackData: 'cb_adm_gw_pick' }
+          { text: '👑 Вибрати переможця [Тільки Адмін]', callbackData: 'cb_adm_gw_pick' }
         ],
         [
-          { text: '🔙 Назад до керування каналом', callbackData: 'cb_adm_channel_menu' }
+          { text: '🔙 Назад до керування каналом і групою', callbackData: 'cb_adm_channel_menu' }
         ]
       ];
 
@@ -378,27 +379,27 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     if (data === 'cb_sim_join_gw') {
       const newCount = giveawayParticipantsCount + 1;
       setGiveawayParticipantsCount(newCount);
-      showToast("🎉 Ви успішно зареєстровані в розіграші! Підписка: OK ✅");
+      showToast("🎉 Ви успішно зареєстровані в розіграші! Учасників: " + newCount + " ✅");
 
       const gwText = 
-        `🎁 <b>Запуск нового РОЗІГРАШУ в каналі</b>\n\n` +
+        `🎉🔥 <b>РОЗІГРАШ У ГРУПІ ТА КАНАЛІ SVOI TRAVEL!</b> 🌍✨\n\n` +
         `Ми розігруємо:\n` +
-        `🏆 <b>Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼</b>\n\n` +
+        `🎁 <b>Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼</b>\n\n` +
         `<b>Умови участі для підписників:</b>\n` +
         `1️⃣ Бути підписаним на офіційний канал SVOI\n` +
         `2️⃣ Бути учасником групи клубу\n` +
         `3️⃣ Натиснути кнопку «🎉 Брати участь!»\n\n` +
-        `<i>Бот автоматично перевіряє підписку через get_chat_member та рахує учасників у реальному часі!</i>`;
+        `<i>Бот автоматично реєструє учасників у реальному часі! Коли всі візьмуть участь, натисніть кнопку вибору переможця для адміна нижче:</i>`;
 
       const keyboard: InlineBtn[][] = [
         [
           { text: `🎉 Брати участь! (${newCount})`, callbackData: 'cb_sim_join_gw' }
         ],
         [
-          { text: '🏆 4. Вибрати переможця розіграшу', callbackData: 'cb_adm_gw_pick' }
+          { text: '👑 Вибрати переможця [Тільки Адмін]', callbackData: 'cb_adm_gw_pick' }
         ],
         [
-          { text: '🔙 Назад до керування каналом', callbackData: 'cb_adm_channel_menu' }
+          { text: '🔙 Назад до керування каналом і групою', callbackData: 'cb_adm_channel_menu' }
         ]
       ];
 
@@ -411,13 +412,41 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       const luckyWinner = candidates[Math.floor(Math.random() * candidates.length)];
 
       const winnerPost = 
-        `🎊🏆 <b>УВАГА! ПІДСУМКИ ГРАНДІОЗНОГО РОЗІГРАШУ!</b> 🏆🎊\n\n` +
-        `Приз: 🎁 <b>Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼</b>\n` +
-        `Усього брало участь: <b>${giveawayParticipantsCount} підписників</b>\n\n` +
-        `✨ Генератор випадкових чисел обрав нашого переможця: ✨\n` +
+        `🏆 <b>ПЕРЕМОЖЦЯ РОЗІГРАШУ ОБРАНО [Панель Адміна]!</b> 🎉\n\n` +
+        `🎁 <b>Приз:</b> Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼\n` +
+        `👥 <b>Усього брало участь:</b> ${giveawayParticipantsCount} учасників\n\n` +
+        `✨ Генератор випадкових чисел обрав переможця: ✨\n` +
         `🥳 <b>ПЕРЕМОЖЕЦЬ: ${luckyWinner}</b>! 🎉🎉🎉\n\n` +
-        `Щиро вітаємо з перемогою! Менеджер клубу @SVOI_travel_admin уже зв'язується для вручення призу.\n\n` +
-        `<i>Дякуємо всім за участь! Слідкуйте за анонсами нових поїздок!</i> 🚐✨`;
+        `<blockquote>👑 <b>Керування для Адміна:</b> натисніть кнопку нижче, щоб миттєво опублікувати цей офіційний пост із вітанням переможця прямо в <b>ГРУПУ</b> або в <b>КАНАЛ</b>!</blockquote>`;
+
+      const keyboard: InlineBtn[][] = [
+        [
+          { text: '👥 Опублікувати переможця в ГРУПІ', callbackData: 'cb_adm_pub_winner_group' }
+        ],
+        [
+          { text: '📢 Опублікувати переможця в КАНАЛІ', callbackData: 'cb_adm_pub_winner_channel' }
+        ],
+        [
+          { text: '🔄 Переобрати іншого переможця', callbackData: 'cb_adm_gw_pick' }
+        ],
+        [
+          { text: '🔙 Назад до панелі /channel', callbackData: 'cb_adm_channel_menu' }
+        ]
+      ];
+
+      editLastBotMessage(winnerPost, keyboard);
+      return;
+    }
+
+    if (data === 'cb_adm_pub_winner_group' || data === 'cb_adm_pub_winner_channel') {
+      const isGroup = data === 'cb_adm_pub_winner_group';
+      showToast(isGroup ? "✅ Пост із переможцем опубліковано в ГРУПІ!" : "✅ Пост із переможцем опубліковано в КАНАЛІ!");
+      const pubText =
+        `✅ <b>ОФІЦІЙНИЙ ПОСТ ПЕРЕМОЖЦЯ УСПІШНО ОПУБЛІКОВАНО В ${isGroup ? 'ГРУПІ 👥' : 'КАНАЛІ 📢'}!</b> 🎉\n\n` +
+        `🎊🏆 <b>УВАГА! ПІДСУМКИ ГРАНДІОЗНОГО РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n` +
+        `🎁 <b>Приз:</b> Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼\n` +
+        `👥 <b>Усього учасників:</b> ${giveawayParticipantsCount}\n` +
+        `🥳 <b>Вітаємо переможця!</b> Менеджер клубу @SVOI_travel_admin уже зв'язується для вручення сертифіката! 🚐✨`;
 
       const keyboard: InlineBtn[][] = [
         [
@@ -425,11 +454,10 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
           { text: '💬 Менеджер', url: MANAGER_URL }
         ],
         [
-          { text: '🔙 Назад до каналу', callbackData: 'cb_adm_channel_menu' }
+          { text: '🔙 Назад до панелі /channel', callbackData: 'cb_adm_channel_menu' }
         ]
       ];
-
-      editLastBotMessage(winnerPost, keyboard);
+      editLastBotMessage(pubText, keyboard);
       return;
     }
 
@@ -1787,18 +1815,25 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     const text = 
       `📢 <b>Центр керування Telegram-каналом та групою SVOI Travel (/channel)</b>\n\n` +
       `👑 <b>Адміністратор ID:</b> <code>8450153980</code>\n` +
-      `📢 <b>Канал:</b> SVOI Travel EU (@Svoi_TravelEU_bot)\n` +
-      `💬 <b>Група:</b> Клуб мандрівників\n\n` +
+      `👥 <b>Група:</b> Клуб мандрівників SVOI (авто-прив'язка ID)\n` +
+      `📢 <b>Канал:</b> SVOI Travel EU (@Svoi_TravelEU_bot)\n\n` +
       `<b>Поточний стан активностей:</b>\n` +
       `• 🎁 Активний розіграш: <i>Поїздка до Парижа на 1 день 🥐</i>\n` +
-      `• 👥 Учасників у базі: <b>${giveawayParticipantsCount}</b>\n` +
-      `• 🤖 Бот є адміністратором каналу та готовий до публікації турів, вікторин та розіграшів!\n\n` +
-      `👇 <i>Оберіть дію для керування каналом:</i>`;
+      `• 👥 Учасників зареєстровано: <b>${giveawayParticipantsCount}</b>\n\n` +
+      `<blockquote>👑 <b>Плашка Адміністратора:</b> оберіть куди опублікувати розіграш (у <b>ГРУПУ</b> або в <b>КАНАЛ</b>), а після участі всіх бажаючих натисніть <b>«🏆 Вибрати переможця розіграшу [Адмін]»</b> та опублікуйте переможця в групу!</blockquote>`;
 
     const keyboard: InlineBtn[][] = [
       [
-        { text: '🎁 Запустити новий РОЗІГРАШ', callbackData: 'cb_adm_gw_new' },
-        { text: '🏆 Вибрати переможця', callbackData: 'cb_adm_gw_pick' }
+        { text: '👥 Опублікувати розіграш у ГРУПІ', callbackData: 'cb_adm_gw_new_group' }
+      ],
+      [
+        { text: '📢 Опублікувати розіграш у КАНАЛІ', callbackData: 'cb_adm_gw_new' }
+      ],
+      [
+        { text: '🏆 Вибрати переможця розіграшу [Адмін]', callbackData: 'cb_adm_gw_pick' }
+      ],
+      [
+        { text: '👥 Опублікувати переможця в ГРУПІ', callbackData: 'cb_adm_pub_winner_group' }
       ],
       [
         { text: '📢 Опублікувати тур з кнопкою', callbackData: 'cb_adm_post_tour' },

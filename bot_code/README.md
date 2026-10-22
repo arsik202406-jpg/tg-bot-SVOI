@@ -39,7 +39,7 @@ pip install -r requirements.txt
 
 4. **Перевірте налаштування в `.env`:**
 ```ini
-BOT_TOKEN=8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM
+BOT_TOKEN=ВАШ_ТОКЕН_ВІД_BOTFATHER
 ADMIN_ID=8450153980
 MANAGER_USERNAME=SVOI_travel_admin
 BOT_USERNAME=Svoi_TravelEU_bot
@@ -66,7 +66,7 @@ python bot.py
 4. Build Command: `pip install -r requirements.txt`.
 5. Start Command: `python bot.py`.
 6. В Environment Variables додайте:
-   - `BOT_TOKEN` = `8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM`
+   - `BOT_TOKEN` = `ВАШ_ТОКЕН_ВІД_BOTFATHER`
    - `ADMIN_ID` = `8450153980`
    - `PORT` = `10000` (для Web Service health check)
 

@@ -304,7 +304,7 @@ python bot.py
                 Відкрийте файл <code>.env</code> у блокноті чи редакторі коду та перевірте параметри:
               </p>
               <div className="bg-black/70 p-2.5 rounded-lg font-mono text-[11px] text-emerald-300 space-y-1">
-                <p>BOT_TOKEN=8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM</p>
+                <p>BOT_TOKEN=ВАШ_ТОКЕН_ВІД_BOTFATHER <span className="text-slate-500"># зберігайте ТІЛЬКИ у .env</span></p>
                 <p>ADMIN_ID=8450153980 <span className="text-slate-500"># ваш Telegram ID</span></p>
                 <p>MANAGER_USERNAME=SVOI_travel_admin</p>
               </div>
@@ -456,7 +456,7 @@ python bot.py
                 <p className="text-slate-300"><span className="text-slate-500">Build Command:</span> pip install -r requirements.txt</p>
                 <p className="text-slate-300"><span className="text-slate-500">Start Command:</span> python main.py</p>
                 <p className="mt-2 text-slate-400"># Environment Variables (Змінні оточення):</p>
-                <p className="text-slate-300">BOT_TOKEN = 8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM</p>
+                <p className="text-slate-300">BOT_TOKEN = &lt;ваш секретний токен у панелі Render, не у Git!&gt;</p>
                 <p className="text-slate-300">ADMIN_ID = 8450153980</p>
                 <p className="text-slate-300">MANAGER_USERNAME = SVOI_travel_admin</p>
                 <p className="text-slate-300">PORT = 10000</p>

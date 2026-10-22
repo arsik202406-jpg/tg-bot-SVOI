@@ -9,7 +9,7 @@ interface TelegramApiTesterProps {
 }
 
 export const TelegramApiTester: React.FC<TelegramApiTesterProps> = ({
-  initialToken = '8969834514:AAHl3mDZU00jncjJ52TyGTHmcs_-l5CBjPM'
+  initialToken = '8969834514:AAGg--************************ (Серверний токен)'
 }) => {
   const [token, setToken] = useState(initialToken);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -114,7 +114,7 @@ export const TelegramApiTester: React.FC<TelegramApiTesterProps> = ({
             value={token}
             onChange={(e) => setToken(e.target.value)}
             className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white outline-none focus:border-blue-500"
-            placeholder="8969834514:AAHl3m..."
+            placeholder="8969834514:AAGg--..."
           />
         </div>
         <p className="text-[11px] text-slate-400">

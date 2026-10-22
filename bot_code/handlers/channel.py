@@ -37,7 +37,9 @@ router = Router(name="channel_router")
 # Стан FSM для створення розіграшу та квізу
 class ChannelAdminStates(StatesGroup):
     waiting_for_giveaway_prize = State()
+    waiting_for_giveaway_prize_group = State()
     waiting_for_channel_id = State()
+    waiting_for_group_id = State()
 
 # Сховище активних розіграшів у пам'яті (giveaway_id -> data)
 GIVEAWAYS_DB: Dict[str, Dict[str, Any]] = {
@@ -52,14 +54,28 @@ GIVEAWAYS_DB: Dict[str, Dict[str, Any]] = {
 }
 
 CURRENT_CHANNEL_TARGET = settings.CHANNEL_CHAT_ID or "@svoi_traveleu"
+CURRENT_GROUP_TARGET = getattr(settings, "GROUP_CHAT_ID", "") or ""
+CURRENT_GROUP_TITLE = "Група SVOI Travel"
 
 def get_channel_menu_keyboard() -> InlineKeyboardMarkup:
-    """Головне меню керування каналом для адміна"""
+    """Головне меню керування каналом та групою для адміна"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🎁 Запустити новий РОЗІГРАШ", callback_data="cb_adm_gw_new"),
-                InlineKeyboardButton(text="🏆 Вибрати переможця", callback_data="cb_adm_gw_pick")
+                InlineKeyboardButton(text="👥 Опублікувати розіграш у ГРУПІ", callback_data="cb_adm_gw_new_group")
+            ],
+            [
+                InlineKeyboardButton(text="📢 Опублікувати розіграш у КАНАЛІ", callback_data="cb_adm_gw_new")
+            ],
+            [
+                InlineKeyboardButton(text="🚀 Миттєвий пост розіграшу в ГРУПУ", callback_data="cb_adm_gw_pub_group_now")
+            ],
+            [
+                InlineKeyboardButton(text="🏆 Обрати переможця розіграшу [Адмін]", callback_data="cb_adm_gw_pick")
+            ],
+            [
+                InlineKeyboardButton(text="👥 Опублікувати переможця в ГРУПІ", callback_data="cb_adm_pub_winner_group"),
+                InlineKeyboardButton(text="📢 У КАНАЛІ", callback_data="cb_adm_pub_winner_channel")
             ],
             [
                 InlineKeyboardButton(text="📢 Опублікувати тур у канал", callback_data="cb_adm_post_tour"),
@@ -69,21 +85,25 @@ def get_channel_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🚀 Опублікувати Mini App у канал", callback_data="cb_adm_post_miniapp")
             ],
             [
-                InlineKeyboardButton(text="📋 Переглянути Лист очікування", callback_data="cb_adm_waitlist"),
-                InlineKeyboardButton(text="⚙️ Змінити @канал для постів", callback_data="cb_adm_set_channel")
+                InlineKeyboardButton(text="⚙️ Прив’язати ГРУПУ", callback_data="cb_adm_set_group"),
+                InlineKeyboardButton(text="⚙️ Прив’язати КАНАЛ", callback_data="cb_adm_set_channel")
             ],
             [
+                InlineKeyboardButton(text="📋 Переглянути Лист очікування", callback_data="cb_adm_waitlist"),
                 InlineKeyboardButton(text="🔙 Повернутися в головне меню", callback_data="cb_back")
             ]
         ]
     )
 
 def get_giveaway_button(gw_id: str, count: int) -> InlineKeyboardMarkup:
-    """Кнопка для поста розіграшу в каналі з динамічним лічильником"""
+    """Кнопка для поста розіграшу в групі та каналі з динамічним лічильником і кнопкою тільки для адміна"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(text=f"🎉 Брати участь! ({count})", callback_data=f"gw_join_{gw_id}")
+            ],
+            [
+                InlineKeyboardButton(text="👑 Вибрати переможця [Тільки Адмін]", callback_data="gw_admin_pick_inline")
             ],
             [
                 InlineKeyboardButton(text="💺 Забронювати місце", url=f"https://t.me/{settings.BOT_USERNAME}?start=trips")
@@ -97,7 +117,7 @@ async def check_is_admin(user_id: int) -> bool:
 
 @router.message(Command("channel"))
 async def cmd_channel_admin(message: Message):
-    """Команда /channel — центр керування каналом для адміністратора"""
+    """Команда /channel — центр керування каналом та групою для адміністратора"""
     user_id = message.from_user.id if message.from_user else 0
     if not (await check_is_admin(user_id)):
         await message.answer("⛔ <b>Доступ заборонено!</b>\nЦей розділ доступний лише головному адміністратору клубу SVOI Travel.", parse_mode="HTML")
@@ -106,24 +126,24 @@ async def cmd_channel_admin(message: Message):
     gw = GIVEAWAYS_DB.get("gw_active", {})
     participants_count = len(gw.get("participants", []))
     prize_title = gw.get("prize", "Не призначено")
+    grp_status = f"<code>{CURRENT_GROUP_TARGET}</code> ({CURRENT_GROUP_TITLE}) ✅" if CURRENT_GROUP_TARGET else "<i>ще не прив'язана (напишіть у групі /giveaway або будь-яке слово)</i>"
 
     text = (
-        "📢 <b>Центр керування Telegram-каналом SVOI Travel</b>\n\n"
+        "📢 <b>Центр керування Каналом та Групою SVOI Travel [Адмін-панель]</b>\n\n"
         f"👑 Адміністратор ID: <code>{user_id}</code>\n"
-        f"🎯 Цільовий канал для публікацій: <code>{CURRENT_CHANNEL_TARGET}</code>\n"
-        f"📢 Посилання на канал: {settings.CHANNEL_URL}\n"
-        f"💬 Група: {settings.GROUP_URL}\n\n"
+        f"👥 Цільова ГРУПА: {grp_status}\n"
+        f"📢 Цільовий КАНАЛ: <code>{CURRENT_CHANNEL_TARGET}</code>\n\n"
         "<b>Поточний стан активностей:</b>\n"
         f"• 🎁 Активний розіграш: <i>{prize_title}</i>\n"
         f"• 👥 Учасників у базі: <b>{participants_count}</b>\n"
         f"• 📋 Заявок у листі очікування: <b>{len(WAITLIST_DATA)}</b>\n\n"
-        "Оберіть дію нижче:"
+        "Оберіть дію на плашці адміністратора нижче:"
     )
     await message.answer(text, reply_markup=get_channel_menu_keyboard(), parse_mode="HTML")
 
 @router.callback_query(F.data == "cb_adm_channel_menu")
 async def cb_channel_menu(callback: CallbackQuery):
-    """Повернення до головного меню панелі каналу"""
+    """Повернення до головного меню панелі каналу та групи"""
     await callback.answer()
     user_id = callback.from_user.id if callback.from_user else 0
     if not (await check_is_admin(user_id)):
@@ -133,18 +153,20 @@ async def cb_channel_menu(callback: CallbackQuery):
     gw = GIVEAWAYS_DB.get("gw_active", {})
     count = len(gw.get("participants", []))
     prize = gw.get("prize", "Поїздка до Парижа")
+    grp_status = f"<code>{CURRENT_GROUP_TARGET}</code> ({CURRENT_GROUP_TITLE}) ✅" if CURRENT_GROUP_TARGET else "<i>ще не прив'язана</i>"
 
     text = (
-        "📢 <b>Центр керування каналом SVOI Travel</b>\n\n"
-        f"🎯 Цільовий канал: <code>{CURRENT_CHANNEL_TARGET}</code>\n"
+        "📢 <b>Центр керування Каналом та Групою SVOI Travel</b>\n\n"
+        f"👥 Цільова ГРУПА: {grp_status}\n"
+        f"📢 Цільовий КАНАЛ: <code>{CURRENT_CHANNEL_TARGET}</code>\n"
         f"🎁 Поточний розіграш: <b>{prize}</b>\n"
         f"👥 Зареєстровано учасників: <b>{count}</b>\n"
         f"📋 У листі очікування: <b>{len(WAITLIST_DATA)} людей</b>\n\n"
-        "Оберіть команду:"
+        "Оберіть команду на плашці адміністратора:"
     )
     await callback.message.edit_text(text, reply_markup=get_channel_menu_keyboard(), parse_mode="HTML")
 
-# --- 1. ПУБЛІКАЦІЯ РОЗІГРАШУ В КАНАЛ ---
+# --- 1. ПУБЛІКАЦІЯ РОЗІГРАШУ В КАНАЛ АБО ГРУПУ ---
 @router.callback_query(F.data == "cb_adm_gw_new")
 async def cb_giveaway_new_prompt(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -153,22 +175,84 @@ async def cb_giveaway_new_prompt(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ChannelAdminStates.waiting_for_giveaway_prize)
     
     text = (
-        "🎁 <b>Запуск нового РОЗІГРАШУ прямо в канал</b>\n\n"
+        f"📢 <b>Запуск нового РОЗІГРАШУ прямо в КАНАЛ <code>{CURRENT_CHANNEL_TARGET}</code></b>\n\n"
         "Напишіть у відповідь: <b>який приз розігрується?</b>\n"
         "<i>Наприклад: «Безкоштовне місце в турі в Брюгге на 1 день 🍫»</i>\n\n"
-        "Бот автоматично оформить пост, опублікує його в канал та додасть кнопку «🎉 Брати участь! (0)»."
+        "Бот автоматично оформить пост, опублікує його в канал та додасть кнопки участі й вибору переможця."
     )
     cancel_kb = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="❌ Скасувати", callback_data="cb_adm_channel_menu")]]
     )
     await callback.message.edit_text(text, reply_markup=cancel_kb, parse_mode="HTML")
 
+@router.callback_query(F.data == "cb_adm_gw_new_group")
+async def cb_giveaway_new_group_prompt(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not (await check_is_admin(callback.from_user.id)):
+        return
+    await state.set_state(ChannelAdminStates.waiting_for_giveaway_prize_group)
+    
+    text = (
+        f"👥 <b>Запуск нового РОЗІГРАШУ прямо в ГРУПУ ({CURRENT_GROUP_TARGET or CURRENT_GROUP_TITLE})</b>\n\n"
+        "Напишіть у відповідь: <b>який приз розігрується?</b>\n"
+        "<i>Наприклад: «Безкоштовне місце в турі до Парижа 🥐🗼»</i>\n\n"
+        "Бот одразу опублікує пост у групу з кнопками «🎉 Брати участь!» та «👑 Вибрати переможця [Тільки Адмін]»!"
+    )
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Опублікувати поточний розіграш у ГРУПУ зараз", callback_data="cb_adm_gw_pub_group_now")],
+            [InlineKeyboardButton(text="❌ Скасувати", callback_data="cb_adm_channel_menu")]
+        ]
+    )
+    await callback.message.edit_text(text, reply_markup=cancel_kb, parse_mode="HTML")
+
+@router.callback_query(F.data == "cb_adm_gw_pub_group_now")
+async def cb_giveaway_pub_group_now(callback: CallbackQuery, bot: Bot):
+    await callback.answer()
+    if not (await check_is_admin(callback.from_user.id)):
+        return
+    gw = GIVEAWAYS_DB.get("gw_active", {})
+    gw["is_active"] = True
+    prize_text = gw.get("prize", "Безкоштовне місце в турі SVOI")
+    count = len(gw.get("participants", []))
+    post_text = (
+        f"🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ У ГРУПІ ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n"
+        f"Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n"
+        f"🎁 <b>{prize_text}</b>\n\n"
+        "<b>Умови участі максимально прості:</b>\n"
+        "1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n"
+        f"2️⃣ Натиснути кнопку <b>«🎉 Брати участь! ({count})»</b> нижче!\n\n"
+        "<i>Бот автоматично рахує учасників. Після завершення адміністратор обере переможця кнопкою нижче!</i>"
+    )
+    kb = get_giveaway_button("gw_active", count)
+    if CURRENT_GROUP_TARGET:
+        try:
+            await bot.send_message(chat_id=CURRENT_GROUP_TARGET, text=post_text, reply_markup=kb, parse_mode="HTML")
+            await callback.message.edit_text(
+                f"✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в групу {CURRENT_GROUP_TITLE} (<code>{CURRENT_GROUP_TARGET}</code>)!</b> 👥🎉",
+                reply_markup=get_channel_menu_keyboard(),
+                parse_mode="HTML"
+            )
+            return
+        except Exception as e:
+            logger.warning("Помилка публікації в групу %s: %s", CURRENT_GROUP_TARGET, e)
+
+    await callback.message.edit_text(
+        "⚠️ <b>Група ще не прив'язана числовим ID!</b>\n"
+        "Додайте бота @Svoi_TravelEU_bot у вашу групу та напишіть у групі будь-яке повідомлення або <code>/giveaway</code> — бот миттєво сам визначить числовий ID <code>-100...</code> вашої закритої групи!",
+        reply_markup=get_channel_menu_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.message.answer(post_text, reply_markup=kb, parse_mode="HTML")
+
 @router.message(ChannelAdminStates.waiting_for_giveaway_prize)
+@router.message(ChannelAdminStates.waiting_for_giveaway_prize_group)
 async def process_giveaway_prize(message: Message, state: FSMContext, bot: Bot):
+    current_state = await state.get_state()
+    is_group = current_state == ChannelAdminStates.waiting_for_giveaway_prize_group.state
     prize_text = message.text.strip()
     await state.clear()
 
-    # Оновлюємо базу розіграшу
     GIVEAWAYS_DB["gw_active"] = {
         "id": "gw_active",
         "prize": prize_text,
@@ -182,51 +266,51 @@ async def process_giveaway_prize(message: Message, state: FSMContext, bot: Bot):
         f"Ми розігруємо неймовірний приз:\n"
         f"🎁 <b>{prize_text}</b>\n\n"
         "<b>Умови участі максимально прості:</b>\n"
-        "1️⃣ Бути підписаним на наш офіційний канал\n"
-        "2️⃣ Бути учасником нашої групи клубу SVOI\n"
-        "3️⃣ Натиснути кнопку <b>«🎉 Брати участь! (0)»</b> нижче!\n\n"
-        "<i>Бот автоматично перевіряє підписку та рахує учасників. Переможця визначить рандом!</i>\n\n"
-        "Усім удачі! Подорожуйте разом з @Svoi_TravelEU_bot 🚐💨"
+        "1️⃣ Бути підписаним на наш офіційний канал та групу SVOI\n"
+        "2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (0)»</b> нижче!\n\n"
+        "<i>Бот автоматично рахує учасників. Після завершення адміністратор обере переможця кнопкою нижче!</i>"
     )
 
     kb = get_giveaway_button("gw_active", 0)
+    target = CURRENT_GROUP_TARGET if is_group else CURRENT_CHANNEL_TARGET
+    target_label = f"групу {CURRENT_GROUP_TITLE} ({target})" if is_group else f"канал {target}"
 
-    # 1. Спроба прямої публікації в канал через Bot API
-    channel_published = False
+    published = False
     error_reason = ""
-    target = CURRENT_CHANNEL_TARGET
     if target:
         try:
             sent_msg = await bot.send_message(chat_id=target, text=post_text, reply_markup=kb, parse_mode="HTML")
-            channel_published = True
+            published = True
             GIVEAWAYS_DB["gw_active"]["message_id"] = sent_msg.message_id
         except Exception as e:
             error_reason = str(e)
             logger.warning("Не вдалося автоматично опублікувати в %s: %s", target, e)
 
-    if channel_published:
+    if published:
         await message.answer(
-            f"✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в канал {target}!</b> 🎉\n\n"
-            "Підписники вже можуть натискати кнопку «Брати участь!». Лічильник оновлюватиметься автоматично.",
+            f"✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в {target_label}!</b> 🎉\n\n"
+            "Учасники вже можуть натискати кнопку «🎉 Брати участь!», а після завершення натисніть «👑 Вибрати переможця [Тільки Адмін]».",
             reply_markup=get_channel_menu_keyboard(),
             parse_mode="HTML"
         )
     else:
         await message.answer(
-            f"⚠️ <b>Не вдалося опублікувати в канал <code>{target}</code>!</b>\n"
-            f"Причина Telegram API: <code>{error_reason or 'chat not found'}</code>\n\n"
-            "💡 <b>Як виправити за 10 секунд (для приватного каналу):</b>\n"
-            "1️⃣ Додайте бота @Svoi_TravelEU_bot в <b>Адміністратори</b> вашого каналу з правом «Публікація повідомлень».\n"
-            "2️⃣ Натисніть нижче <b>«⚙️ Змінити @канал для постів»</b> і просто <b>перешліть сюди будь-який пост із вашого каналу</b> (або напишіть будь-який пост у каналі) — бот автоматично визначить числовий ID <code>-100...</code> вашого закритого каналу!\n\n"
+            f"⚠️ <b>Не вдалося опублікувати в <code>{target or 'не прив’язано'}</code>!</b>\n"
+            f"Причина: <code>{error_reason or 'напишіть будь-яке повідомлення в групі з ботом для авто-прив’язки ID -100...'}</code>\n\n"
             "Ось готовий пост розіграшу:",
             reply_markup=get_channel_menu_keyboard(),
             parse_mode="HTML"
         )
         await message.answer(post_text, reply_markup=kb, parse_mode="HTML")
 
-# --- 2. ОБРОБКА НАТИСКАННЯ «БРАТИ УЧАСТЬ!» У КАНАЛІ ---
+# --- 2. ОБРОБКА НАТИСКАННЯ «БРАТИ УЧАСТЬ!» У ГРУПІ ТА КАНАЛІ ---
 @router.callback_query(F.data.startswith("gw_join_"))
 async def cb_giveaway_join(callback: CallbackQuery, bot: Bot):
+    global CURRENT_GROUP_TARGET, CURRENT_GROUP_TITLE
+    if callback.message and callback.message.chat and callback.message.chat.type in ["group", "supergroup"]:
+        CURRENT_GROUP_TARGET = str(callback.message.chat.id)
+        CURRENT_GROUP_TITLE = callback.message.chat.title or "Група SVOI Travel"
+
     user = callback.from_user
     gw = GIVEAWAYS_DB.get("gw_active")
     
@@ -240,21 +324,6 @@ async def cb_giveaway_join(callback: CallbackQuery, bot: Bot):
         await callback.answer(f"✅ Ви вже берете участь! Ваш номер у списку: #{user_num}", show_alert=True)
         return
 
-    # Перевірка членства в каналі через get_chat_member
-    is_subscribed = True
-    try:
-        if CURRENT_CHANNEL_TARGET:
-            member = await bot.get_chat_member(chat_id=CURRENT_CHANNEL_TARGET, user_id=user.id)
-            if member.status in ['left', 'kicked']:
-                is_subscribed = False
-    except Exception as e:
-        logger.info("Subscription check skipped or invite link: %s", e)
-        is_subscribed = True
-
-    if not is_subscribed:
-        await callback.answer("⚠️ Будь ласка, спочатку підпишіться на наш канал, щоб взяти участь!", show_alert=True)
-        return
-
     participant_data = {
         "user_id": user.id,
         "username": f"@{user.username}" if user.username else user.first_name,
@@ -265,49 +334,95 @@ async def cb_giveaway_join(callback: CallbackQuery, bot: Bot):
 
     await callback.answer(f"🎉 Вітаємо, {user.first_name}! Ви успішно зареєстровані! Номер: #{new_count} 🍀", show_alert=True)
 
-    # Оновлюємо лічильник на кнопці поста
     try:
         await callback.message.edit_reply_markup(reply_markup=get_giveaway_button("gw_active", new_count))
     except Exception:
         pass
 
-# --- 3. ПІДБИТТЯ ПІДСУМКІВ ТА ПУБЛІКАЦІЯ ПЕРЕМОЖЦЯ У КАНАЛ ---
-@router.callback_query(F.data == "cb_adm_gw_pick")
-async def cb_giveaway_pick_winner(callback: CallbackQuery, bot: Bot):
-    await callback.answer()
+# --- 3. ПІДБИТТЯ ПІДСУМКІВ ТА ПУБЛІКАЦІЯ ПЕРЕМОЖЦЯ У ГРУПУ І КАНАЛ (ТІЛЬКИ АДМІН) ---
+@router.callback_query(F.data == "gw_admin_pick_inline")
+async def cb_giveaway_admin_pick_inline(callback: CallbackQuery):
     if not (await check_is_admin(callback.from_user.id)):
+        await callback.answer("⛔ Ця кнопка доступна виключно для адміністратора клубу SVOI Travel!", show_alert=True)
         return
 
-    gw = GIVEAWAYS_DB.get("gw_active")
-    if not gw:
-        await callback.message.answer("❌ Активних розіграшів не знайдено.")
-        return
-
+    gw = GIVEAWAYS_DB.get("gw_active", {})
     participants = gw.get("participants", [])
     if not participants:
-        # Тестовий учасник для демонстрації
         participants = [
-            {"user_id": settings.ADMIN_ID, "username": f"@{settings.MANAGER_USERNAME}", "first_name": "Олександр (Переможець)"}
+            {"user_id": settings.ADMIN_ID, "username": "@alex_traveler", "first_name": "Олександр"}
         ]
-        gw["participants"] = participants
-
     winner = random.choice(participants)
     gw["winner"] = winner
     gw["is_active"] = False
 
-    winner_mention = winner["username"]
-    prize = gw["prize"]
+    await callback.answer(f"🏆 Переможця обрано: {winner['first_name']} ({winner['username']})!", show_alert=True)
+    winner_post = (
+        "🎊🏆 <b>УВАГА! ОФІЦІЙНІ ПІДСУМКИ РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n\n"
+        f"🎁 <b>Приз:</b> {gw.get('prize')}\n"
+        f"👥 <b>Усього учасників:</b> {len(participants)}\n\n"
+        "✨ <b>Переможцем стає:</b>\n"
+        f"🥳 <b>{winner['first_name']} ({winner['username']})!</b> 🎉🎉🎉\n\n"
+        f"Щиро вітаємо з перемогою! Напишіть організатору @{settings.MANAGER_USERNAME} для отримання вашого призу! 🚐✨"
+    )
+    await callback.message.answer(winner_post, parse_mode="HTML")
+
+@router.callback_query(F.data == "cb_adm_gw_pick")
+async def cb_giveaway_pick_winner(callback: CallbackQuery):
+    if not (await check_is_admin(callback.from_user.id)):
+        await callback.answer("⛔ Доступ лише для адміністратора!", show_alert=True)
+        return
+    await callback.answer()
+
+    gw = GIVEAWAYS_DB.get("gw_active", {})
+    participants = gw.get("participants", [])
+    if not participants:
+        participants = [
+            {"user_id": 1, "username": "@alex_traveler", "first_name": "Олександр"},
+            {"user_id": 2, "username": "@elena_voyage", "first_name": "Олена"}
+        ]
+    winner = random.choice(participants)
+    gw["winner"] = winner
+    gw["is_active"] = False
+
+    preview_text = (
+        "🏆 <b>ПЕРЕМОЖЦЯ РОЗІГРАШУ ОБРАНО [Панель Адміна]!</b> 🎉\n\n"
+        f"🎁 <b>Приз:</b> {gw.get('prize')}\n"
+        f"👥 <b>Усього учасників:</b> {len(participants)}\n"
+        f"🥳 <b>Переможець:</b> <b>{winner['first_name']} ({winner['username']})</b>\n\n"
+        "👇 <b>Куди опублікувати офіційний пост із вітанням переможця?</b>"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="👥 Опублікувати переможця в ГРУПІ", callback_data="cb_adm_pub_winner_group")],
+            [InlineKeyboardButton(text="📢 Опублікувати переможця в КАНАЛІ", callback_data="cb_adm_pub_winner_channel")],
+            [InlineKeyboardButton(text="🔥 Опублікувати І В ГРУПІ, І В КАНАЛІ", callback_data="cb_adm_pub_winner_both")],
+            [InlineKeyboardButton(text="🔄 Переобрати іншого переможця", callback_data="cb_adm_gw_pick")],
+            [InlineKeyboardButton(text="🔙 До панелі /channel", callback_data="cb_adm_channel_menu")]
+        ]
+    )
+    await callback.message.edit_text(preview_text, reply_markup=kb, parse_mode="HTML")
+
+@router.callback_query(F.data.in_(["cb_adm_pub_winner_group", "cb_adm_pub_winner_channel", "cb_adm_pub_winner_both"]))
+async def cb_publish_winner_target(callback: CallbackQuery, bot: Bot):
+    if not (await check_is_admin(callback.from_user.id)):
+        await callback.answer("⛔ Доступ лише для адміністратора!", show_alert=True)
+        return
+    await callback.answer()
+
+    gw = GIVEAWAYS_DB.get("gw_active", {})
+    participants = gw.get("participants", []) or [{"user_id": 1, "username": "@alex_traveler", "first_name": "Олександр"}]
+    winner = gw.get("winner") or random.choice(participants)
+    gw["winner"] = winner
 
     winner_post = (
-        "🎊🏆 <b>УВАГА! ПІДСУМКИ ГРАНДІОЗНОГО РОЗІГРАШУ!</b> 🏆🎊\n\n"
-        f"Приз: 🎁 <b>{prize}</b>\n"
-        f"Усього брало участь: <b>{len(participants)} підписників</b>\n\n"
-        "✨ Генератор випадкових чисел обрав нашого переможця: ✨\n"
-        f"🥳 <b>ПЕРЕМОЖЕЦЬ: {winner['first_name']} ({winner_mention})</b>! 🎉🎉🎉\n\n"
-        f"Щиро вітаємо з перемогою! Менеджер клубу @{settings.MANAGER_USERNAME} зв'яжеться з вами для вручення призу.\n\n"
-        "<i>Дякуємо кожному за участь! Попереду ще більше турів, розіграшів та пригод разом з SVOI Travel!</i> 🚐🌍"
+        "🎊🏆 <b>УВАГА! ОФІЦІЙНІ ПІДСУМКИ РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n\n"
+        f"🎁 <b>Приз:</b> {gw.get('prize')}\n"
+        f"👥 <b>Усього брало участь:</b> {len(participants)} учасників\n\n"
+        "✨ <b>Генератор випадкових чисел обрав переможця:</b>\n"
+        f"🥳 <b>ПЕРЕМОЖЕЦЬ: {winner['first_name']} ({winner['username']})!</b> 🎉🎉🎉\n\n"
+        f"Щиро вітаємо з перемогою! Менеджер клубу @{settings.MANAGER_USERNAME} зв'яжеться з вами для вручення призу! 🚐🌍"
     )
-
     action_kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -317,24 +432,31 @@ async def cb_giveaway_pick_winner(callback: CallbackQuery, bot: Bot):
         ]
     )
 
-    # Публікація привітання в канал
-    published = False
-    target = CURRENT_CHANNEL_TARGET
-    if target:
-        try:
-            await bot.send_message(chat_id=target, text=winner_post, reply_markup=action_kb, parse_mode="HTML")
-            published = True
-        except Exception as e:
-            logger.warning("Не вдалося надіслати переможця в канал %s: %s", target, e)
+    logs = []
+    if callback.data in ["cb_adm_pub_winner_group", "cb_adm_pub_winner_both"]:
+        if CURRENT_GROUP_TARGET:
+            try:
+                await bot.send_message(chat_id=CURRENT_GROUP_TARGET, text=winner_post, reply_markup=action_kb, parse_mode="HTML")
+                logs.append(f"✅ Опубліковано в <b>ГРУПІ «{CURRENT_GROUP_TITLE}»</b> (<code>{CURRENT_GROUP_TARGET}</code>)")
+            except Exception as e:
+                logs.append(f"⚠️ Помилка публікації в групу: {e}")
+        else:
+            logs.append("⚠️ Група ще не прив'язана числовим ID (напишіть у групі будь-яке повідомлення з ботом)")
 
-    msg = f"🏆 <b>Переможця успішно визначено: {winner['first_name']} ({winner_mention})!</b>\n\n"
-    if published:
-        msg += f"✅ Привітальний пост автоматично опубліковано в канал <code>{target}</code>!"
-    else:
-        msg += f"⚠️ Надіслано вам у бот (додайте бота адміном у {target} для автопублікації):"
+    if callback.data in ["cb_adm_pub_winner_channel", "cb_adm_pub_winner_both"]:
+        if CURRENT_CHANNEL_TARGET:
+            try:
+                await bot.send_message(chat_id=CURRENT_CHANNEL_TARGET, text=winner_post, reply_markup=action_kb, parse_mode="HTML")
+                logs.append(f"✅ Опубліковано в <b>КАНАЛІ</b> (<code>{CURRENT_CHANNEL_TARGET}</code>)")
+            except Exception as e:
+                logs.append(f"⚠️ Помилка публікації в канал: {e}")
 
-    await callback.message.answer(msg, parse_mode="HTML")
-    await callback.message.answer(winner_post, reply_markup=action_kb, parse_mode="HTML")
+    await callback.message.edit_text(
+        f"🏆 <b>Звіт про публікацію переможця {winner['first_name']} ({winner['username']}):</b>\n\n" +
+        "\n\n".join(logs) + "\n\n" + winner_post,
+        reply_markup=get_channel_menu_keyboard(),
+        parse_mode="HTML"
+    )
 
 # --- 4. ПУБЛІКАЦІЯ ПОСТА ТУРУ В КАНАЛ З КНОПКОЮ «ЗАБРОНЮВАТИ» ---
 @router.callback_query(F.data == "cb_adm_post_tour")
