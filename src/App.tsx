@@ -87,7 +87,7 @@ export default function App() {
       userId: 491820491,
       tripTitle: 'Париж (Версаль + яхта + Ейфелева вежа)',
       meetingPoint: 'За адресою: Люксембург',
-      text: 'Дякуємо клубу SVOI за незабутню подорож до Парижа! Особливо цінно, що заїхали за нами прямо до будинку. Салон чистий, зоряне небо ввечері — це щось неймовірне!',
+      text: 'Дякуємо клубу SVOI за незабутню подорож до Парижа! Особливо цінно, що заїхали за нами прямо до будинку. Салон чистий, м’які сидіння та простір для ніг — доїхали з повним комфортом!',
       timestamp: '18.10.2026, 10:15',
       status: 'confirmed'
     },
@@ -233,7 +233,7 @@ export default function App() {
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div className="flex items-center gap-2">
                     <Compass className="w-4 h-4 text-blue-400" />
-                    <h3 className="text-sm font-bold text-white">Каталог 14 турів у боті</h3>
+                    <h3 className="text-sm font-bold text-white">Каталог {TRIPS_LIST.length} турів у боті</h3>
                   </div>
                   <span className="text-[10px] text-slate-400">Старт: Саарбрюккен Hbf</span>
                 </div>

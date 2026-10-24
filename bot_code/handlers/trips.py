@@ -5,7 +5,8 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    InputMediaPhoto
+    InputMediaPhoto,
+    LinkPreviewOptions
 )
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
@@ -69,24 +70,27 @@ TRIPS_HEADER = (
     "• 🇧🇪 <b>Бельгія (окремі авторські виїзди):</b>\n"
     "  — <b>Брюссель (90€):</b> золота площа Гран-Плас, монумент Атоміум, Королівський палац, галереї Св. Юбера та гарячі вафлі\n"
     "  — <b>Антверпен + Брюгге (110€):</b> вокзал-палац та замок Стен у Антверпені + Озеро Кохання з лебедями й канали Брюгге\n"
+    "  — <b>Брюгге + Гент + Брюссель (120€):</b> золоте тріо Бельгії — канали Брюгге, замок Гравенстен у Генті та вечірня Гран-Плас у Брюсселі\n"
     "• 🇳🇱 <b>Голландія / Нідерланди (окремі авторські виїзди):</b>\n"
     "  — <b>Гітхорн + Амстердам (120€):</b> водне село без авто Гітхорн («Голландська Венеція») + канали Амстердама і сироварні\n"
     "  — <b>Заандам + Море + Амстердам (120€):</b> вітряки Заансе-Сханс і Заандам, пляж Північного моря та Амстердам\n"
     "• 🇩🇪 <b>Німеччина (окремі авторські виїзди):</b>\n"
     "  — <b>Замок Нойшванштайн + ущелина Партнахкламм (120€):</b> міст Марієнбрюке, озеро Альпзее та гірська ущелина з водоспадами\n"
-    "  — <b>Берлін + Дрезден (2 дні, 240€):</b> Бранденбурзькі ворота, Рейхстаг, палац Цвінгер, Фрауенкірхе (готель включено)\n"
-    "  — <b>Парк розваг Леголенд / LEGOLAND (115€):</b> сімейний виїзд у Гюнцбург (Мініленд та 60+ атракціонів)\n"
-    "  — <b>Штутгарт (95€):</b> музеї Mercedes-Benz і Porsche + футуристична бібліотека\n"
+    "  — <b>Берлін + Дрезден (2 дні, 190€):</b> Бранденбурзькі ворота, Рейхстаг, палац Цвінгер, Фрауенкірхе (готель включено)\n"
+    "  — <b>Парк розваг Леголенд / LEGOLAND (110€):</b> сімейний виїзд у Гюнцбург (Мініленд та 60+ атракціонів)\n"
+    "  — <b>Штутгарт (90€):</b> музеї Mercedes-Benz і Porsche + футуристична бібліотека\n"
     "  — <b>Європа-Парк / Europa-Park (95€):</b> топ-парк розваг Європи в Русті (лише ~2 год від Саарланду)\n"
     "  — <b>Долина Мозеля: Замок Ельц + Кохем + міст Гайєрлай (85€):</b> замок Burg Eltz, підвісний міст та дегустація Рислінгу\n"
     "  — <b>Гайдельберг + курорт Баден-Баден (85€):</b> замок Гайдельберга та королівські терми\n"
+    "• 🇦🇹 <b>Австрія (135€):</b>\n"
+    "  — <b>Зальцбург + Гальштат (Хальштатт):</b> альпійське озеро Гальштат, панорама Skywalk, палац Мірабель та будинок Моцарта в Зальцбурзі\n"
     "• 🇱🇮 <b>Ліхтенштейн (3 країни за 1 день, 120€):</b>\n"
     "  — <b>Вадуц, Брегенц та Ліндау:</b> замок Вадуц, сцена на Боденському озері в Брегенці та острів Ліндау\n"
     "• 🇨🇭 <b>Швейцарія (120€):</b>\n"
     "  — <b>Рейнський водоспад + Цюрих + Люцерн</b> АБО <b>Ущелина Ааре + Лаутербруннен (72 водоспади) + Берн</b>\n"
     "• 🇮🇹 <b>Італія (2 дні, 270€):</b> <b>Озеро Комо + Мілан</b> (вілли Белладжо, катер, собор Дуомо, готель включено)\n"
     "• 🇨🇿 <b>Чехія (120€):</b> <b>Прага</b> (Празький Град, Карлів міст, куранти Орлой)\n\n"
-    "<blockquote>🚐 <b>Авто:</b> 8-місний <b>Opel Vivaro</b> (клімат-контроль, USB, стеля «Зоряне небо», багаж до <code>10 кг</code>)\n"
+    "<blockquote>🚐 <b>Авто:</b> 8-місний <b>Opel Vivaro</b> (клімат-контроль, USB, відкидні сидіння, багаж до <code>10 кг</code>)\n"
     "📍 <b>Збір за адресою (Door-to-Door):</b> Саарланд, Трір та Люксембург\n"
     "💳 <b>Оплата:</b> <code>0% передоплати</code> на всі одноденні тури!</blockquote>\n\n"
     "👇 <b>Натисніть на будь-яку поїздку нижче, щоб відкрити погодинну програму, фото та забронювати місце:</b>"
@@ -95,20 +99,29 @@ TRIPS_HEADER = (
 async def edit_or_replace_with_text(callback: CallbackQuery, text: str, reply_markup: InlineKeyboardMarkup):
     """
     Універсальна функція редагування повідомлення (без спаму в чаті).
-    Якщо попереднє повідомлення мало фото (картка туру), замінює або редагує його в одному вікні.
+    Якщо попереднє повідомлення мало фото (картка туру), спочатку надсилає нове повідомлення, а потім видаляє старе.
     """
     if not callback.message:
         return
     try:
         if callback.message.photo:
-            await callback.message.delete()
-            await callback.message.answer(text=text, reply_markup=reply_markup, parse_mode="HTML")
+            sent = await callback.message.answer(text=text, reply_markup=reply_markup, parse_mode="HTML")
+            if sent:
+                try:
+                    await callback.message.delete()
+                except Exception:
+                    pass
         else:
-            await callback.message.edit_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
+            await callback.message.edit_text(text=text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             try:
-                await callback.message.edit_caption(caption=text, reply_markup=reply_markup, parse_mode="HTML")
+                sent = await callback.message.answer(text=text, reply_markup=reply_markup, parse_mode="HTML")
+                if sent:
+                    try:
+                        await callback.message.delete()
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -146,14 +159,50 @@ async def process_trip_detail(callback: CallbackQuery, state: FSMContext):
     if not callback.message:
         return
 
-    try:
-        media = InputMediaPhoto(media=poster, caption=caption, parse_mode="HTML")
-        await callback.message.edit_media(media=media, reply_markup=markup)
-    except TelegramBadRequest:
+    # Якщо постер є веб-URL і повідомлення текстове — редагуємо на місці з великим прев'ю зверху без видалення повідомлення
+    if poster.startswith("http") and not callback.message.photo:
+        text_with_preview = f'<a href="{poster}">&#8203;</a>{caption}'
         try:
-            await callback.message.edit_text(text=caption, reply_markup=markup, parse_mode="HTML")
+            await callback.message.edit_text(
+                text=text_with_preview,
+                reply_markup=markup,
+                parse_mode="HTML",
+                disable_web_page_preview=False
+            )
+            return
         except TelegramBadRequest:
             pass
+
+    if len(caption) <= 1024:
+        try:
+            media = InputMediaPhoto(media=poster, caption=caption, parse_mode="HTML")
+            await callback.message.edit_media(media=media, reply_markup=markup)
+            return
+        except TelegramBadRequest:
+            try:
+                sent = await callback.message.answer_photo(photo=poster, caption=caption, reply_markup=markup, parse_mode="HTML")
+                if sent:
+                    try:
+                        await callback.message.delete()
+                    except Exception:
+                        pass
+                return
+            except TelegramBadRequest:
+                pass
+
+    # Fallback: якщо опис довший за 1024 символи або фото недоступне
+    try:
+        if callback.message.photo:
+            sent = await callback.message.answer(text=caption, reply_markup=markup, parse_mode="HTML")
+            if sent:
+                try:
+                    await callback.message.delete()
+                except Exception:
+                    pass
+        else:
+            await callback.message.edit_text(text=caption, reply_markup=markup, parse_mode="HTML")
+    except TelegramBadRequest:
+        pass
 
 # ================= АДМІН-КЕРУВАННЯ ТУРОМ: МІСЦЯ, ДАТИ, ПОСТЕР =================
 
@@ -210,10 +259,10 @@ async def process_adm_date_open(callback: CallbackQuery, state: FSMContext):
     for i in range(0, len(quick_dates), 2):
         row = [
             InlineKeyboardButton(
-                text=f"📅 {d}",
-                callback_data=f"cb_set_date_{trip_id}_{d}"
+                text=f"📅 {quick_dates[idx]}",
+                callback_data=f"cb_sdate_{idx}_{trip_id}"
             )
-            for d in quick_dates[i:i+2]
+            for idx in range(i, min(i + 2, len(quick_dates)))
         ]
         kb_rows.append(row)
     kb_rows.append([
@@ -229,22 +278,21 @@ async def process_adm_date_open(callback: CallbackQuery, state: FSMContext):
     )
     await edit_or_replace_with_text(callback, text, InlineKeyboardMarkup(inline_keyboard=kb_rows))
 
-@router.callback_query(F.data.startswith("cb_set_date_"))
+@router.callback_query(F.data.startswith("cb_sdate_"))
 async def process_adm_date_quick_set(callback: CallbackQuery, state: FSMContext):
-    """Швидке збереження дати поїздки кнопкою"""
-    raw = callback.data.replace("cb_set_date_", "")
-    # Find matching trip_id prefix
-    matched_trip_id = None
-    new_date = ""
-    for tid in TRIPS_CATALOG.keys():
-        if raw.startswith(f"{tid}_"):
-            matched_trip_id = tid
-            new_date = raw[len(tid) + 1:]
-            break
-
-    if not matched_trip_id:
+    """Швидке збереження дати поїздки кнопкою (ASCII callback_data < 64 байт)"""
+    quick_dates = ["24 жовтня", "25 жовтня", "31 жовтня", "1 листопада", "7–8 листопада", "14–15 листопада"]
+    raw = callback.data.replace("cb_sdate_", "")
+    parts = raw.split("_", 1)
+    if len(parts) != 2 or not parts[0].isdigit():
+        await callback.answer("Помилка визначення дати", show_alert=True)
+        return
+    idx = int(parts[0])
+    matched_trip_id = parts[1]
+    if idx < 0 or idx >= len(quick_dates) or matched_trip_id not in TRIPS_CATALOG:
         await callback.answer("Помилка визначення туру", show_alert=True)
         return
+    new_date = quick_dates[idx]
 
     set_trip_date(matched_trip_id, new_date)
     await state.clear()

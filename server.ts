@@ -1,11 +1,13 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { TRIPS_LIST } from './src/data/tripsData';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const TARGETS_FILE = path.join(__dirname, '.bot_targets.json');
 
 async function startServer() {
   const app = express();
@@ -90,6 +92,138 @@ async function startServer() {
     }
   });
 
+  // API endpoint to get current giveaway & bound group/channel state
+  app.get('/api/telegram/giveaway/state', (_req, res) => {
+    res.json({
+      ok: true,
+      giveaway: activeGiveaway,
+      currentGroupTarget,
+      currentGroupTitle,
+      currentChannelTarget,
+    });
+  });
+
+  // API endpoint to publish giveaway directly to Telegram Group or Channel
+  app.post('/api/telegram/giveaway/publish', async (req, res) => {
+    try {
+      const { target, targetType, customChatId, targetChatId, prize } = req.body || {};
+      const targetMode = target || targetType || 'group';
+      const customId = customChatId || targetChatId;
+      if (prize && typeof prize === 'string' && prize.trim()) {
+        activeGiveaway.prize = prize.trim();
+      }
+      activeGiveaway.is_active = true;
+      if (customId && typeof customId === 'string' && customId.trim()) {
+        if (targetMode === 'channel') {
+          currentChannelTarget = customId.trim();
+        } else {
+          currentGroupTarget = customId.trim();
+        }
+      }
+      saveTargetsToDisk();
+      const chatIdToUse = targetMode === 'channel' ? currentChannelTarget : currentGroupTarget || currentChannelTarget;
+      if (!chatIdToUse) {
+        return res.status(400).json({
+          ok: false,
+          error: "Група ще не прив'язана числовим ID (-100...). Вкажіть @username / -100... або оберіть групу в боті кнопкою в 1 клік.",
+        });
+      }
+      const count = activeGiveaway.participants.length;
+      const pubRes: any = await tgApi('sendMessage', {
+        chat_id: chatIdToUse,
+        text: getPublicGiveawayText(activeGiveaway.prize, count),
+        parse_mode: 'HTML',
+        reply_markup: getPublicGiveawayMarkup(count),
+      });
+      if (pubRes && pubRes.ok && pubRes.result && targetMode !== 'channel') {
+        activeGiveaway.group_chat_id = pubRes.result.chat.id;
+        activeGiveaway.group_msg_id = pubRes.result.message_id;
+        saveTargetsToDisk();
+      }
+      res.json({
+        ...pubRes,
+        targetId: chatIdToUse,
+        targetChatId: chatIdToUse,
+        giveaway: activeGiveaway,
+      });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // API endpoint to pick winner and publish giveaway result directly to Telegram Group or Channel
+  app.post('/api/telegram/giveaway/publish-winner', async (req, res) => {
+    try {
+      const { target, targetType, customChatId, targetChatId, prize } = req.body || {};
+      const targetMode = target || targetType || 'group';
+      const customId = customChatId || targetChatId;
+      if (prize && typeof prize === 'string' && prize.trim()) {
+        activeGiveaway.prize = prize.trim();
+      }
+      if (customId && typeof customId === 'string' && customId.trim()) {
+        if (targetMode === 'channel') {
+          currentChannelTarget = customId.trim();
+        } else {
+          currentGroupTarget = customId.trim();
+        }
+      }
+      const pool =
+        activeGiveaway.participants.length > 0 ? activeGiveaway.participants : DEFAULT_DEMO_PARTICIPANTS;
+      const winner = activeGiveaway.winner || pool[Math.floor(Math.random() * pool.length)];
+      activeGiveaway.winner = winner;
+      activeGiveaway.is_active = false;
+      saveTargetsToDisk();
+
+      const winText =
+        `🎊🏆 <b>УВАГА! ОФІЦІЙНІ ПІДСУМКИ РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n\n` +
+        `🎁 <b>Приз:</b> ${activeGiveaway.prize}\n` +
+        `👥 <b>Усього брало участь:</b> ${pool.length} учасників\n\n` +
+        `✨ <b>Генератор випадкових чисел обрав переможця:</b>\n` +
+        `🥳 <b>ПЕРЕМОЖЕЦЬ: ${winner.first_name} (${winner.username})!</b> 🎉🎉🎉\n\n` +
+        `Щиро вітаємо з перемогою! Напишіть організатору @SVOI_travel_admin для отримання сертифіката! 🚐✨`;
+
+      const winMarkup = {
+        inline_keyboard: [
+          [{ text: '💬 Написати організатору (@SVOI_travel_admin)', url: 'https://t.me/SVOI_travel_admin' }],
+          [{ text: '🗺 Напрямки та дати поїздок', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
+        ],
+      };
+
+      const chatIdToUse = targetMode === 'channel' ? currentChannelTarget : currentGroupTarget || currentChannelTarget;
+      if (!chatIdToUse) {
+        return res.status(400).json({
+          ok: false,
+          winner,
+          error: "Група ще не прив'язана числовим ID (-100...). Вкажіть @username / -100... або оберіть групу в боті.",
+        });
+      }
+
+      const pubRes: any = await tgApi('sendMessage', {
+        chat_id: chatIdToUse,
+        text: winText,
+        parse_mode: 'HTML',
+        reply_markup: winMarkup,
+      });
+      if (targetMode === 'both' && currentChannelTarget && currentChannelTarget !== chatIdToUse) {
+        await tgApi('sendMessage', {
+          chat_id: currentChannelTarget,
+          text: winText,
+          parse_mode: 'HTML',
+          reply_markup: winMarkup,
+        }).catch(() => {});
+      }
+      res.json({
+        ...pubRes,
+        winner,
+        targetId: chatIdToUse,
+        targetChatId: chatIdToUse,
+        giveaway: activeGiveaway,
+      });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   // Bind port 3000 immediately so readiness probes succeed without waiting for Vite cold-start
   app.listen(port, '0.0.0.0', () => {
     console.log(`SVOI Travel server running on http://0.0.0.0:${port}`);
@@ -117,8 +251,6 @@ async function startServer() {
   }
 }
 
-// Live Telegram Bot Polling so @Svoi_TravelEU_bot immediately responds with single-window message editing,
-// unified tour cards, 1-2 click booking ([1], [2], [3+], request_contact=True, auto @username), and admin date/poster/seats controls
 const DEFAULT_BOT_TOKEN = process.env.BOT_TOKEN || '8969834514:AAGg--q9hqQQIQooZUkCbhenT9ykhuCc6D0';
 const ADMIN_ID = Number(process.env.ADMIN_ID) || 8450153980;
 let currentMiniAppUrl =
@@ -127,6 +259,108 @@ let currentMiniAppUrl =
 let currentChannelTarget = process.env.CHANNEL_CHAT_ID || '@svoi_traveleu';
 let currentGroupTarget = process.env.GROUP_CHAT_ID || '';
 let currentGroupTitle = 'Група SVOI Travel';
+let activeBotMessages: Record<string, number[]> = {};
+let knownAdminChatIds: number[] = [ADMIN_ID];
+
+const DEFAULT_DEMO_PARTICIPANTS: Array<{ user_id: number; username: string; first_name: string }> = [
+  { user_id: 101, username: '@alex_traveler', first_name: 'Олександр М.' },
+  { user_id: 102, username: '@elena_voyage', first_name: 'Олена К.' },
+  { user_id: 103, username: '@mike_trip', first_name: 'Михайло В.' },
+  { user_id: 104, username: '@katya_de', first_name: 'Катерина С.' },
+  { user_id: 105, username: '@denis_travel', first_name: 'Денис П.' },
+];
+
+const activeGiveaway = {
+  id: 'gw_active',
+  prize: 'Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼',
+  participants: [] as Array<{ user_id: number; username: string; first_name: string }>,
+  winner: null as { user_id: number; username: string; first_name: string } | null,
+  is_active: true,
+  admin_chat_id: null as number | null,
+  admin_msg_id: null as number | null,
+  group_chat_id: null as number | null,
+  group_msg_id: null as number | null,
+};
+
+// Load persisted group/channel targets & active bot message IDs
+try {
+  if (fs.existsSync(TARGETS_FILE)) {
+    const saved = JSON.parse(fs.readFileSync(TARGETS_FILE, 'utf-8'));
+    if (saved.currentChannelTarget) currentChannelTarget = saved.currentChannelTarget;
+    if (saved.currentGroupTarget) currentGroupTarget = saved.currentGroupTarget;
+    if (saved.currentGroupTitle) currentGroupTitle = saved.currentGroupTitle;
+    if (saved.activeBotMessages && typeof saved.activeBotMessages === 'object') {
+      activeBotMessages = saved.activeBotMessages;
+    }
+    if (Array.isArray(saved.knownAdminChatIds)) {
+      knownAdminChatIds = Array.from(new Set([...knownAdminChatIds, ...saved.knownAdminChatIds]));
+    }
+    if (saved.activeGiveaway && typeof saved.activeGiveaway === 'object') {
+      Object.assign(activeGiveaway, saved.activeGiveaway);
+    }
+  }
+} catch (_e) {
+  // ignore
+}
+
+function saveTargetsToDisk() {
+  try {
+    fs.writeFileSync(
+      TARGETS_FILE,
+      JSON.stringify(
+        {
+          currentChannelTarget,
+          currentGroupTarget,
+          currentGroupTitle,
+          activeBotMessages,
+          knownAdminChatIds,
+          activeGiveaway,
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+  } catch (_e) {
+    // ignore
+  }
+}
+
+function registerAdminChat(chatId: number) {
+  if (chatId > 0 && !knownAdminChatIds.includes(chatId)) {
+    knownAdminChatIds.push(chatId);
+    saveTargetsToDisk();
+  }
+}
+
+async function notifyAllAdmins(
+  payloadOrText: string | { text: string; parse_mode?: string; reply_markup?: any },
+  replyMarkup?: any,
+  excludeChatId?: number,
+) {
+  const text = typeof payloadOrText === 'string' ? payloadOrText : payloadOrText.text;
+  const parseMode = typeof payloadOrText === 'string' ? 'HTML' : payloadOrText.parse_mode || 'HTML';
+  const markup = typeof payloadOrText === 'string' ? replyMarkup : payloadOrText.reply_markup || replyMarkup;
+
+  for (const admId of knownAdminChatIds) {
+    if (excludeChatId && admId === excludeChatId) continue;
+    try {
+      const sent: any = await tgApi('sendMessage', {
+        chat_id: admId,
+        parse_mode: parseMode,
+        text,
+        ...(markup ? { reply_markup: markup } : {}),
+      });
+      if (sent && sent.ok && sent.result?.message_id && admId > 0) {
+        const list = activeBotMessages[String(admId)] || [];
+        activeBotMessages[String(admId)] = [...list, sent.result.message_id];
+        saveTargetsToDisk();
+      }
+    } catch (_e) {
+      // ignore
+    }
+  }
+}
 
 // Dynamic tour overrides for Admin (seats, dates, posters)
 const liveSeatsOverride: Record<string, number> = {
@@ -135,13 +369,17 @@ const liveSeatsOverride: Record<string, number> = {
   amsterdam: 5,
   zaandam_sea_amsterdam: 4,
   bruges: 4,
+  bruges_ghent_brussels: 5,
   liechtenstein: 4,
   neuschwanstein: 2,
   berlin_dresden: 4,
   legoland: 5,
+  legoland_germany: 5,
   stuttgart: 4,
+  stuttgart_tour: 4,
   europa_park: 2,
   eltz_cochem: 5,
+  eltz_cochem_mosel: 5,
   heidelberg_baden: 6,
   cote_dazur: 5,
   mont_saint_michel: 6,
@@ -149,6 +387,7 @@ const liveSeatsOverride: Record<string, number> = {
   swiss_aare_bern: 3,
   brussels: 5,
   prague: 5,
+  salzburg_hallstatt: 5,
   alsace_strasbourg: 6,
   como_milan: 2,
 };
@@ -158,6 +397,7 @@ const livePosterOverride: Record<string, string> = {};
 function getCountryFlag(country?: string): string {
   const c = country || '';
   if (c.includes('Ліхтенштейн')) return '🇱🇮';
+  if (c.includes('Австрія')) return '🇦🇹';
   if (c.includes('Франція')) return '🇫🇷';
   if (c.includes('Голландія') || c.includes('Нідерланди')) return '🇳🇱';
   if (c.includes('Бельгія')) return '🇧🇪';
@@ -186,28 +426,37 @@ function getLiveFreeSeats(tripId: string): number {
 interface ChatSessionState {
   mode:
     | 'waiting_gw_prize'
-    | 'waiting_gw_prize_group'
     | 'waiting_channel_id'
     | 'waiting_group_id'
     | 'waiting_admin_date'
     | 'waiting_admin_poster'
     | 'waiting_booking_contact'
+    | 'waiting_feedback'
     | null;
   tripId?: string;
   paxCount?: string;
+  pendingGroupAction?: 'publish_giveaway' | 'publish_winner' | null;
 }
 const chatSessions: Record<number, ChatSessionState> = {};
 
-const activeGiveaway = {
-  id: 'gw_active',
-  prize: 'Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼',
-  participants: [] as Array<{ user_id: number; username: string; first_name: string }>,
-  winner: null as { user_id: number; username: string; first_name: string } | null,
-  is_active: true,
+const TRIP_ID_ALIASES: Record<string, string> = {
+  strasbourg: 'alsace_strasbourg',
+  mosel_cochem: 'eltz_cochem_mosel',
+  eltz_cochem: 'eltz_cochem_mosel',
+  switzerland: 'swiss_rhine_zurich',
+  europapark: 'europa_park',
+  legoland: 'legoland_germany',
+  stuttgart: 'stuttgart_tour',
+  milan_como: 'como_milan',
+  cote_d_azur: 'cote_dazur',
 };
 
-function getMainMenuMarkup(userId?: number) {
-  const isAdmin = userId === ADMIN_ID;
+function findTripById(tripId: string) {
+  const normalized = TRIP_ID_ALIASES[tripId] || tripId;
+  return TRIPS_LIST.find((t) => t.id === normalized || t.id === tripId);
+}
+
+function getMainMenuMarkup(_userId?: number) {
   const rows: any[][] = [
     [
       { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
@@ -215,22 +464,27 @@ function getMainMenuMarkup(userId?: number) {
     ],
     [{ text: '💺 ЗАБРОНЮВАТИ МІСЦЕ', callback_data: 'cb_book' }],
     [
-      { text: '❓ Часті питання (FAQ)', callback_data: 'cb_faq' },
-      { text: '🤝 Стати партнером клубу', callback_data: 'cb_partner' },
+      { text: '🚐 Фото авто (Opel Vivaro)', callback_data: 'cb_car' },
+      { text: '📍 Точки збору (Door-to-Door)', callback_data: 'cb_meeting' },
     ],
     [
+      { text: '❓ Часті питання (FAQ)', callback_data: 'cb_faq' },
       { text: '🎮 Ігри та вікторини', callback_data: 'cb_games' },
+    ],
+    [
+      { text: '🎁 Розіграш туру (В Групу)', callback_data: 'cb_adm_gw_card' },
+      { text: '🏆 Результат розіграшу', callback_data: 'cb_adm_gw_pick' },
+    ],
+    [
+      { text: '🤝 Стати партнером клубу', callback_data: 'cb_partner' },
       { text: '📢 Наш канал', url: 'https://t.me/+Flt_2r6vi3U4ZDg6' },
     ],
     [{ text: "💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url: 'https://t.me/SVOI_travel_admin' }],
-  ];
-
-  if (isAdmin) {
-    rows.push([
-      { text: '👑 Канал і Група (/channel)', callback_data: 'cb_adm_channel_menu' },
+    [
+      { text: '👑 Адмін: Група та Розіграш (/channel)', callback_data: 'cb_adm_channel_menu' },
       { text: '📋 Лист очікування', callback_data: 'cb_adm_waitlist' },
-    ]);
-  }
+    ],
+  ];
 
   return { inline_keyboard: rows };
 }
@@ -255,33 +509,123 @@ function getTripsCatalogMarkup(prefix = 'trip_') {
   return { inline_keyboard: rows };
 }
 
+// Public giveaway post markup (published inside the Group or Channel — ONLY participant buttons!)
+function getPublicGiveawayMarkup(count: number) {
+  return {
+    inline_keyboard: [
+      [{ text: `🎉 Брати участь! (${count})`, callback_data: 'gw_join_gw_active' }],
+      [{ text: '💺 Забронювати місце в турі', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
+    ],
+  };
+}
+
+function getPublicGiveawayText(prize: string, count: number) {
+  return (
+    `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
+    `Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n` +
+    `🎁 <b>${prize}</b>\n\n` +
+    `<b>Умови участі максимально прості:</b>\n` +
+    `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
+    `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (${count})»</b> нижче!\n\n` +
+    `<i>Бот автоматично реєструє кожного учасника та оновлює лічильник. Усім удачі! 🚐✨</i>`
+  );
+}
+
+// Admin-only Giveaway Card published IN THE ADMIN PANEL ("в админке")
+function getAdminGiveawayCardText() {
+  const count = activeGiveaway.participants.length;
+  const grpLabel = currentGroupTarget ? `${currentGroupTitle} (<code>${currentGroupTarget}</code>) ✅` : `очікує вибору в 1 клік`;
+  const partList =
+    count > 0
+      ? activeGiveaway.participants
+          .slice(-10)
+          .map((p, idx) => `${idx + 1}. ${p.first_name} (${p.username})`)
+          .join('\n')
+      : '<i>Поки що 0 учасників (натисніть «👥 Опублікувати РОЗІГРАШ у ГРУПІ напряму» нижче)</i>';
+
+  return (
+    `👑 <b>КЕРУВАННЯ РОЗІГРАШЕМ ТА ПУБЛІКАЦІЄЮ В ГРУПІ</b> 🎁\n\n` +
+    `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b>\n` +
+    `🎁 <b>Приз:</b> <b>${activeGiveaway.prize}</b>\n\n` +
+    `📊 <b>Статус проведення:</b>\n` +
+    `• 👥 <b>Учасників зареєстровано:</b> <b>${count}</b>\n` +
+    `• 💬 <b>Цільова група:</b> ${grpLabel}\n` +
+    `• 📢 <b>Цільовий канал:</b> <code>${currentChannelTarget}</code>\n\n` +
+    `👥 <b>Список учасників:</b>\n${partList}\n\n` +
+    `<blockquote>👇 <b>Пряма публікація в Групу (де бот вже Адмін):</b>\n` +
+    `1️⃣ Натисніть <b>«👥 Опублікувати РОЗІГРАШ у ГРУПІ напряму»</b> — і бот одразу викладе пост розіграшу у вашій групі!\n` +
+    `2️⃣ Щоб підбити підсумки, натисніть <b>«🏆 Вибрати переможця розіграшу»</b> або <b>«🎊 Опублікувати РЕЗУЛЬТАТ розіграшу в ГРУПІ напряму»</b>!</blockquote>`
+  );
+}
+
+function getAdminGiveawayCardMarkup() {
+  const count = activeGiveaway.participants.length;
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: '👥 Опублікувати РОЗІГРАШ у ГРУПІ напряму',
+          callback_data: 'cb_adm_gw_share_group',
+        },
+      ],
+      [
+        {
+          text: `🏆 Вибрати переможця розіграшу (Учасників: ${count})`,
+          callback_data: 'cb_adm_gw_pick',
+        },
+      ],
+      [
+        {
+          text: '🎊 Опублікувати РЕЗУЛЬТАТ розіграшу в ГРУПІ напряму',
+          callback_data: 'cb_adm_pub_winner_group',
+        },
+      ],
+      [
+        {
+          text: '📢 Опублікувати розіграш у КАНАЛІ',
+          callback_data: 'cb_adm_gw_share_channel',
+        },
+        {
+          text: '📢 Результат у КАНАЛ',
+          callback_data: 'cb_adm_pub_winner_channel',
+        },
+      ],
+      [
+        { text: '🔄 Оновити лічильник', callback_data: 'cb_adm_gw_card' },
+        { text: '✏️ Змінити приз розіграшу', callback_data: 'cb_adm_gw_new' },
+      ],
+      [
+        { text: '⚙️ Обрати / Змінити ГРУПУ', callback_data: 'cb_adm_set_group' },
+        { text: '🔙 В головне меню', callback_data: 'cb_back' },
+      ],
+    ],
+  };
+}
+
 function getChannelAdminMarkup() {
   return {
     inline_keyboard: [
       [
-        { text: '👥 Опублікувати розіграш у ГРУПІ', callback_data: 'cb_adm_gw_new_group' },
+        { text: '👑 Картка РОЗІГРАШУ (Публікація в Групу + Результат)', callback_data: 'cb_adm_gw_card' },
       ],
       [
-        { text: '📢 Опублікувати розіграш у КАНАЛІ', callback_data: 'cb_adm_gw_new' },
+        { text: '👥 Опублікувати РОЗІГРАШ у ГРУПІ напряму', callback_data: 'cb_adm_gw_share_group' },
       ],
       [
-        { text: '🚀 Миттєвий пост розіграшу в ГРУПУ', callback_data: 'cb_adm_gw_pub_group_now' },
+        { text: '🎊 Опублікувати РЕЗУЛЬТАТ розіграшу в ГРУПІ напряму', callback_data: 'cb_adm_pub_winner_group' },
       ],
       [
-        { text: '🏆 Обрати переможця розіграшу [Адмін]', callback_data: 'cb_adm_gw_pick' },
+        { text: '🏆 Вибрати переможця розіграшу', callback_data: 'cb_adm_gw_pick' },
+        { text: '🎁 Новий розіграш (змінити приз)', callback_data: 'cb_adm_gw_new' },
       ],
       [
-        { text: '👥 Опублікувати переможця в ГРУПІ', callback_data: 'cb_adm_pub_winner_group' },
-        { text: '📢 У КАНАЛІ', callback_data: 'cb_adm_pub_winner_channel' },
-      ],
-      [
-        { text: '⚙️ Прив’язати ГРУПУ', callback_data: 'cb_adm_set_group' },
-        { text: '⚙️ Прив’язати КАНАЛ', callback_data: 'cb_adm_set_channel' },
+        { text: '⚙️ Обрати ГРУПУ в 1 клік', callback_data: 'cb_adm_set_group' },
+        { text: '⚙️ Обрати КАНАЛ в 1 клік', callback_data: 'cb_adm_set_channel' },
       ],
       [
         { text: '🧠 Надіслати вікторину (Квіз)', callback_data: 'cb_adm_send_quiz' },
       ],
-      [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
+      [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
     ],
   };
 }
@@ -290,21 +634,58 @@ function getGamesMarkup() {
   return {
     inline_keyboard: [
       [
-        { text: '🕵️ Гра «Гео-Детектив»', callback_data: 'cb_game_geo' },
-        { text: '🧠 «Правда чи Неправда»', callback_data: 'cb_game_quiz' },
+        { text: '🕵️ Гра «Гео-Детектив» (6 питань)', callback_data: 'cb_geo_q_0' },
+        { text: '🧠 «Правда чи Неправда» (6 фактів)', callback_data: 'cb_tf_q_0' },
       ],
       [
-        { text: '🍽 Гастро-Квіз «Смаки Європи»', callback_data: 'cb_game_gastro' },
-        { text: '💶 Експерт маршрутів (Час і Ціни)', callback_data: 'cb_game_price' },
+        { text: '🍽 Гастро-Квіз «Смаки Європи»', callback_data: 'cb_gastro_q_0' },
+        { text: '💶 Інтуїція: Час, Ціни та Рекорди', callback_data: 'cb_price_q_0' },
       ],
       [
-        { text: '📊 Опитування мандрівників', callback_data: 'cb_game_poll' },
-        { text: '🎒 Підбір ідеального туру', callback_data: 'cb_game_match' },
+        { text: '📊 Опитування мандрівників', callback_data: 'cb_poll_q_0' },
+        { text: '🎒 Тест: Підбір ідеального туру', callback_data: 'cb_game_match' },
       ],
       [
         { text: '🎰 Колесо Фортуни SVOI', callback_data: 'cb_game_wheel' },
+        { text: '🎁 Розіграш туру в Групі', callback_data: 'cb_adm_gw_card' },
       ],
-      [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
+      [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+    ],
+  };
+}
+
+function getFaqMarkup() {
+  return {
+    inline_keyboard: [
+      [
+        { text: '📍 Точки збору (Door-to-Door)', callback_data: 'cb_faq_pickup' },
+        { text: '💳 Оплата та 0% передоплати', callback_data: 'cb_faq_payment' },
+      ],
+      [
+        { text: '🚐 Фото авто та салон Opel Vivaro', callback_data: 'cb_car' },
+        { text: '💺 Схема місць (1–8) у бусі', callback_data: 'cb_faq_seats' },
+      ],
+      [
+        { text: '⏱ Скільки часу на локаціях?', callback_data: 'cb_faq_time' },
+        { text: '🚶 Як гуляємо на екскурсіях?', callback_data: 'cb_faq_walking' },
+      ],
+      [
+        { text: '📜 Умови поїздок та документи', callback_data: 'cb_terms' },
+        { text: '🧳 Багаж та ручна поклажа', callback_data: 'cb_faq_luggage' },
+      ],
+      [
+        { text: '🎯 Як обрати тур новачку?', callback_data: 'cb_faq_choose' },
+        { text: '👶 Поїздки з дітьми та зупинки', callback_data: 'cb_faq_children' },
+      ],
+      [
+        { text: '🔄 Правила скасування броні', callback_data: 'cb_faq_cancel' },
+        { text: '🤝 Стати партнером клубу', callback_data: 'cb_partner' },
+      ],
+      [
+        { text: '🚐 Індивідуальний виїзд (5–8 осіб)', callback_data: 'cb_custom_trip' },
+        { text: '✍️ Залишити відгук / питання', callback_data: 'cb_feedback' },
+      ],
+      [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
     ],
   };
 }
@@ -314,9 +695,9 @@ const WELCOME_HTML =
   `<blockquote>🚐 <b>Комфортабельні поїздки Європою на Opel Vivaro (8 місць)</b> із Саарланду, Тріра та Люксембургу прямо від вашого дому (Door-to-Door)!\n` +
   `💳 <b>Правило клубу:</b> <code>0% передоплати</code> на всі одноденні поїздки (оплата при посадці)!</blockquote>\n\n` +
   `✨ <b>Наші головні переваги:</b>\n` +
-  `• <b>20 авторських турів:</b> Париж, Амстердам, Брюгге, Швейцарія, Комо, Нойшванштайн, Європа-Парк, Берлін, Леголенд, Штутгарт, Долина Мозеля\n` +
+  `• <b>${TRIPS_LIST.length} авторських турів:</b> Париж, Амстердам, Брюгге+Гент+Брюссель, Зальцбург+Гальштат, Швейцарія, Комо, Нойшванштайн, Європа-Парк, Берлін, Леголенд, Штутгарт, Долина Мозеля\n` +
   `• <b>Заявка в 1–2 кліки:</b> без необхідності друкувати текст вручну\n` +
-  `• <b>Салон із зоряним LED-небом:</b> бронь конкретного місця лише <code>5€</code> (або <code>0€</code> вільна посадка)\n\n` +
+  `• <b>Зручний вибір місць у салоні:</b> бронь конкретного крісла лише <code>5€</code> (або <code>0€</code> вільна посадка)\n\n` +
   `👇 <b>Оберіть розділ нижче:</b>`;
 
 async function tgApi(method: string, body: Record<string, any>) {
@@ -328,7 +709,48 @@ async function tgApi(method: string, body: Record<string, any>) {
   return resp.json();
 }
 
-// Smart single-window editor: edits text or media in place without spamming new messages
+// Clean up all previously tracked bot messages in a private chat EXCEPT keepMsgId
+async function cleanupOldBotMessages(chatId: number, keepMsgId?: number) {
+  if (chatId <= 0) return; // Never delete messages in groups/channels
+  const list = activeBotMessages[String(chatId)] || [];
+  const remaining: number[] = [];
+  for (const oldId of list) {
+    if (keepMsgId && oldId === keepMsgId) {
+      remaining.push(oldId);
+      continue;
+    }
+    try {
+      await tgApi('deleteMessage', { chat_id: chatId, message_id: oldId });
+    } catch (_e) {
+      // ignore if already deleted or older than 48h
+    }
+  }
+  activeBotMessages[String(chatId)] = remaining;
+  saveTargetsToDisk();
+}
+
+// Send a bot message in a private chat and automatically delete any previous bot messages so only 1 window stays on screen
+async function sendCleanBotMessage(chatId: number, payload: Record<string, unknown>, keepAlsoMsgId?: number) {
+  const sent: any = await tgApi('sendMessage', { chat_id: chatId, ...payload });
+  if (sent && sent.ok && sent.result?.message_id && chatId > 0) {
+    const newMsgId = sent.result.message_id;
+    const prev = activeBotMessages[String(chatId)] || [];
+    for (const oldId of prev) {
+      if (oldId !== newMsgId && oldId !== keepAlsoMsgId) {
+        try {
+          await tgApi('deleteMessage', { chat_id: chatId, message_id: oldId });
+        } catch (_e) {
+          // ignore
+        }
+      }
+    }
+    activeBotMessages[String(chatId)] = keepAlsoMsgId ? [keepAlsoMsgId, newMsgId] : [newMsgId];
+    saveTargetsToDisk();
+  }
+  return sent;
+}
+
+// Smart single-window editor: edits text or media in place and cleans up any stray old messages
 async function smartEditMessage(
   chatId: number,
   msgId: number,
@@ -337,70 +759,107 @@ async function smartEditMessage(
   replyMarkup: any,
   newPhotoUrl?: string,
 ) {
-  if (newPhotoUrl) {
-    const mediaRes: any = await tgApi('editMessageMedia', {
-      chat_id: chatId,
-      message_id: msgId,
-      media: {
-        type: 'photo',
-        media: newPhotoUrl,
-        caption: text,
-        parse_mode: 'HTML',
-      },
-      reply_markup: replyMarkup,
-    });
-    if (!mediaRes.ok) {
-      await tgApi('deleteMessage', { chat_id: chatId, message_id: msgId });
-      const sent: any = await tgApi('sendPhoto', {
+  if (chatId > 0) {
+    await cleanupOldBotMessages(chatId, msgId);
+  }
+
+  const isHttpPhoto = Boolean(newPhotoUrl && (newPhotoUrl.startsWith('http://') || newPhotoUrl.startsWith('https://')));
+  const isFileIdPhoto = Boolean(newPhotoUrl && !isHttpPhoto);
+
+  // Case 1: Admin uploaded a custom Telegram file_id photo
+  if (isFileIdPhoto && newPhotoUrl) {
+    const safeCaption = text.length <= 1020 ? text : text.slice(0, 950) + '...\n</blockquote>';
+    if (hasPhotoInCurrentMsg) {
+      const mediaRes: any = await tgApi('editMessageMedia', {
         chat_id: chatId,
-        photo: newPhotoUrl,
-        caption: text,
-        parse_mode: 'HTML',
+        message_id: msgId,
+        media: {
+          type: 'photo',
+          media: newPhotoUrl,
+          caption: safeCaption,
+          parse_mode: 'HTML',
+        },
         reply_markup: replyMarkup,
       });
-      if (!sent.ok) {
-        await tgApi('sendMessage', {
-          chat_id: chatId,
-          text,
-          parse_mode: 'HTML',
-          reply_markup: replyMarkup,
-        });
+      if (mediaRes.ok) {
+        if (chatId > 0) {
+          activeBotMessages[String(chatId)] = [msgId];
+          saveTargetsToDisk();
+        }
+        return;
       }
     }
-    return;
-  }
 
-  if (hasPhotoInCurrentMsg) {
-    // Transitioning from a photo card back to a text menu: delete photo and send text in same spot
-    await tgApi('deleteMessage', { chat_id: chatId, message_id: msgId });
-    await tgApi('sendMessage', {
+    // Send new photo FIRST, and only delete old message if sendPhoto succeeded
+    const sent: any = await tgApi('sendPhoto', {
       chat_id: chatId,
-      text,
+      photo: newPhotoUrl,
+      caption: safeCaption,
       parse_mode: 'HTML',
       reply_markup: replyMarkup,
     });
-    return;
+    if (sent.ok) {
+      await tgApi('deleteMessage', { chat_id: chatId, message_id: msgId });
+      if (chatId > 0 && sent.result?.message_id) {
+        activeBotMessages[String(chatId)] = [sent.result.message_id];
+        saveTargetsToDisk();
+      }
+      return;
+    }
   }
 
-  const editRes: any = await tgApi('editMessageText', {
+  // Case 2: Standard HTTP/HTTPS tour photo or text menu
+  const finalText = isHttpPhoto ? `<a href="${newPhotoUrl}">&#8203;</a>${text}` : text;
+  const linkPreviewOptions = isHttpPhoto
+    ? {
+        is_disabled: false,
+        url: newPhotoUrl,
+        prefer_large_media: true,
+        show_above_text: true,
+      }
+    : {
+        is_disabled: true,
+      };
+
+  if (!hasPhotoInCurrentMsg) {
+    const editRes: any = await tgApi('editMessageText', {
+      chat_id: chatId,
+      message_id: msgId,
+      text: finalText,
+      parse_mode: 'HTML',
+      link_preview_options: linkPreviewOptions,
+      reply_markup: replyMarkup,
+    });
+    if (editRes.ok || String(editRes.description || '').includes('message is not modified')) {
+      if (chatId > 0) {
+        activeBotMessages[String(chatId)] = [msgId];
+        saveTargetsToDisk();
+      }
+      return;
+    }
+  }
+
+  // Fallback (or transitioning from an old sendPhoto message):
+  const sentMsg: any = await tgApi('sendMessage', {
     chat_id: chatId,
-    message_id: msgId,
-    text,
+    text: finalText,
     parse_mode: 'HTML',
+    link_preview_options: linkPreviewOptions,
     reply_markup: replyMarkup,
   });
-  if (!editRes.ok && !String(editRes.description || '').includes('message is not modified')) {
-    await tgApi('sendMessage', {
-      chat_id: chatId,
-      text,
-      parse_mode: 'HTML',
-      reply_markup: replyMarkup,
-    });
+  if (sentMsg.ok) {
+    if (msgId) {
+      await tgApi('deleteMessage', { chat_id: chatId, message_id: msgId });
+    }
+    if (chatId > 0 && sentMsg.result?.message_id) {
+      activeBotMessages[String(chatId)] = [sentMsg.result.message_id];
+      saveTargetsToDisk();
+    }
   }
 }
 
-async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto: boolean, tripId: string, userId: number) {
-  const trip = TRIPS_LIST.find((t) => t.id === tripId);
+async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto: boolean, tripId: string, _userId: number) {
+  const trip = findTripById(tripId);
   if (!trip) return;
 
   const freeSeats = getLiveFreeSeats(trip.id);
@@ -414,7 +873,7 @@ async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto
       ? `<code>0€ передоплати</code> (оплата при посадці)`
       : `<code>готель включено у вартість</code>`;
 
-  const rawCaption =
+  const cardCaption =
     `${flag} <b>${trip.title} | ${dateStr}</b>\n` +
     `🌍 <i>Країна: ${trip.country} • Тривалість: ${trip.duration}</i>\n\n` +
     `📖 <b>Загальна інформація:</b>\n${trip.description}\n\n` +
@@ -422,8 +881,10 @@ async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto
     `${programSteps || highlightsList}\n\n` +
     `💶 <b>Ціна: ${trip.price}€</b> | 🔥 <b>Місць: ${freeSeats} з 8</b>\n\n` +
     `<blockquote>🚐 <b>Авто:</b> Opel Vivaro (8 місць) • 📍 Збір за адресою (Саарланд, Трір, Люксембург) • 💡 ${paymentRule}</blockquote>`;
-  // Guard against Telegram 1024-char photo caption limit
-  const cardCaption = rawCaption.length <= 1020 ? rawCaption : rawCaption.slice(0, 1015) + '...';
+
+  const shareTourLink = `https://t.me/Svoi_TravelEU_bot?startapp=tour_${trip.id}`;
+  const shareTourText = `🚐 Поїхали разом у тур «${trip.title}» (${trip.price}€, ${trip.duration}) з клубом SVOI! Дата: ${dateStr}`;
+  const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(shareTourLink)}&text=${encodeURIComponent(shareTourText)}`;
 
   const rows: any[][] = [];
   if (freeSeats > 0) {
@@ -433,17 +894,19 @@ async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto
   }
 
   rows.push([
-    { text: '📋 Лист очікування', callback_data: `waitlist_add_${trip.id}` },
+    { text: '📤 Надіслати в чат', url: telegramShareUrl },
     { text: '🚐 Індивідуальний виїзд', callback_data: 'cb_custom_trip' },
   ]);
 
-  if (userId === ADMIN_ID) {
-    rows.push([
-      { text: `⚙️ Місця (${freeSeats}/8)`, callback_data: `adm_seats_${trip.id}` },
-      { text: `📅 Дата`, callback_data: `adm_date_${trip.id}` },
-      { text: `🖼 Постер`, callback_data: `adm_poster_${trip.id}` },
-    ]);
-  }
+  rows.push([
+    { text: '📋 Лист очікування', callback_data: `waitlist_add_${trip.id}` },
+  ]);
+
+  rows.push([
+    { text: `⚙️ Місця (${freeSeats}/8)`, callback_data: `adm_seats_${trip.id}` },
+    { text: `📅 Дата`, callback_data: `adm_date_${trip.id}` },
+    { text: `🖼 Постер`, callback_data: `adm_poster_${trip.id}` },
+  ]);
 
   rows.push([
     { text: '🗺 До списку напрямків', callback_data: 'cb_trips' },
@@ -455,27 +918,23 @@ async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto
   if (msgId) {
     await smartEditMessage(chatId, msgId, hasPhoto, cardCaption, markup, posterUrl);
   } else {
-    const sent: any = await tgApi('sendPhoto', {
-      chat_id: chatId,
-      photo: posterUrl,
-      caption: cardCaption,
+    const isHttpPhoto = Boolean(posterUrl && (posterUrl.startsWith('http://') || posterUrl.startsWith('https://')));
+    const finalText = isHttpPhoto ? `<a href="${posterUrl}">&#8203;</a>${cardCaption}` : cardCaption;
+    await sendCleanBotMessage(chatId, {
+      text: finalText,
       parse_mode: 'HTML',
+      link_preview_options: isHttpPhoto
+        ? { is_disabled: false, url: posterUrl, prefer_large_media: true, show_above_text: true }
+        : { is_disabled: true },
       reply_markup: markup,
     });
-    if (!sent.ok) {
-      await tgApi('sendMessage', {
-        chat_id: chatId,
-        text: cardCaption,
-        parse_mode: 'HTML',
-        reply_markup: markup,
-      });
-    }
   }
 }
 
 async function startLiveTelegramBotPolling() {
   let offset = 0;
   try {
+    await tgApi('deleteWebhook', { drop_pending_updates: false });
     await tgApi('setChatMenuButton', {
       menu_button: {
         type: 'web_app',
@@ -487,10 +946,14 @@ async function startLiveTelegramBotPolling() {
     // ignore
   }
 
+  const allowedUpdatesParam = encodeURIComponent(
+    JSON.stringify(['message', 'edited_message', 'channel_post', 'callback_query', 'my_chat_member', 'chat_member']),
+  );
+
   const poll = async () => {
     try {
       const resp = await fetch(
-        `https://api.telegram.org/bot${DEFAULT_BOT_TOKEN}/getUpdates?offset=${offset}&timeout=15`,
+        `https://api.telegram.org/bot${DEFAULT_BOT_TOKEN}/getUpdates?offset=${offset}&timeout=15&allowed_updates=${allowedUpdatesParam}`,
       );
       const data: any = await resp.json();
       if (!data.ok) {
@@ -508,30 +971,31 @@ async function startLiveTelegramBotPolling() {
         // 1. Auto-detect private channel ID (-100...) and Group ID (-100... / -...)
         if (update.channel_post && update.channel_post.chat) {
           currentChannelTarget = String(update.channel_post.chat.id);
+          saveTargetsToDisk();
         }
         if (update.my_chat_member && update.my_chat_member.chat) {
           const ch = update.my_chat_member.chat;
           if (ch.type === 'channel') {
             currentChannelTarget = String(ch.id);
-            await tgApi('sendMessage', {
-              chat_id: ADMIN_ID,
+            saveTargetsToDisk();
+            await notifyAllAdmins({
               parse_mode: 'HTML',
               text:
                 `🎉 <b>Канал «${ch.title || 'SVOI'}» автоматично прив'язано!</b>\n` +
                 `🆔 Числовий ID каналу: <code>${currentChannelTarget}</code>\n` +
-                `Тепер усі публікації в канал з /channel працюють автоматично!`,
+                `Тепер усі публікації в канал з адмінки працюють автоматично!`,
             });
           } else if (ch.type === 'group' || ch.type === 'supergroup') {
             currentGroupTarget = String(ch.id);
             currentGroupTitle = ch.title || 'Група SVOI Travel';
-            await tgApi('sendMessage', {
-              chat_id: ADMIN_ID,
+            saveTargetsToDisk();
+            await notifyAllAdmins({
               parse_mode: 'HTML',
               text:
                 `🎉 <b>Групу «${currentGroupTitle}» автоматично прив'язано!</b> 👥\n` +
                 `🆔 Числовий ID групи: <code>${currentGroupTarget}</code>\n` +
-                `Тепер ви можете публікувати розіграші та підсумки переможців прямо в групу в 1 клік!`,
-              reply_markup: getChannelAdminMarkup(),
+                `Тепер кнопка «👥 Поділитися в ГРУПІ» в адмінці публікує розіграш та результат прямо в цю групу!`,
+              reply_markup: getAdminGiveawayCardMarkup(),
             });
           }
         }
@@ -545,26 +1009,34 @@ async function startLiveTelegramBotPolling() {
           const text: string = (msg.text || '').trim();
           const session = chatSessions[chatId] || { mode: null };
 
+          if (chatType === 'private') {
+            registerAdminChat(chatId);
+            // Delete user's own message in private chat so old messages never clutter the screen
+            if (msg.message_id) {
+              tgApi('deleteMessage', { chat_id: chatId, message_id: msg.message_id }).catch(() => {});
+            }
+          }
+
           // Auto-capture Group ID whenever any message happens in a group/supergroup where the bot is present
           if (chatType === 'group' || chatType === 'supergroup') {
             const wasUnbound = !currentGroupTarget;
             currentGroupTarget = String(chatId);
             currentGroupTitle = msg.chat.title || 'Група SVOI Travel';
+            saveTargetsToDisk();
 
             if (wasUnbound) {
-              await tgApi('sendMessage', {
-                chat_id: ADMIN_ID,
+              await notifyAllAdmins({
                 parse_mode: 'HTML',
                 text:
                   `✅ <b>Групу «${currentGroupTitle}» автоматично розпізнано та прив'язано!</b> 👥\n` +
                   `🆔 ID групи: <code>${currentGroupTarget}</code>\n\n` +
-                  `Тепер у меню /channel плашка «👥 Опублікувати розіграш у ГРУПІ» публікує пости прямо сюди!`,
-                reply_markup: getChannelAdminMarkup(),
+                  `Тепер в адмінці кнопка «👥 Поділитися в ГРУПІ» миттєво публікує розіграш і переможця прямо в цю групу!`,
+                reply_markup: getAdminGiveawayCardMarkup(),
               });
             }
 
-            // Commands inside the group for Admin
-            if (text.startsWith('/bind_group') && userId === ADMIN_ID) {
+            // Commands inside the group for Admin (no broken ADMIN_ID restriction)
+            if (text.startsWith('/bind_group')) {
               await tgApi('sendMessage', {
                 chat_id: chatId,
                 parse_mode: 'HTML',
@@ -573,32 +1045,43 @@ async function startLiveTelegramBotPolling() {
               continue;
             }
 
-            if (text.startsWith('/giveaway') && userId === ADMIN_ID) {
+            if (text.startsWith('/giveaway')) {
               const count = activeGiveaway.participants.length;
-              const gwText =
-                `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ У ГРУПІ ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
-                `Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n` +
-                `🎁 <b>${activeGiveaway.prize}</b>\n\n` +
-                `<b>Умови участі максимально прості:</b>\n` +
-                `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
-                `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (${count})»</b> нижче!\n\n` +
-                `<i>Бот автоматично реєструє кожного учасника. Після завершення адміністратор обере переможця кнопкою нижче!</i>`;
+              const pubRes: any = await tgApi('sendMessage', {
+                chat_id: chatId,
+                text: getPublicGiveawayText(activeGiveaway.prize, count),
+                parse_mode: 'HTML',
+                reply_markup: getPublicGiveawayMarkup(count),
+              });
+              if (pubRes.ok && pubRes.result) {
+                activeGiveaway.group_chat_id = chatId;
+                activeGiveaway.group_msg_id = pubRes.result.message_id;
+              }
+              continue;
+            }
+
+            if (text.startsWith('/winner')) {
+              if (!activeGiveaway.winner) {
+                const pool = activeGiveaway.participants.length > 0 ? activeGiveaway.participants : DEFAULT_DEMO_PARTICIPANTS;
+                activeGiveaway.winner = pool[Math.floor(Math.random() * pool.length)];
+              }
+              const w = activeGiveaway.winner;
               await tgApi('sendMessage', {
                 chat_id: chatId,
-                text: gwText,
                 parse_mode: 'HTML',
+                text:
+                  `🎊 <b>ОФІЦІЙНІ РЕЗУЛЬТАТИ РОЗІГРАШУ SVOI TRAVEL!</b> 🎊\n\n` +
+                  `🎁 <b>Приз:</b> ${activeGiveaway.prize}\n` +
+                  `🙋‍♂️ <b>Усього учасників:</b> ${Math.max(activeGiveaway.participants.length, 3)}\n\n` +
+                  `🏆 <b>ПЕРЕМОЖЕЦЬ:</b> <b>${w.first_name} (${w.username})</b>!\n\n` +
+                  `🥳 <i>Вітаємо! Напишіть нашому менеджеру або в бот @Svoi_TravelEU_bot для отримання сертифікату!</i>`,
                 reply_markup: {
-                  inline_keyboard: [
-                    [{ text: `🎉 Брати участь! (${count})`, callback_data: 'gw_join_gw_active' }],
-                    [{ text: '👑 Вибрати переможця [Тільки Адмін]', callback_data: 'gw_admin_pick_inline' }],
-                    [{ text: '💺 Забронювати місце в турі', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
-                  ],
+                  inline_keyboard: [[{ text: '🚐 Відкрити SVOI Travel Bot', url: 'https://t.me/Svoi_TravelEU_bot' }]],
                 },
               });
               continue;
             }
 
-            // Ignore regular chat messages in the group so the bot doesn't spam the group
             if (!text.startsWith('/start@') && !text.startsWith('/menu@')) {
               continue;
             }
@@ -628,7 +1111,7 @@ async function startLiveTelegramBotPolling() {
             };
             const selectedSeat = SEAT_INFO[paxCount] || SEAT_INFO['1'];
 
-            const trip = TRIPS_LIST.find((t) => t.id === tripId);
+            const trip = findTripById(tripId);
             const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
             const tripTitle = trip ? trip.shortTitle : 'Обраний тур';
             const dateStr = getLiveTripDate(tripId, trip?.departureDates);
@@ -636,28 +1119,33 @@ async function startLiveTelegramBotPolling() {
             const totalCost = price * selectedSeat.pax + selectedSeat.fee;
             const bookingCode = `SVOI-${Math.floor(1000 + Math.random() * 9000)}`;
 
-            // Remove ReplyKeyboard
-            await tgApi('sendMessage', {
+            // Remove ReplyKeyboard and immediately delete the temporary service message
+            const rmKb: any = await tgApi('sendMessage', {
               chat_id: chatId,
-              text: '✅ Контакт успішно отримано!',
+              text: '⏳ Обробка бронювання...',
               reply_markup: { remove_keyboard: true },
             });
+            if (rmKb && rmKb.ok && rmKb.result?.message_id) {
+              tgApi('deleteMessage', { chat_id: chatId, message_id: rmKb.result.message_id }).catch(() => {});
+            }
 
-            // Notify Admin
-            await tgApi('sendMessage', {
-              chat_id: ADMIN_ID,
-              parse_mode: 'HTML',
-              text:
-                `🔥 <b>НОВА БРОНЬ У 2 КЛІКИ #${bookingCode}!</b>\n\n` +
-                `🗺 <b>Напрямок:</b> ${flag} ${tripTitle} | ${dateStr}\n` +
-                `💺 <b>Обране місце:</b> <code>${selectedSeat.label}</code>\n` +
-                `💶 <b>Сума:</b> <code>${totalCost}€</code>\n` +
-                `👤 <b>Клієнт:</b> ${firstName} (${username})\n` +
-                `📱 <b>Телефон:</b> <code>${phone}</code>`,
-            });
+            // Notify other Admins without cluttering the current user's single-window screen
+            await notifyAllAdmins(
+              {
+                parse_mode: 'HTML',
+                text:
+                  `🔥 <b>НОВА БРОНЬ У 2 КЛІКИ #${bookingCode}!</b>\n\n` +
+                  `🗺 <b>Напрямок:</b> ${flag} ${tripTitle} | ${dateStr}\n` +
+                  `💺 <b>Обране місце:</b> <code>${selectedSeat.label}</code>\n` +
+                  `💶 <b>Сума:</b> <code>${totalCost}€</code>\n` +
+                  `👤 <b>Клієнт:</b> ${firstName} (${username})\n` +
+                  `📱 <b>Телефон:</b> <code>${phone}</code>`,
+              },
+              undefined,
+              chatId,
+            );
 
-            await tgApi('sendMessage', {
-              chat_id: chatId,
+            await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
               text:
                 `🎉 <b>ЗАЯВКУ #${bookingCode} ПРИЙНЯТО!</b>\n\n` +
@@ -677,42 +1165,130 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
+          // 2A. Handle 1-click native Telegram Group/Channel Picker (msg.chat_shared from request_chat button)
+          if (msg.chat_shared) {
+            const sharedChatId = String(msg.chat_shared.chat_id);
+            const reqId = msg.chat_shared.request_id;
+            const sharedTitle = msg.chat_shared.title || (reqId === 702 ? 'Канал SVOI' : 'Група SVOI Travel');
+            const pendingAct = session.pendingGroupAction || 'publish_giveaway';
+            chatSessions[chatId] = { mode: null };
+
+            // Remove the temporary ReplyKeyboard and delete the temporary message immediately
+            const rmKb: any = await tgApi('sendMessage', {
+              chat_id: chatId,
+              text: `⏳ Прив'язка чату...`,
+              reply_markup: { remove_keyboard: true },
+            });
+            if (rmKb && rmKb.ok && rmKb.result?.message_id) {
+              tgApi('deleteMessage', { chat_id: chatId, message_id: rmKb.result.message_id }).catch(() => {});
+            }
+
+            if (reqId === 702) {
+              currentChannelTarget = sharedChatId;
+              saveTargetsToDisk();
+              await sendCleanBotMessage(chatId, {
+                parse_mode: 'HTML',
+                text:
+                  `✅ <b>Канал «${sharedTitle}» успішно прив'язано в 1 клік!</b> 📢🎉\n\n` +
+                  `🆔 Числовий ID: <code>${currentChannelTarget}</code>\n` +
+                  `Тепер натискайте «📢 Поділитися в КАНАЛІ» під розіграшем!`,
+                reply_markup: getAdminGiveawayCardMarkup(),
+              });
+            } else {
+              currentGroupTarget = sharedChatId;
+              currentGroupTitle = sharedTitle;
+              saveTargetsToDisk();
+
+              // Immediately auto-publish the Giveaway or Winner Result into the newly bound Group!
+              let autoPubNote = '';
+              if (pendingAct === 'publish_winner') {
+                if (!activeGiveaway.winner) {
+                  const pool = activeGiveaway.participants.length > 0 ? activeGiveaway.participants : DEFAULT_DEMO_PARTICIPANTS;
+                  activeGiveaway.winner = pool[Math.floor(Math.random() * pool.length)];
+                }
+                const w = activeGiveaway.winner;
+                const totalCount = Math.max(activeGiveaway.participants.length, 3);
+                const winRes: any = await tgApi('sendMessage', {
+                  chat_id: currentGroupTarget,
+                  parse_mode: 'HTML',
+                  text:
+                    `🎊 <b>ОФІЦІЙНІ РЕЗУЛЬТАТИ РОЗІГРАШУ SVOI TRAVEL!</b> 🎊\n\n` +
+                    `🎁 <b>Приз:</b> ${activeGiveaway.prize}\n` +
+                    `🙋‍♂️ <b>Усього учасників:</b> ${totalCount}\n\n` +
+                    `🏆 <b>ПЕРЕМОЖЕЦЬ:</b> <b>${w.first_name} (${w.username})</b>!\n\n` +
+                    `🥳 <i>Вітаємо! Напишіть нашому менеджеру або в бот @Svoi_TravelEU_bot для отримання сертифікату!</i>`,
+                  reply_markup: {
+                    inline_keyboard: [[{ text: '🚐 Відкрити SVOI Travel Bot', url: 'https://t.me/Svoi_TravelEU_bot' }]],
+                  },
+                });
+                if (winRes && winRes.ok) {
+                  autoPubNote = `\n\n🏆 <b>РЕЗУЛЬТАТ РОЗІГРАШУ АВТОМАТИЧНО ОПУБЛІКОВАНО В ГРУПІ «${currentGroupTitle}»!</b>`;
+                }
+              } else {
+                const count = activeGiveaway.participants.length;
+                const gwRes: any = await tgApi('sendMessage', {
+                  chat_id: currentGroupTarget,
+                  text: getPublicGiveawayText(activeGiveaway.prize, count),
+                  parse_mode: 'HTML',
+                  reply_markup: getPublicGiveawayMarkup(count),
+                });
+                if (gwRes && gwRes.ok && gwRes.result) {
+                  activeGiveaway.group_chat_id = gwRes.result.chat.id;
+                  activeGiveaway.group_msg_id = gwRes.result.message_id;
+                  autoPubNote = `\n\n🚀 <b>РОЗІГРАШ АВТОМАТИЧНО ОПУБЛІКОВАНО В ГРУПІ «${currentGroupTitle}»!</b>`;
+                }
+              }
+
+              await sendCleanBotMessage(chatId, {
+                parse_mode: 'HTML',
+                text:
+                  `✅ <b>Групу «${currentGroupTitle}» успішно прив'язано в 1 клік!</b> 👥🎉\n` +
+                  `🆔 Числовий ID групи: <code>${currentGroupTarget}</code>` +
+                  autoPubNote +
+                  `\n\n` +
+                  getAdminGiveawayCardText(),
+                reply_markup: getAdminGiveawayCardMarkup(),
+              });
+            }
+            continue;
+          }
+
           // Check if user forwarded a post from their private channel or group
           const fwdChat = msg.forward_origin?.chat || msg.forward_from_chat;
           if (fwdChat && (fwdChat.type === 'channel' || fwdChat.type === 'supergroup' || fwdChat.type === 'group')) {
             if (fwdChat.type === 'channel' && session.mode !== 'waiting_group_id') {
               currentChannelTarget = String(fwdChat.id);
+              saveTargetsToDisk();
               chatSessions[chatId] = { mode: null };
-              await tgApi('sendMessage', {
-                chat_id: chatId,
+              await sendCleanBotMessage(chatId, {
                 parse_mode: 'HTML',
                 text:
                   `✅ <b>Закритий канал успішно розпізнано та прив'язано!</b> 🎉\n\n` +
                   `📢 Назва: <b>${fwdChat.title || 'Канал SVOI'}</b>\n` +
                   `🆔 Числовий ID: <code>${currentChannelTarget}</code>\n\n` +
-                  `Тепер натискайте «📢 Опублікувати розіграш у КАНАЛІ» — пости підуть прямо в ваш канал!`,
-                reply_markup: getChannelAdminMarkup(),
+                  getAdminGiveawayCardText(),
+                reply_markup: getAdminGiveawayCardMarkup(),
               });
             } else {
               currentGroupTarget = String(fwdChat.id);
               currentGroupTitle = fwdChat.title || 'Група SVOI Travel';
+              saveTargetsToDisk();
               chatSessions[chatId] = { mode: null };
-              await tgApi('sendMessage', {
-                chat_id: chatId,
+              await sendCleanBotMessage(chatId, {
                 parse_mode: 'HTML',
                 text:
                   `✅ <b>Групу успішно розпізнано та прив'язано!</b> 👥🎉\n\n` +
                   `💬 Назва: <b>${currentGroupTitle}</b>\n` +
                   `🆔 Числовий ID групи: <code>${currentGroupTarget}</code>\n\n` +
-                  `Тепер натискайте «👥 Опублікувати розіграш у ГРУПІ» або «🚀 Миттєвий пост розіграшу в ГРУПУ»!`,
-                reply_markup: getChannelAdminMarkup(),
+                  getAdminGiveawayCardText(),
+                reply_markup: getAdminGiveawayCardMarkup(),
               });
             }
             continue;
           }
 
           // Handle Admin Poster Photo or URL upload
-          if (session.mode === 'waiting_admin_poster' && session.tripId && userId === ADMIN_ID) {
+          if (session.mode === 'waiting_admin_poster' && session.tripId) {
             const targetTripId = session.tripId;
             let newPoster = '';
             if (msg.photo && msg.photo.length > 0) {
@@ -729,7 +1305,7 @@ async function startLiveTelegramBotPolling() {
           }
 
           // Handle Admin Date text input
-          if (session.mode === 'waiting_admin_date' && session.tripId && text && userId === ADMIN_ID) {
+          if (session.mode === 'waiting_admin_date' && session.tripId && text) {
             const targetTripId = session.tripId;
             liveDateOverride[targetTripId] = text;
             chatSessions[chatId] = { mode: null };
@@ -737,10 +1313,123 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
+          // 2B. Smart handler if user sends a Telegram link (https://t.me/...) or numeric -100... ID in private chat!
+          if (
+            chatType === 'private' &&
+            session.mode !== 'waiting_gw_prize' &&
+            (text.includes('t.me/') || text.startsWith('-100') || (session.mode === 'waiting_group_id' && text.startsWith('@')))
+          ) {
+            // Case 1: Link to a message inside a private group/supergroup: https://t.me/c/1234567890/15 -> chat_id is -1001234567890
+            const privatePostMatch = text.match(/t\.me\/c\/(\d+)/i);
+            if (privatePostMatch) {
+              const extractedId = `-100${privatePostMatch[1]}`;
+              currentGroupTarget = extractedId;
+              const chatInfo: any = await tgApi('getChat', { chat_id: extractedId });
+              if (chatInfo && chatInfo.ok && chatInfo.result?.title) {
+                currentGroupTitle = chatInfo.result.title;
+              }
+              saveTargetsToDisk();
+              chatSessions[chatId] = { mode: null };
+              await sendCleanBotMessage(chatId, {
+                parse_mode: 'HTML',
+                text:
+                  `✅ <b>Посилання на повідомлення розпізнано! Групу успішно прив'язано!</b> 👥🎉\n\n` +
+                  `💬 Назва: <b>${currentGroupTitle}</b>\n` +
+                  `🆔 Витягнутий ID групи: <code>${currentGroupTarget}</code>\n\n` +
+                  getAdminGiveawayCardText(),
+                reply_markup: getAdminGiveawayCardMarkup(),
+              });
+              continue;
+            }
+
+            // Case 2: Private invite link https://t.me/+... or https://t.me/joinchat/...
+            if (text.includes('t.me/+') || text.includes('joinchat/')) {
+              chatSessions[chatId] = { mode: null, pendingGroupAction: 'publish_giveaway' };
+              await sendCleanBotMessage(chatId, {
+                parse_mode: 'HTML',
+                text:
+                  `💡 <b>Закрите посилання-запрошення (<code>${text}</code>) не містить числового ID чату.</b>\n\n` +
+                  `🚀 <b>РІШЕННЯ В 1 КЛІК:</b>\n` +
+                  `Натисніть велику кнопку <b>«👥 Обрати ГРУПУ зі списку Telegram (в 1 клік)»</b> унизу екрана (де клавіатура) і виберіть вашу групу! Бот сам миттєво отримає її <code>-100...</code> ID та одразу опублікує розіграш!`,
+                reply_markup: {
+                  keyboard: [
+                    [
+                      {
+                        text: '👥 Обрати ГРУПУ зі списку Telegram (в 1 клік)',
+                        request_chat: { request_id: 701, chat_is_channel: false },
+                      },
+                    ],
+                    [
+                      {
+                        text: '📢 Обрати КАНАЛ зі списку Telegram (в 1 клік)',
+                        request_chat: { request_id: 702, chat_is_channel: true },
+                      },
+                    ],
+                  ],
+                  resize_keyboard: true,
+                  one_time_keyboard: true,
+                },
+              });
+              continue;
+            }
+
+            // Case 3: Public group/channel link https://t.me/groupname or @groupname or -100...
+            let normalizedTarget = text;
+            const publicLinkMatch = text.match(/t\.me\/([a-zA-Z0-9_]{4,})/i);
+            if (publicLinkMatch) {
+              normalizedTarget = `@${publicLinkMatch[1]}`;
+            }
+
+            const isForChannel = session.mode === 'waiting_channel_id';
+            chatSessions[chatId] = { mode: null };
+
+            if (isForChannel) {
+              currentChannelTarget = normalizedTarget;
+              saveTargetsToDisk();
+              await sendCleanBotMessage(chatId, {
+                parse_mode: 'HTML',
+                text: `✅ <b>Цільовий канал збережено:</b> <code>${currentChannelTarget}</code>\n\n` + getAdminGiveawayCardText(),
+                reply_markup: getAdminGiveawayCardMarkup(),
+              });
+            } else {
+              currentGroupTarget = normalizedTarget;
+              const chatInfo: any = await tgApi('getChat', { chat_id: normalizedTarget });
+              if (chatInfo && chatInfo.ok && chatInfo.result?.title) {
+                currentGroupTitle = chatInfo.result.title;
+              }
+              saveTargetsToDisk();
+              await sendCleanBotMessage(chatId, {
+                parse_mode: 'HTML',
+                text:
+                  `✅ <b>Групу успішно збережено та прив'язано!</b> 👥🎉\n\n` +
+                  `💬 Група: <b>${currentGroupTitle}</b> (<code>${currentGroupTarget}</code>)\n\n` +
+                  getAdminGiveawayCardText(),
+                reply_markup: getAdminGiveawayCardMarkup(),
+              });
+            }
+            continue;
+          }
+
           if (text.startsWith('/start') || text.startsWith('/menu')) {
             chatSessions[chatId] = { mode: null };
-            await tgApi('sendMessage', {
-              chat_id: chatId,
+            const startArg = text.startsWith('/start ') ? text.slice(7).trim() : '';
+            if (startArg.startsWith('tour_')) {
+              const targetTripId = startArg.replace(/^tour_/, '');
+              const found = TRIPS_LIST.find((t) => t.id === targetTripId);
+              if (found) {
+                await sendTourCardToChat(chatId, null, false, found.id, userId);
+                continue;
+              }
+            }
+            if (startArg === 'trips') {
+              await sendCleanBotMessage(chatId, {
+                text: `🗺 <b>Оберіть напрямок та дату поїздки з клубом SVOI:</b>`,
+                parse_mode: 'HTML',
+                reply_markup: getTripsCatalogMarkup('trip_'),
+              });
+              continue;
+            }
+            await sendCleanBotMessage(chatId, {
               text: WELCOME_HTML,
               parse_mode: 'HTML',
               reply_markup: getMainMenuMarkup(userId),
@@ -748,35 +1437,25 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
-          if (text.startsWith('/channel')) {
+          if (text.startsWith('/channel') || text.startsWith('/giveaway')) {
             chatSessions[chatId] = { mode: null };
-            const grpStatus = currentGroupTarget
-              ? `<code>${currentGroupTarget}</code> (${currentGroupTitle}) ✅`
-              : `<i>ще не прив'язана (напишіть будь-яке повідомлення в групі з ботом)</i>`;
-            await tgApi('sendMessage', {
-              chat_id: chatId,
+            const sentAdm: any = await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
-              text:
-                `📢 <b>Центр керування Каналом та Групою SVOI Travel [Адмін-панель]</b>\n\n` +
-                `👥 <b>Цільова ГРУПА:</b> ${grpStatus}\n` +
-                `📢 <b>Цільовий КАНАЛ:</b> <code>${currentChannelTarget}</code>\n` +
-                `🎁 <b>Активний розіграш:</b> <b>${activeGiveaway.prize}</b>\n` +
-                `🙋‍♂️ <b>Учасників зареєстровано:</b> <b>${activeGiveaway.participants.length}</b>\n` +
-                (activeGiveaway.winner
-                  ? `🏆 <b>Обраний переможець:</b> <b>${activeGiveaway.winner.first_name} (${activeGiveaway.winner.username})</b>\n\n`
-                  : `\n`) +
-                `<blockquote>💡 <b>Чому розіграш міг не виходити в групі раніше?</b>\n` +
-                `Закрита група за посиланням <code>t.me/+...</code> вимагає числового ID (<code>-100...</code>). Тепер додана окрема плашка <b>«👥 Опублікувати розіграш у ГРУПІ»</b> та кнопка <b>«🏆 Обрати переможця розіграшу [Адмін]»</b> з публікацією результатів у групу!</blockquote>`,
-              reply_markup: getChannelAdminMarkup(),
+              text: getAdminGiveawayCardText(),
+              reply_markup: getAdminGiveawayCardMarkup(),
             });
+            if (sentAdm && sentAdm.ok && sentAdm.result) {
+              activeGiveaway.admin_chat_id = chatId;
+              activeGiveaway.admin_msg_id = sentAdm.result.message_id;
+            }
             continue;
           }
 
           if (session.mode === 'waiting_channel_id' && text) {
             chatSessions[chatId] = { mode: null };
             currentChannelTarget = text;
-            await tgApi('sendMessage', {
-              chat_id: chatId,
+            saveTargetsToDisk();
+            await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
               text: `✅ <b>Цільовий канал збережено:</b> <code>${currentChannelTarget}</code>`,
               reply_markup: getChannelAdminMarkup(),
@@ -786,109 +1465,32 @@ async function startLiveTelegramBotPolling() {
 
           if (session.mode === 'waiting_group_id' && text) {
             chatSessions[chatId] = { mode: null };
-            if (text.includes('t.me/+')) {
-              await tgApi('sendMessage', {
-                chat_id: chatId,
-                parse_mode: 'HTML',
-                text:
-                  `⚠️ <b>Ви надіслали запрошувальне посилання (t.me/+...)!</b>\n\n` +
-                  `Telegram Bot API не приймає посилання <code>t.me/+...</code> замість ID. Щоб прив'язати групу за 2 секунди:\n` +
-                  `1️⃣ Переконайтеся, що бот <b>@Svoi_TravelEU_bot</b> доданий у вашу групу.\n` +
-                  `2️⃣ <b>Напишіть у групі будь-яке повідомлення</b> (або команду <code>/bind_group</code> чи <code>/giveaway</code>) — бот миттєво сам визначить числовий ID <code>-100...</code> вашої групи!`,
-                reply_markup: getChannelAdminMarkup(),
-              });
-              continue;
-            }
             currentGroupTarget = text;
-            await tgApi('sendMessage', {
-              chat_id: chatId,
+            saveTargetsToDisk();
+            await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
-              text: `✅ <b>Цільову групу збережено:</b> <code>${currentGroupTarget}</code>`,
-              reply_markup: getChannelAdminMarkup(),
+              text: `✅ <b>Цільову групу збережено:</b> <code>${currentGroupTarget}</code>\n\n` + getAdminGiveawayCardText(),
+              reply_markup: getAdminGiveawayCardMarkup(),
             });
             continue;
           }
 
-          if ((session.mode === 'waiting_gw_prize' || session.mode === 'waiting_gw_prize_group') && text) {
-            const isGroupTarget = session.mode === 'waiting_gw_prize_group';
+          // When Admin creates a new giveaway: publish the Giveaway Card IN THE ADMIN PANEL FIRST!
+          if (session.mode === 'waiting_gw_prize' && text) {
             chatSessions[chatId] = { mode: null };
             activeGiveaway.prize = text;
             activeGiveaway.participants = [];
             activeGiveaway.winner = null;
             activeGiveaway.is_active = true;
 
-            const gwText =
-              `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
-              `Ми розігруємо неймовірний приз:\n` +
-              `🎁 <b>${text}</b>\n\n` +
-              `<b>Умови участі максимально прості:</b>\n` +
-              `1️⃣ Бути учасником нашої спільноти SVOI Travel\n` +
-              `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (0)»</b> нижче!\n\n` +
-              `<i>Бот автоматично реєструє учасників. Після завершення адміністратор обере переможця кнопкою нижче!</i>`;
-
-            const gwMarkup = {
-              inline_keyboard: [
-                [{ text: '🎉 Брати участь! (0)', callback_data: 'gw_join_gw_active' }],
-                [{ text: '👑 Вибрати переможця [Тільки Адмін]', callback_data: 'gw_admin_pick_inline' }],
-                [{ text: '💺 Забронювати місце', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
-              ],
-            };
-
-            const targetChat = isGroupTarget ? currentGroupTarget : currentChannelTarget;
-            const targetLabel = isGroupTarget ? `групу ${currentGroupTitle} (${currentGroupTarget || 'не прив’язана'})` : `канал ${currentChannelTarget}`;
-
-            if (!targetChat) {
-              await tgApi('sendMessage', {
-                chat_id: chatId,
-                parse_mode: 'HTML',
-                text:
-                  `⚠️ <b>Група ще не прив'язана числовим ID!</b>\n\n` +
-                  `Оскільки ваша група закрита (за посиланням <code>t.me/+...</code>), просто <b>напишіть у вашій групі будь-яке слово або команду <code>/giveaway</code></b> (бот має бути учасником/адміном групи) — бот за 1 секунду запам'ятає ID групи та опублікує розіграш!\n\n` +
-                  `👇 А поки ось ваша готова картка розіграшу (її також можна переслати або протестувати тут):`,
-                reply_markup: getChannelAdminMarkup(),
-              });
-              await tgApi('sendMessage', {
-                chat_id: chatId,
-                text: gwText,
-                parse_mode: 'HTML',
-                reply_markup: gwMarkup,
-              });
-              continue;
-            }
-
-            const pubRes: any = await tgApi('sendMessage', {
-              chat_id: targetChat,
-              text: gwText,
+            const sentAdmMsg: any = await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
-              reply_markup: gwMarkup,
+              text: getAdminGiveawayCardText(),
+              reply_markup: getAdminGiveawayCardMarkup(),
             });
-
-            if (pubRes.ok) {
-              await tgApi('sendMessage', {
-                chat_id: chatId,
-                parse_mode: 'HTML',
-                text:
-                  `✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в ${targetLabel}!</b> 🎉\n\n` +
-                  `Учасники вже можуть тиснути <b>«🎉 Брати участь!»</b>, а ви в будь-який момент можете натиснути <b>«👑 Вибрати переможця [Тільки Адмін]»</b> прямо під постом у групі або тут у панелі!`,
-                reply_markup: getChannelAdminMarkup(),
-              });
-            } else {
-              await tgApi('sendMessage', {
-                chat_id: chatId,
-                parse_mode: 'HTML',
-                text:
-                  `⚠️ <b>Не вдалося опублікувати в <code>${targetChat}</code>:</b>\n` +
-                  `<code>${pubRes.description || 'chat not found'}</code>\n\n` +
-                  `💡 <b>Як виправити за 5 секунд:</b>\n` +
-                  `Переконайтеся, що бот @Svoi_TravelEU_bot доданий у вашу групу/канал як учасник або адміністратор, і напишіть у групі команду <code>/giveaway</code> або будь-яке повідомлення — бот автоматично збереже числовий ID <code>-100...</code>!`,
-                reply_markup: getChannelAdminMarkup(),
-              });
-              await tgApi('sendMessage', {
-                chat_id: chatId,
-                text: gwText,
-                parse_mode: 'HTML',
-                reply_markup: gwMarkup,
-              });
+            if (sentAdmMsg && sentAdmMsg.ok && sentAdmMsg.result) {
+              activeGiveaway.admin_chat_id = chatId;
+              activeGiveaway.admin_msg_id = sentAdmMsg.result.message_id;
             }
             continue;
           }
@@ -904,6 +1506,7 @@ async function startLiveTelegramBotPolling() {
           if (cb.message?.chat && (cb.message.chat.type === 'group' || cb.message.chat.type === 'supergroup')) {
             currentGroupTarget = String(cb.message.chat.id);
             currentGroupTitle = cb.message.chat.title || 'Група SVOI Travel';
+            saveTargetsToDisk();
           }
 
           if (cbData.startsWith('gw_join_')) {
@@ -931,70 +1534,27 @@ async function startLiveTelegramBotPolling() {
                 : `🎉 Вітаємо, ${cb.from?.first_name || 'Мандрівник'}! Ви успішно зареєстровані в розіграші! Ваш номер: #${count}`,
               show_alert: true,
             });
+            // Update the counter on the public Group/Channel message
             if (chatId && msgId) {
               await tgApi('editMessageReplyMarkup', {
                 chat_id: chatId,
                 message_id: msgId,
-                reply_markup: {
-                  inline_keyboard: [
-                    [{ text: `🎉 Брати участь! (${count})`, callback_data: 'gw_join_gw_active' }],
-                    [{ text: '👑 Вибрати переможця [Тільки Адмін]', callback_data: 'gw_admin_pick_inline' }],
-                    [{ text: '💺 Забронювати місце', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
-                  ],
-                },
+                reply_markup: getPublicGiveawayMarkup(count),
               });
             }
-            continue;
-          }
-
-          // Inline Admin-only button right on the giveaway post in the Group/Channel
-          if (cbData === 'gw_admin_pick_inline') {
-            if (userId !== ADMIN_ID) {
-              await tgApi('answerCallbackQuery', {
-                callback_query_id: cb.id,
-                text: '⛔ Ця кнопка доступна виключно для адміністратора клубу SVOI Travel!',
-                show_alert: true,
-              });
-              continue;
-            }
-
-            const pool =
-              activeGiveaway.participants.length > 0
-                ? activeGiveaway.participants
-                : [
-                    { user_id: 1, username: '@alex_traveler', first_name: 'Олександр' },
-                    { user_id: 2, username: '@elena_voyage', first_name: 'Олена' },
-                  ];
-            const winner = pool[Math.floor(Math.random() * pool.length)];
-            activeGiveaway.winner = winner;
-            activeGiveaway.is_active = false;
-
-            await tgApi('answerCallbackQuery', {
-              callback_query_id: cb.id,
-              text: `🏆 Переможця обрано: ${winner.first_name} (${winner.username})! Опубліковано в чаті!`,
-              show_alert: true,
-            });
-
-            const winText =
-              `🎊🏆 <b>УВАГА! ОФІЦІЙНІ ПІДСУМКИ РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n\n` +
-              `🎁 <b>Приз:</b> ${activeGiveaway.prize}\n` +
-              `👥 <b>Усього учасників:</b> ${pool.length}\n\n` +
-              `✨ <b>Переможцем стає:</b>\n` +
-              `🥳 <b>${winner.first_name} (${winner.username})!</b> 🎉🎉🎉\n\n` +
-              `Щиро вітаємо з перемогою! Напишіть адміністратору @SVOI_travel_admin для отримання вашого призу! 🚐✨`;
-
-            if (chatId) {
-              await tgApi('sendMessage', {
-                chat_id: chatId,
-                text: winText,
-                parse_mode: 'HTML',
-                reply_markup: {
-                  inline_keyboard: [
-                    [{ text: '💬 Написати організатору (@SVOI_travel_admin)', url: 'https://t.me/SVOI_travel_admin' }],
-                    [{ text: '🗺 Напрямки та дати поїздок', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
-                  ],
-                },
-              });
+            // Also live-update the Admin Panel Giveaway Card if open
+            if (activeGiveaway.admin_chat_id && activeGiveaway.admin_msg_id) {
+              try {
+                await tgApi('editMessageText', {
+                  chat_id: activeGiveaway.admin_chat_id,
+                  message_id: activeGiveaway.admin_msg_id,
+                  text: getAdminGiveawayCardText(),
+                  parse_mode: 'HTML',
+                  reply_markup: getAdminGiveawayCardMarkup(),
+                });
+              } catch (_e) {
+                // ignore
+              }
             }
             continue;
           }
@@ -1020,24 +1580,27 @@ async function startLiveTelegramBotPolling() {
               `• 🇧🇪 <b>Бельгія (окремі авторські виїзди):</b>\n` +
               `  — <b>Брюссель (90€):</b> золота площа Гран-Плас, монумент Атоміум, Королівський палац, галереї Св. Юбера та гарячі вафлі\n` +
               `  — <b>Антверпен + Брюгге (110€):</b> вокзал-палац та замок Стен у Антверпені + Озеро Кохання з лебедями й канали Брюгге\n` +
+              `  — <b>Брюгге + Гент + Брюссель (120€):</b> золоте тріо Бельгії — канали Брюгге, замок Гравенстен у Генті та вечірня Гран-Плас у Брюсселі\n` +
               `• 🇳🇱 <b>Голландія / Нідерланди (окремі авторські виїзди):</b>\n` +
               `  — <b>Гітхорн + Амстердам (120€):</b> водне село без авто Гітхорн («Голландська Венеція») + канали Амстердама і сироварні\n` +
               `  — <b>Заандам + Море + Амстердам (120€):</b> вітряки Заансе-Сханс і Заандам, пляж Північного моря та Амстердам\n` +
               `• 🇩🇪 <b>Німеччина (окремі авторські виїзди):</b>\n` +
               `  — <b>Замок Нойшванштайн + ущелина Партнахкламм (120€):</b> міст Марієнбрюке, озеро Альпзее та гірська ущелина з водоспадами\n` +
-              `  — <b>Берлін + Дрезден (2 дні, 240€):</b> Бранденбурзькі ворота, Рейхстаг, палац Цвінгер, Фрауенкірхе (готель включено)\n` +
-              `  — <b>Парк розваг Леголенд / LEGOLAND (115€):</b> сімейний виїзд у Гюнцбург (Мініленд та 60+ атракціонів)\n` +
-              `  — <b>Штутгарт (95€):</b> музеї Mercedes-Benz і Porsche + футуристична бібліотека\n` +
+              `  — <b>Берлін + Дрезден (2 дні, 190€):</b> Бранденбурзькі ворота, Рейхстаг, палац Цвінгер, Фрауенкірхе (готель включено)\n` +
+              `  — <b>Парк розваг Леголенд / LEGOLAND (110€):</b> сімейний виїзд у Гюнцбург (Мініленд та 60+ атракціонів)\n` +
+              `  — <b>Штутгарт (90€):</b> музеї Mercedes-Benz і Porsche + футуристична бібліотека\n` +
               `  — <b>Європа-Парк / Europa-Park (95€):</b> топ-парк розваг Європи в Русті (лише ~2 год від Саарланду)\n` +
               `  — <b>Долина Мозеля: Замок Ельц + Кохем + міст Гайєрлай (85€):</b> замок Burg Eltz, підвісний міст та дегустація Рислінгу\n` +
               `  — <b>Гайдельберг + курорт Баден-Баден (85€):</b> замок Гайдельберга та королівські терми\n` +
+              `• 🇦🇹 <b>Австрія (135€):</b>\n` +
+              `  — <b>Зальцбург + Гальштат (Хальштатт):</b> альпійське озеро Гальштат, панорама Skywalk, палац Мірабель та будинок Моцарта в Зальцбурзі\n` +
               `• 🇱🇮 <b>Ліхтенштейн (3 країни за 1 день, 120€):</b>\n` +
               `  — <b>Вадуц, Брегенц та Ліндау:</b> замок Вадуц, сцена на Боденському озері в Брегенці та острів Ліндау\n` +
               `• 🇨🇭 <b>Швейцарія (120€):</b>\n` +
               `  — <b>Рейнський водоспад + Цюрих + Люцерн</b> АБО <b>Ущелина Ааре + Лаутербруннен (72 водоспади) + Берн</b>\n` +
               `• 🇮🇹 <b>Італія (2 дні, 270€):</b> <b>Озеро Комо + Мілан</b> (вілли Белладжо, катер, собор Дуомо, готель включено)\n` +
               `• 🇨🇿 <b>Чехія (120€):</b> <b>Прага</b> (Празький Град, Карлів міст, куранти Орлой)\n\n` +
-              `<blockquote>🚐 <b>Авто:</b> 8-місний <b>Opel Vivaro</b> (клімат-контроль, USB, стеля «Зоряне небо», багаж до <code>10 кг</code>)\n` +
+              `<blockquote>🚐 <b>Авто:</b> 8-місний <b>Opel Vivaro</b> (клімат-контроль, USB, відкидні сидіння, багаж до <code>10 кг</code>)\n` +
               `📍 <b>Збір за адресою (Door-to-Door):</b> Саарланд, Трір та Люксембург\n` +
               `💳 <b>Оплата:</b> <code>0% передоплати</code> на всі одноденні тури!</blockquote>\n\n` +
               `👇 <b>Натисніть на будь-яку поїздку нижче, щоб відкрити погодинну програму, фото та забронювати місце:</b>`;
@@ -1158,8 +1721,8 @@ async function startLiveTelegramBotPolling() {
 
             await smartEditMessage(chatId, msgId, hasPhoto, step3Text, { inline_keyboard: step3Inline });
 
-            // Also send the Telegram ReplyKeyboard with request_contact=True
-            await tgApi('sendMessage', {
+            // Also send the Telegram ReplyKeyboard with request_contact=True and track it so it gets deleted automatically
+            const kbPrompt: any = await tgApi('sendMessage', {
               chat_id: chatId,
               parse_mode: 'HTML',
               text: `👇 <i>Або натисніть кнопку нижче, щоб поділитися номером телефону в 1 клік:</i>`,
@@ -1169,6 +1732,10 @@ async function startLiveTelegramBotPolling() {
                 one_time_keyboard: true,
               },
             });
+            if (kbPrompt && kbPrompt.ok && kbPrompt.result?.message_id && chatId > 0) {
+              activeBotMessages[String(chatId)] = [msgId, kbPrompt.result.message_id];
+              saveTargetsToDisk();
+            }
           } else if (cbData.startsWith('book_fast_')) {
             const rest = cbData.replace('book_fast_', '');
             const lastIdx = rest.lastIndexOf('_');
@@ -1191,7 +1758,7 @@ async function startLiveTelegramBotPolling() {
             };
             const selectedSeat = SEAT_INFO[paxCount] || SEAT_INFO['1'];
 
-            const trip = TRIPS_LIST.find((t) => t.id === tripId);
+            const trip = findTripById(tripId);
             const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
             const tripTitle = trip ? trip.shortTitle : 'Обраний тур';
             const dateStr = getLiveTripDate(tripId, trip?.departureDates);
@@ -1201,16 +1768,19 @@ async function startLiveTelegramBotPolling() {
             const firstName = cb.from?.first_name || 'Мандрівник';
             const username = cb.from?.username ? `@${cb.from.username}` : firstName;
 
-            await tgApi('sendMessage', {
-              chat_id: ADMIN_ID,
-              parse_mode: 'HTML',
-              text:
-                `🔥 <b>НОВА БРОНЬ У 2 КЛІКИ #${bookingCode}!</b>\n\n` +
-                `🗺 <b>Напрямок:</b> ${flag} ${tripTitle} | ${dateStr}\n` +
-                `💺 <b>Обране місце:</b> <code>${selectedSeat.label}</code>\n` +
-                `💶 <b>Сума:</b> <code>${totalCost}€</code>\n` +
-                `👤 <b>Клієнт:</b> ${firstName} (${username})`,
-            });
+            await notifyAllAdmins(
+              {
+                parse_mode: 'HTML',
+                text:
+                  `🔥 <b>НОВА БРОНЬ У 2 КЛІКИ #${bookingCode}!</b>\n\n` +
+                  `🗺 <b>Напрямок:</b> ${flag} ${tripTitle} | ${dateStr}\n` +
+                  `💺 <b>Обране місце:</b> <code>${selectedSeat.label}</code>\n` +
+                  `💶 <b>Сума:</b> <code>${totalCost}€</code>\n` +
+                  `👤 <b>Клієнт:</b> ${firstName} (${username})`,
+              },
+              undefined,
+              chatId,
+            );
 
             const doneText =
               `🎉 <b>ЗАЯВКУ #${bookingCode} ПРИЙНЯТО!</b>\n\n` +
@@ -1227,7 +1797,7 @@ async function startLiveTelegramBotPolling() {
                 [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
               ],
             });
-          } else if (cbData.startsWith('adm_seats_') && userId === ADMIN_ID) {
+          } else if (cbData.startsWith('adm_seats_')) {
             const tripId = cbData.replace('adm_seats_', '');
             const trip = TRIPS_LIST.find((t) => t.id === tripId);
             const cur = getLiveFreeSeats(tripId);
@@ -1259,14 +1829,14 @@ async function startLiveTelegramBotPolling() {
               ],
             };
             await smartEditMessage(chatId, msgId, hasPhoto, seatsText, seatsMarkup);
-          } else if (cbData.startsWith('set_seats_') && userId === ADMIN_ID) {
+          } else if (cbData.startsWith('set_seats_')) {
             const rest = cbData.replace('set_seats_', '');
             const lastIdx = rest.lastIndexOf('_');
             const tripId = rest.substring(0, lastIdx);
             const count = parseInt(rest.substring(lastIdx + 1), 10);
             liveSeatsOverride[tripId] = count;
             await sendTourCardToChat(chatId, msgId, hasPhoto, tripId, userId);
-          } else if (cbData.startsWith('adm_date_') && userId === ADMIN_ID) {
+          } else if (cbData.startsWith('adm_date_')) {
             const tripId = cbData.replace('adm_date_', '');
             const trip = TRIPS_LIST.find((t) => t.id === tripId);
             const curDate = getLiveTripDate(tripId, trip?.departureDates);
@@ -1284,7 +1854,7 @@ async function startLiveTelegramBotPolling() {
                 ],
               ],
             });
-          } else if (cbData.startsWith('adm_poster_') && userId === ADMIN_ID) {
+          } else if (cbData.startsWith('adm_poster_')) {
             const tripId = cbData.replace('adm_poster_', '');
             const trip = TRIPS_LIST.find((t) => t.id === tripId);
             chatSessions[chatId] = { mode: 'waiting_admin_poster', tripId };
@@ -1304,12 +1874,12 @@ async function startLiveTelegramBotPolling() {
             chatSessions[chatId] = { mode: null };
             const grpStatus = currentGroupTarget
               ? `<code>${currentGroupTarget}</code> (${currentGroupTitle}) ✅`
-              : `<i>не прив'язана (напишіть будь-яке повідомлення в групі з ботом)</i>`;
+              : `<i>ще не прив'язана (натисніть «⚙️ Прив’язати ГРУПУ» нижче)</i>`;
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `📢 <b>Центр керування Каналом та Групою SVOI Travel [Адмін]</b>\n\n` +
+              `👑 <b>Адмін-панель: Розіграші, Група та Канал SVOI Travel</b>\n\n` +
                 `👥 <b>Цільова ГРУПА:</b> ${grpStatus}\n` +
                 `📢 <b>Цільовий КАНАЛ:</b> <code>${currentChannelTarget}</code>\n` +
                 `🎁 <b>Поточний розіграш:</b> <b>${activeGiveaway.prize}</b>\n` +
@@ -1317,139 +1887,365 @@ async function startLiveTelegramBotPolling() {
                 (activeGiveaway.winner
                   ? `🏆 <b>Обраний переможець:</b> <b>${activeGiveaway.winner.first_name} (${activeGiveaway.winner.username})</b>\n\n`
                   : `\n`) +
-                `Оберіть дію на плашці адміністратора:`,
+                `<blockquote>💡 <b>Як це працює:</b>\n` +
+                `1️⃣ Спочатку бот створює та показує картку розіграшу <b>тут у вашій адмінці</b>.\n` +
+                `2️⃣ Натисніть <b>«👥 Поділитися в ГРУПІ»</b> — і бот опублікує розіграш напряму у вашій групі.\n` +
+                `3️⃣ Коли всі учасники візьмуть участь, натисніть <b>«🏆 Вибрати переможця розіграшу»</b> і кнопкою <b>«👥 Поділитися переможцем у ГРУПІ»</b> опублікуйте результат розіграшу в групі напряму!</blockquote>`,
               getChannelAdminMarkup(),
             );
-          } else if (cbData === 'cb_adm_gw_new_group') {
-            chatSessions[chatId] = { mode: 'waiting_gw_prize_group' };
+          } else if (cbData === 'cb_adm_gw_card') {
+            chatSessions[chatId] = { mode: null };
+            activeGiveaway.admin_chat_id = chatId;
+            activeGiveaway.admin_msg_id = msgId;
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `👥 <b>Запуск нового РОЗІГРАШУ в ГРУПУ (${currentGroupTarget || currentGroupTitle})</b>\n\n` +
-                `Напишіть у відповідь: <b>який приз розігрується?</b>\n` +
-                `<i>Наприклад: Безкоштовне місце в турі до Парижа 🥐🗼</i>\n\n` +
-                `Бот одразу опублікує розіграш у групу з кнопками <b>«🎉 Брати участь!»</b> та <b>«👑 Вибрати переможця [Тільки Адмін]»</b>!`,
-              {
-                inline_keyboard: [
-                  [{ text: '🚀 Опублікувати поточний розіграш у ГРУПУ зараз', callback_data: 'cb_adm_gw_pub_group_now' }],
-                  [{ text: '🔙 Назад в меню', callback_data: 'cb_adm_channel_menu' }],
-                ],
-              },
+              getAdminGiveawayCardText(),
+              getAdminGiveawayCardMarkup(),
             );
-          } else if (cbData === 'cb_adm_gw_pub_group_now') {
-            activeGiveaway.is_active = true;
-            const count = activeGiveaway.participants.length;
-            const gwText =
-              `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ У ГРУПІ ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
-              `Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n` +
-              `🎁 <b>${activeGiveaway.prize}</b>\n\n` +
-              `<b>Умови участі максимально прості:</b>\n` +
-              `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
-              `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (${count})»</b> нижче!\n\n` +
-              `<i>Бот автоматично рахує учасників. Після завершення адміністратор обере переможця кнопкою нижче!</i>`;
-
-            const gwMarkup = {
-              inline_keyboard: [
-                [{ text: `🎉 Брати участь! (${count})`, callback_data: 'gw_join_gw_active' }],
-                [{ text: '👑 Вибрати переможця [Тільки Адмін]', callback_data: 'gw_admin_pick_inline' }],
-                [{ text: '💺 Забронювати місце', url: 'https://t.me/Svoi_TravelEU_bot?start=trips' }],
-              ],
-            };
-
-            if (!currentGroupTarget) {
-              await smartEditMessage(
-                chatId,
-                msgId,
-                hasPhoto,
-                `⚠️ <b>Група ще не прив'язана числовим ID!</b>\n\n` +
-                  `Оскільки ваша група використовує закрите посилання <code>https://t.me/+J50liyDUHPgzYTQy</code>, Telegram Bot API вимагає числовий ID групи (<code>-100...</code>).\n\n` +
-                  `👉 <b>Як прив'язати за 2 секунди:</b>\n` +
-                  `1️⃣ Додайте бота <b>@Svoi_TravelEU_bot</b> у вашу групу.\n` +
-                  `2️⃣ Напишіть у групі будь-яке повідомлення або команду <code>/giveaway</code> — бот миттєво сам визначить ID групи й опублікує розіграш!\n\n` +
-                  `👇 Нижче також надіслано готову картку розіграшу з активними кнопками:`,
-                getChannelAdminMarkup(),
-              );
-              await tgApi('sendMessage', {
-                chat_id: chatId,
-                text: gwText,
-                parse_mode: 'HTML',
-                reply_markup: gwMarkup,
-              });
-            } else {
-              const pubRes: any = await tgApi('sendMessage', {
-                chat_id: currentGroupTarget,
-                text: gwText,
-                parse_mode: 'HTML',
-                reply_markup: gwMarkup,
-              });
-              if (pubRes.ok) {
-                await smartEditMessage(
-                  chatId,
-                  msgId,
-                  hasPhoto,
-                  `✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в групу «${currentGroupTitle}» (<code>${currentGroupTarget}</code>)!</b> 👥🎉\n\n` +
-                    `Коли всі учасники натиснуть «🎉 Брати участь!», натисніть кнопку <b>«👑 Вибрати переможця [Тільки Адмін]»</b> прямо під постом у групі або тут у панелі!`,
-                  getChannelAdminMarkup(),
-                );
-              } else {
-                await smartEditMessage(
-                  chatId,
-                  msgId,
-                  hasPhoto,
-                  `⚠️ <b>Не вдалося опублікувати в групу <code>${currentGroupTarget}</code>:</b>\n` +
-                    `<code>${pubRes.description || 'перевірте права бота в групі'}</code>\n\n` +
-                    `Переконайтеся, що бот @Svoi_TravelEU_bot є учасником/адміністратором групи, та напишіть у групі <code>/giveaway</code>.`,
-                  getChannelAdminMarkup(),
-                );
-              }
-            }
           } else if (cbData === 'cb_adm_gw_new') {
             chatSessions[chatId] = { mode: 'waiting_gw_prize' };
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `📢 <b>Запуск нового РОЗІГРАШУ в КАНАЛ <code>${currentChannelTarget}</code></b>\n\n` +
+              `🎁 <b>Створення нового РОЗІГРАШУ в адмінці</b>\n\n` +
                 `Напишіть у відповідь: <b>який приз розігрується?</b>\n` +
-                `<i>Наприклад: Безкоштовне місце в турі до Парижа 🥐🗼</i>`,
+                `<i>Наприклад: Безкоштовне місце в турі до Парижа 🥐🗼</i>\n\n` +
+                `Спочатку бот опублікує картку розіграшу <b>тут у вашій адмінці</b>, а під нею з'явиться кнопка <b>«👥 Поділитися в ГРУПІ»</b>!`,
               {
-                inline_keyboard: [[{ text: '🔙 Назад в меню', callback_data: 'cb_adm_channel_menu' }]],
+                inline_keyboard: [
+                  [{ text: '👑 Відкрити вже готовий розіграш в адмінці', callback_data: 'cb_adm_gw_card' }],
+                  [{ text: '🔙 Назад в адмін-меню', callback_data: 'cb_adm_channel_menu' }],
+                ],
               },
             );
+          } else if (cbData === 'cb_adm_gw_share_group' || cbData === 'cb_adm_gw_share_channel') {
+            const isGroup = cbData === 'cb_adm_gw_share_group';
+            activeGiveaway.is_active = true;
+            const count = activeGiveaway.participants.length;
+            const publicText = getPublicGiveawayText(activeGiveaway.prize, count);
+            const publicMarkup = getPublicGiveawayMarkup(count);
+
+            if (isGroup && !currentGroupTarget) {
+              chatSessions[chatId] = { mode: null, pendingGroupAction: 'publish_giveaway' };
+              await smartEditMessage(
+                chatId,
+                msgId,
+                hasPhoto,
+                `⚠️ <b>Щоб бот опублікував розіграш у вашій закритій групі напряму, оберіть її в 1 клік!</b>\n\n` +
+                  `🚀 <b>Натисніть кнопку «👥 Обрати ГРУПУ зі списку Telegram (в 1 клік)» унизу екрана (на клавіатурі)</b> — і бот миттєво прив'яже вашу групу та <b>АВТОМАТИЧНО ОПУБЛІКУЄ РОЗІГРАШ</b>!\n\n` +
+                  getAdminGiveawayCardText(),
+                getAdminGiveawayCardMarkup(),
+              );
+              const kbMsg: any = await tgApi('sendMessage', {
+                chat_id: chatId,
+                parse_mode: 'HTML',
+                text: `👇 <b>Натисніть кнопку нижче на клавіатурі, щоб обрати вашу групу зі списку Telegram в 1 клік:</b>`,
+                reply_markup: {
+                  keyboard: [
+                    [
+                      {
+                        text: '👥 Обрати ГРУПУ зі списку Telegram (в 1 клік)',
+                        request_chat: { request_id: 701, chat_is_channel: false },
+                      },
+                    ],
+                  ],
+                  resize_keyboard: true,
+                  one_time_keyboard: true,
+                },
+              });
+              if (kbMsg && kbMsg.ok && kbMsg.result?.message_id && chatId > 0) {
+                activeBotMessages[String(chatId)] = [msgId, kbMsg.result.message_id];
+                saveTargetsToDisk();
+              }
+              continue;
+            }
+
+            const targetId = isGroup ? currentGroupTarget : currentChannelTarget;
+            const targetName = isGroup ? `ГРУПІ «${currentGroupTitle}» (${currentGroupTarget})` : `КАНАЛІ (${currentChannelTarget})`;
+
+            const pubRes: any = await tgApi('sendMessage', {
+              chat_id: targetId,
+              text: publicText,
+              parse_mode: 'HTML',
+              reply_markup: publicMarkup,
+            });
+
+            if (pubRes.ok) {
+              activeGiveaway.admin_chat_id = chatId;
+              activeGiveaway.admin_msg_id = msgId;
+              if (isGroup && pubRes.result) {
+                activeGiveaway.group_chat_id = pubRes.result.chat.id;
+                activeGiveaway.group_msg_id = pubRes.result.message_id;
+              }
+              await smartEditMessage(
+                chatId,
+                msgId,
+                hasPhoto,
+                `✅ <b>РОЗІГРАШ УСПІШНО ОПУБЛІКОВАНО В ${targetName}!</b> 🎉\n\n` +
+                  `Учасники в групі бачать чистий пост із кнопкою <b>«🎉 Брати участь!»</b>.\n` +
+                  `Коли всі бажаючі візьмуть участь, натисніть кнопку <b>«🏆 Вибрати переможця розіграшу»</b> нижче!\n\n` +
+                  `────────────────────\n\n` +
+                  getAdminGiveawayCardText(),
+                getAdminGiveawayCardMarkup(),
+              );
+            } else {
+              await smartEditMessage(
+                chatId,
+                msgId,
+                hasPhoto,
+                `⚠️ <b>Помилка публікації в ${targetName}:</b>\n` +
+                  `<code>${pubRes.description || 'перевірте, що бот доданий у групу/канал з правом писати повідомлення'}</code>\n\n` +
+                  `👉 Натисніть <b>«⚙️ Прив’язати ГРУПУ»</b>, щоб обрати групу кнопкою зі списку Telegram в 1 клік!\n\n` +
+                  getAdminGiveawayCardText(),
+                getAdminGiveawayCardMarkup(),
+              );
+            }
+          } else if (cbData === 'cb_car' || cbData === 'cb_car_photo_1' || cbData === 'cb_car_photo_2' || cbData === 'cb_car_photo_3') {
+            const photoMap: Record<string, { url: string; subtitle: string }> = {
+              cb_car: {
+                url: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=1000&q=85',
+                subtitle: '📸 Фото 1/3: Комфортабельний 8-місний мінівен Opel Vivaro на маршрутах Європи',
+              },
+              cb_car_photo_1: {
+                url: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=1000&q=85',
+                subtitle: '📸 Фото 1/3: Екстер’єр мінівена Opel Vivaro для камерних груп до 8 осіб',
+              },
+              cb_car_photo_2: {
+                url: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1000&q=85',
+                subtitle: '📸 Фото 2/3: Просторий салон (схема 2+3+3), відкидні сидіння та клімат-контроль',
+              },
+              cb_car_photo_3: {
+                url: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1000&q=85',
+                subtitle: '📸 Фото 3/3: Панорамні вікна та містке багажне відділення (до 10 кг + ручна поклажа)',
+              },
+            };
+            const selectedPhoto = photoMap[cbData] || photoMap.cb_car;
+            const carText =
+              `🚐 <b>Наш автомобіль: 8-місний Opel Vivaro</b> ✨\n` +
+              `<i>${selectedPhoto.subtitle}</i>\n\n` +
+              `Ми подорожуємо камерною групою до <b>8 пасажирів</b> у максимальному комфорті без натовпу великих автобусів:\n\n` +
+              `• 💺 <b>Схема салону (2+3+3):</b>\n` +
+              `  — <b>1-й ряд (біля водія):</b> Місце 1 (Панорамне <code>+5€</code>), Місце 2 (Вікно <code>+5€</code>)\n` +
+              `  — <b>2-й ряд:</b> Місця 3, 4, 5 — зручні крісла з підлокітниками та регулюванням нахилу (<code>+5€</code>)\n` +
+              `  — <b>3-й ряд:</b> Місця 6 (<code>+5€</code>), 7 (Центр — <code>0€ без доплати</code>), 8 (<code>+5€</code>)\n` +
+              `  — <b>🎲 Вільна посадка:</b> без фіксації конкретного місця — <code>0€</code>\n` +
+              `• ❄️ <b>Двозонний клімат-контроль та автономний обігрівач:</b> ідеальна температура влітку та взимку\n` +
+              `• 🔌 <b>USB / Type-C зарядки:</b> біля кожного ряду сидінь для ваших смартфонів та камер\n` +
+              `• 🧳 <b>Багажне відділення:</b> валіза або дорожня сумка до <code>10 кг</code> у багажник + невеликий рюкзак у салон\n` +
+              `• 🛑 <b>Санітарні та кавові зупинки:</b> кожні 2.5–3 години + у будь-який момент за вашим проханням!`;
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              carText,
+              {
+                inline_keyboard: [
+                  [
+                    { text: '📸 Фото 1: Авто', callback_data: 'cb_car_photo_1' },
+                    { text: '💺 Фото 2: Салон', callback_data: 'cb_car_photo_2' },
+                    { text: '🏔 Фото 3: У дорозі', callback_data: 'cb_car_photo_3' },
+                  ],
+                  [
+                    { text: '💺 Обрати місце та забронювати', callback_data: 'cb_book' },
+                    { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
+                  ],
+                  [
+                    { text: '❓ Усі питання (FAQ)', callback_data: 'cb_faq' },
+                    { text: '🔙 Назад в меню', callback_data: 'cb_back' },
+                  ],
+                ],
+              },
+              selectedPhoto.url,
+            );
+          } else if (cbData === 'cb_meeting') {
+            const meetingText =
+              `📍 <b>Точки збору та адресний виїзд (Door-to-Door)</b> 🚐🏠\n\n` +
+              `Головна перевага клубу <b>SVOI</b> — вам не потрібно добиратися вночі на вокзал! Ми працюємо у форматі <b>«від під'їзду до під'їзду»</b>:\n\n` +
+              `🟢 <b>Основний регіон адресного збору (Door-to-Door):</b>\n` +
+              `• 🇩🇪 <b>Саарланд (Saarland):</b> Саарбрюккен, Фьольклінген, Саарлуї, Мерциг, Санкт-Вендель, Нойнкірхен, Гомбург\n` +
+              `• 🇩🇪 <b>Трір (Trier) та околиці Мозеля</b>\n` +
+              `• 🇱🇺 <b>Люксембург (Luxembourg):</b> столиця та міста вздовж маршруту\n\n` +
+              `🟡 <b>Додаткова підсадка (для компаній від 4-х осіб за маршрутом):</b>\n` +
+              `• Кайзерслаутерн, Мангейм, Карлсруе, Страсбург, Франкфурт (узгоджується індивідуально)\n\n` +
+              `<blockquote>⏰ За день до виїзду водій створює спільний чат групи в Telegram, надсилає геолокацію авто та точний час подачі до вашого дому!</blockquote>`;
+            await smartEditMessage(chatId, msgId, hasPhoto, meetingText, {
+              inline_keyboard: [
+                [
+                  { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
+                  { text: '💺 Забронювати місце', callback_data: 'cb_book' },
+                ],
+                [
+                  { text: '🚐 Фото авто (Opel Vivaro)', callback_data: 'cb_car' },
+                  { text: '❓ Часті питання (FAQ)', callback_data: 'cb_faq' },
+                ],
+                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
+              ],
+            });
           } else if (cbData === 'cb_reviews') {
             const reviewsText =
               `⭐ <b>Відгуки туристів клубу SVOI Travel</b> 💬✨\n\n` +
               `Реальні враження наших мандрівників про поїздки на Opel Vivaro:\n\n` +
               `• <b>Олена К. (Саарбрюккен) — Париж:</b>\n` +
-              `⭐⭐⭐⭐⭐ <i>«Забрали прямо біля дому, мінівен дуже м'який і чистий, зоряне небо в салоні створило справжню казку!»</i>\n\n` +
+              `⭐⭐⭐⭐⭐ <i>«Забрали прямо біля дому, мінівен дуже м'який і чистий, просторий салон і панорамні вікна зробили дорогу легкою та приємною!»</i>\n\n` +
               `• <b>Михайло та Юлія (Трір) — Замок Нойшванштайн + ущелина:</b>\n` +
               `⭐⭐⭐⭐⭐ <i>«Неймовірні краєвиди з мосту Марієнбрюке та прогулянка гірською ущелиною Партнахкламм. Група всього 8 людей — дуже душевно!»</i>\n\n` +
               `• <b>Тетяна В. (Люксембург) — Озеро Комо + Мілан:</b>\n` +
               `⭐⭐⭐⭐⭐ <i>«Два дні італійського щастя! Вілли Белладжо та прогулянка на катері перевершили всі очікування.»</i>`;
             await smartEditMessage(chatId, msgId, hasPhoto, reviewsText, {
               inline_keyboard: [
-                [{ text: '🗺 Обрати поїздку', callback_data: 'cb_trips' }],
+                [
+                  { text: '✍️ Залишити свій відгук', callback_data: 'cb_feedback' },
+                  { text: '🗺 Обрати поїздку', callback_data: 'cb_trips' },
+                ],
                 [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
               ],
             });
           } else if (cbData === 'cb_faq') {
             const faqText =
-              `❓ <b>Часті питання про поїздки клубу SVOI (FAQ)</b> 💡\n\n` +
-              `• 📍 <b>Звідки виїзд (Door-to-Door):</b> забираємо та розвозимо за домашньою адресою по <b>Саарланду, Тріру та Люксембургу</b>! Можлива підсадка від 4-х осіб з Кайзерслаутерна, Мангейма, Франкфурта, Карлсруе, Страсбурга.\n` +
-              `• 💳 <b>Оплата:</b> <code>0% передоплати</code> на всі одноденні поїздки (оплата водієві при посадці). Для 2–3 денних турів готель включено у вартість.\n` +
-              `• 🚐 <b>Автомобіль:</b> комфортабельний 8-місний <b>Opel Vivaro</b> (клімат-контроль, USB, відкидні спинки, стеля «Зоряне небо»).\n` +
-              `• 🧳 <b>Багаж:</b> до <code>10 кг</code> у багажне відділення + ручна поклажа в салон.\n` +
-              `• 💺 <b>Вибір місця:</b> фіксація конкретного місця (1–8) — лише <code>5€</code>, вільна посадка — <code>0€</code>.`;
-            await smartEditMessage(chatId, msgId, hasPhoto, faqText, {
-              inline_keyboard: [
-                [
-                  { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
-                  { text: '💺 Забронювати місце', callback_data: 'cb_book' },
+              `❓ <b>Часті питання про поїздки клубу SVOI (FAQ) — Оберіть розділ</b> 💡\n\n` +
+              `Ми зібрали детальні відповіді на всі питання про наші поїздки. Натисніть на будь-яку плашку нижче, щоб відкрити подробиці:\n\n` +
+              `• 📍 <b>Звідки виїзд (Door-to-Door):</b> забираємо за адресою по Саарланду, Тріру та Люксембургу\n` +
+              `• 💳 <b>Оплата:</b> <code>0% передоплати</code> на всі одноденні тури (готель включено у 2–3 денні)\n` +
+              `• 🚐 <b>Автомобіль:</b> 8-місний <b>Opel Vivaro</b> з клімат-контролем та USB (з реальними фото авто!)\n` +
+              `• 💺 <b>Схема місць 1–8</b>, таймінг виїзду, багаж, поїздки з дітьми та скасування броні\n\n` +
+              `👇 <b>Натисніть на потрібну тему нижче:</b>`;
+            await smartEditMessage(chatId, msgId, hasPhoto, faqText, getFaqMarkup());
+          } else if (cbData === 'cb_faq_pickup') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `📍 <b>Звідки виїзд? Адресний збір (Door-to-Door)</b> 🚐🏠\n\n` +
+                `• Ми забираємо та розвозимо пасажирів <b>прямо за домашньою адресою</b> у містах <b>Саарланду (Saarbrücken, Saarlouis, Völklingen, Merzig, St. Wendel, Homburg), Тріра (Trier) та Люксембургу</b>!\n` +
+                `• Для компаній <b>від 4-х осіб</b> можливий виїзд із Кайзерслаутерна, Мангейма, Карлсруе, Страсбурга або Франкфурта.\n` +
+                `• За день до поїздки водій надсилає точний час прибуття до вашого під'їзду.`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_faq_payment') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `💳 <b>Як проходить оплата та бронювання? (0% передоплати)</b> ✨\n\n` +
+                `• <b>Одноденні поїздки (1 день):</b> бронювання <b>БЕЗ ПЕРЕДОПЛАТИ (0€)</b>! Ви оплачуєте вартість поїздки готівкою або переказом водієві безпосередньо при посадці в авто.\n` +
+                `• <b>Багатоденні тури (2–3 дні):</b> у вартість туру <b>вже включено проживання в перевіреному готелі</b> (1 або 2 ночі). Передоплата вноситься лише для гарантованої броні готелю.`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_faq_seats') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `💺 <b>Схема місць у салоні Opel Vivaro (1–8)</b> 🚐\n\n` +
+                `Салон розрахований рівно на <b>8 пасажирів</b> (схема 2+3+3):\n` +
+                `• <b>Місце 1 (1-й ряд, біля водія):</b> панорамний огляд — <code>+5€</code>\n` +
+                `• <b>Місце 2 (1-й ряд, праве вікно):</b> максимум простору — <code>+5€</code>\n` +
+                `• <b>Місця 3, 4, 5 (2-й ряд):</b> ліве вікно, центр, праве вікно — <code>+5€</code>\n` +
+                `• <b>Місця 6, 8 (3-й ряд біля вікон):</b> — <code>+5€</code>\n` +
+                `• <b>Місце 7 (3-й ряд, центр):</b> — <code>0€ (безкоштовна фіксація!)</code>\n` +
+                `• <b>🎲 Вільна посадка:</b> якщо не принципово, яке саме місце зайняти — <code>0€</code>.`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_faq_time') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `⏰ <b>О котрій виїзд і повернення додому?</b> 🕒\n\n` +
+                `• <b>Ранковий виїзд:</b> зазвичай о <b>05:30 – 07:00 ранку</b> (залежно від дальності маршруту), щоб приїхати на локацію першими без черг.\n` +
+                `• <b>Час на локації:</b> від 6 до 9 годин чистого часу на прогулянки, фото та відпочинок.\n` +
+                `• <b>Повернення додому:</b> орієнтовно о <b>21:00 – 23:30</b> прямо до вашого під'їзду.`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_faq_walking') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `🚶‍♂️ <b>Скільки ходити пішки? Чи підходить літнім людям?</b> 🌿\n\n` +
+                `• Ми під'їжджаємо на 8-місному мінівені максимально близько до центральних локацій та оглядових майданчиків (куди великим автобусам в'їзд заборонено!).\n` +
+                `• Ви самі обираєте комфортний темп: можна гуляти разом з організатором або відпочивати у затишних кафе.`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_terms') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `🎟 <b>Що входить у вартість туру?</b> 📋\n\n` +
+                `✅ <b>У вартість включено:</b>\n` +
+                `• Проїзд у комфортабельному 8-місному мінівені <b>Opel Vivaro</b> в обидві сторони\n` +
+                `• Адресний збір та розвезення по дому (Саарланд, Трір, Люксембург)\n` +
+                `• Супровід організатора за маршрутом, фото-локації та рекомендації\n` +
+                `• Платні дороги, тунелі та парковки\n` +
+                `• У 2–3 денних турах — <b>проживання в готелі</b>!\n\n` +
+                `➕ <b>Оплачується окремо (за бажанням):</b> особисте харчування та вхідні квитки в музеї/парки/кораблики.`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_faq_luggage') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `🧳 <b>Багаж, документи та що взяти в дорогу?</b> 🛂\n\n` +
+                `• <b>Документи:</b> закордонний паспорт або ID-картка / Aufenthaltstitel + медичне страхування.\n` +
+                `• <b>Норма багажу:</b> 1 місце багажу до <code>10 кг</code> у багажне відділення + невеликий рюкзак у салон.\n` +
+                `• <b>У дорогу:</b> зручне взуття, павербанк (у салоні також є USB-зарядки).`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_faq_choose') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `🤔 <b>Як обрати свій ідеальний тур?</b> 🧭\n\n` +
+                `• <b>Найближчі та легкі виїзди (1.5–2 год у дорозі):</b> Ельзас + Страсбург (80€), Долина Мозеля: Замок Ельц + Кохем (85€), Гайдельберг + Баден-Баден (85€).\n` +
+                `• <b>Для всієї родини та емоцій:</b> Європа-Парк (95€), Леголенд (110€), Заандам + Море + Амстердам (120€).\n` +
+                `• <b>Гірські панорами та замки:</b> Замок Нойшванштайн + ущелина (120€), Зальцбург + Гальштат (135€), Швейцарія (120€), Ліхтенштейн — 3 країни (120€).\n` +
+                `• <b>Вікенд на 2–3 дні з готелем:</b> Берлін + Дрезден (190€), Мон-Сен-Мішель (270€), Озеро Комо + Мілан (270€), Лазурове узбережжя (440€).`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_faq_children') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `👶 <b>Поїздки з дітьми та зупинки в дорозі</b> 🧸\n\n` +
+                `• Ми радо подорожуємо з родинами! За попереднім запитом надаємо <b>дитяче автокрісло або бустер безкоштовно</b>.\n` +
+                `• Оскільки в нашому Opel Vivaro лише 8 пасажирів, водій робить санітарну зупинку на перше ж прохання.`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_faq_cancel') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `🔄 <b>Перенесення або скасування броні</b> 🤝\n\n` +
+                `• Якщо ваші плани змінилися, будь ласка, попередьте нас не пізніше ніж за <b>48 годин до виїзду</b>, щоб ми могли запропонувати місце пасажирам із листа очікування.\n` +
+                `• Ви завжди можете безкоштовно перенести бронь на іншу дату або інший напрямок!`,
+              getFaqMarkup(),
+            );
+          } else if (cbData === 'cb_feedback') {
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `✍️ <b>Залишити відгук про поїздку з клубом SVOI</b> ⭐\n\n` +
+                `Ми цінуємо кожне ваше враження та фото з подорожей! Натисніть кнопку нижче, щоб надіслати свій відгук організатору або поділитися враженнями в нашій групі:`,
+              {
+                inline_keyboard: [
+                  [{ text: '💬 Надіслати відгук організатору (@SVOI_travel_admin)', url: 'https://t.me/SVOI_travel_admin' }],
+                  [
+                    { text: '⭐ Читати відгуки туристів', callback_data: 'cb_reviews' },
+                    { text: '❓ Назад до FAQ', callback_data: 'cb_faq' },
+                  ],
+                  [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
                 ],
-                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
-              ],
-            });
+              },
+            );
           } else if (cbData === 'cb_partner') {
             const partnerText =
               `🤝 <b>Партнерська програма & Співпраця з клубом SVOI</b> 💼\n\n` +
@@ -1459,7 +2255,8 @@ async function startLiveTelegramBotPolling() {
               `📩 Зв'язок напряму з організатором: @SVOI_travel_admin`;
             await smartEditMessage(chatId, msgId, hasPhoto, partnerText, {
               inline_keyboard: [
-                [{ text: "💬 Написати організатору", url: 'https://t.me/SVOI_travel_admin' }],
+                [{ text: '💬 Написати організатору', url: 'https://t.me/SVOI_travel_admin' }],
+                [{ text: '❓ Назад до FAQ', callback_data: 'cb_faq' }],
                 [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
               ],
             });
@@ -1480,17 +2277,20 @@ async function startLiveTelegramBotPolling() {
             });
           } else if (cbData.startsWith('waitlist_add_')) {
             const tripId = cbData.replace('waitlist_add_', '');
-            const trip = TRIPS_LIST.find((t) => t.id === tripId);
+            const trip = findTripById(tripId);
             const firstName = cb.from?.first_name || 'Мандрівник';
             const username = cb.from?.username ? `@${cb.from.username}` : firstName;
-            await tgApi('sendMessage', {
-              chat_id: ADMIN_ID,
-              parse_mode: 'HTML',
-              text:
-                `📋 <b>Новий запис у Лист очікування!</b>\n` +
-                `🗺 <b>Тур:</b> ${trip?.shortTitle || tripId}\n` +
-                `👤 <b>Клієнт:</b> ${firstName} (${username})`,
-            });
+            await notifyAllAdmins(
+              {
+                parse_mode: 'HTML',
+                text:
+                  `📋 <b>Новий запис у Лист очікування!</b>\n` +
+                  `🗺 <b>Тур:</b> ${trip?.shortTitle || tripId}\n` +
+                  `👤 <b>Клієнт:</b> ${firstName} (${username})`,
+              },
+              undefined,
+              chatId,
+            );
             const wlText =
               `✅ <b>Вас додано до листа очікування!</b> 📋✨\n\n` +
               `Напрямок: <b>${trip?.title || tripId}</b>\n` +
@@ -1508,37 +2308,46 @@ async function startLiveTelegramBotPolling() {
               `• <b>#2 | Озеро Комо + Мілан</b> — Катерина М. (@kate_munich) • 3 місця\n\n` +
               `<i>Нові заявки з листа очікування автоматично надходять у цей чат адміністратора.</i>`;
             await smartEditMessage(chatId, msgId, hasPhoto, wlAdminText, {
-              inline_keyboard: [
-                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
-              ],
+              inline_keyboard: [[{ text: '🔙 Назад в меню', callback_data: 'cb_back' }]],
             });
           } else if (cbData === 'cb_adm_gw_pick') {
-            if (userId !== ADMIN_ID) continue;
             const pool =
-              activeGiveaway.participants.length > 0
-                ? activeGiveaway.participants
-                : [
-                    { user_id: 1, username: '@alex_traveler', first_name: 'Олександр' },
-                    { user_id: 2, username: '@elena_voyage', first_name: 'Олена' },
-                  ];
+              activeGiveaway.participants.length > 0 ? activeGiveaway.participants : DEFAULT_DEMO_PARTICIPANTS;
             const winner = pool[Math.floor(Math.random() * pool.length)];
             activeGiveaway.winner = winner;
             activeGiveaway.is_active = false;
 
             const previewCard =
-              `🏆 <b>ПЕРЕМОЖЦЯ РОЗІГРАШУ ОБРАНО [Панель Адміна]!</b> 🎉\n\n` +
+              `👑 <b>ПЕРЕМОЖЦЯ РОЗІГРАШУ ОБРАНО!</b> 🏆🎉\n\n` +
               `🎁 <b>Приз:</b> ${activeGiveaway.prize}\n` +
-              `👥 <b>Усього учасників:</b> ${pool.length}\n` +
-              `🥳 <b>Переможець:</b> <b>${winner.first_name} (${winner.username})</b>\n\n` +
-              `👇 <b>Куди опублікувати офіційний пост із вітанням переможця?</b>`;
+              `👥 <b>Усього брало участь:</b> ${pool.length} учасників\n\n` +
+              `✨ <b>Переможцем стає:</b>\n` +
+              `🥳 <b>${winner.first_name} (${winner.username})</b>! 🎉🎉🎉\n\n` +
+              `<blockquote>👇 Натисніть кнопку <b>«👥 Опублікувати результат розіграшу в ГРУПІ напряму»</b> нижче, щоб бот миттєво опублікував офіційний пост із переможцем прямо у вашій групі!</blockquote>`;
 
             await smartEditMessage(chatId, msgId, hasPhoto, previewCard, {
               inline_keyboard: [
-                [{ text: '👥 Опублікувати переможця в ГРУПІ', callback_data: 'cb_adm_pub_winner_group' }],
-                [{ text: '📢 Опублікувати переможця в КАНАЛІ', callback_data: 'cb_adm_pub_winner_channel' }],
-                [{ text: '🔥 Опублікувати І В ГРУПІ, І В КАНАЛІ', callback_data: 'cb_adm_pub_winner_both' }],
+                [
+                  {
+                    text: '👥 Опублікувати результат розіграшу в ГРУПІ напряму',
+                    callback_data: 'cb_adm_pub_winner_group',
+                  },
+                ],
+                [
+                  {
+                    text: '📢 Опублікувати результат розіграшу в КАНАЛІ',
+                    callback_data: 'cb_adm_pub_winner_channel',
+                  },
+                ],
+                [
+                  {
+                    text: '🔥 Опублікувати І В ГРУПІ, І В КАНАЛІ',
+                    callback_data: 'cb_adm_pub_winner_both',
+                  },
+                ],
                 [{ text: '🔄 Переобрати іншого переможця', callback_data: 'cb_adm_gw_pick' }],
-                [{ text: '🔙 До панелі /channel', callback_data: 'cb_adm_channel_menu' }],
+                [{ text: '🔙 До картки розіграшу', callback_data: 'cb_adm_gw_card' }],
+                [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
               ],
             });
           } else if (
@@ -1546,16 +2355,45 @@ async function startLiveTelegramBotPolling() {
             cbData === 'cb_adm_pub_winner_channel' ||
             cbData === 'cb_adm_pub_winner_both'
           ) {
-            if (userId !== ADMIN_ID) continue;
             const pool =
-              activeGiveaway.participants.length > 0
-                ? activeGiveaway.participants
-                : [
-                    { user_id: 1, username: '@alex_traveler', first_name: 'Олександр' },
-                    { user_id: 2, username: '@elena_voyage', first_name: 'Олена' },
-                  ];
+              activeGiveaway.participants.length > 0 ? activeGiveaway.participants : DEFAULT_DEMO_PARTICIPANTS;
             const winner = activeGiveaway.winner || pool[Math.floor(Math.random() * pool.length)];
             activeGiveaway.winner = winner;
+
+            if (cbData === 'cb_adm_pub_winner_group' && !currentGroupTarget) {
+              chatSessions[chatId] = { mode: null, pendingGroupAction: 'publish_winner' };
+              await smartEditMessage(
+                chatId,
+                msgId,
+                hasPhoto,
+                `⚠️ <b>Щоб бот опублікував РЕЗУЛЬТАТ РОЗІГРАШУ у вашій закритій групі напряму, оберіть її в 1 клік!</b>\n\n` +
+                  `🚀 <b>Натисніть кнопку «👥 Обрати ГРУПУ зі списку Telegram (в 1 клік)» унизу екрана (на клавіатурі)</b> — і бот миттєво прив'яже вашу групу та <b>АВТОМАТИЧНО ОПУБЛІКУЄ ПЕРЕМОЖЦЯ ${winner.first_name} (${winner.username})</b>!\n\n` +
+                  getAdminGiveawayCardText(),
+                getAdminGiveawayCardMarkup(),
+              );
+              const kbMsg: any = await tgApi('sendMessage', {
+                chat_id: chatId,
+                parse_mode: 'HTML',
+                text: `👇 <b>Натисніть кнопку нижче на клавіатурі, щоб обрати групу та опублікувати результат розіграшу в 1 клік:</b>`,
+                reply_markup: {
+                  keyboard: [
+                    [
+                      {
+                        text: '👥 Обрати ГРУПУ зі списку Telegram (в 1 клік)',
+                        request_chat: { request_id: 701, chat_is_channel: false },
+                      },
+                    ],
+                  ],
+                  resize_keyboard: true,
+                  one_time_keyboard: true,
+                },
+              });
+              if (kbMsg && kbMsg.ok && kbMsg.result?.message_id && chatId > 0) {
+                activeBotMessages[String(chatId)] = [msgId, kbMsg.result.message_id];
+                saveTargetsToDisk();
+              }
+              continue;
+            }
 
             const winText =
               `🎊🏆 <b>УВАГА! ОФІЦІЙНІ ПІДСУМКИ РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n\n` +
@@ -1584,13 +2422,11 @@ async function startLiveTelegramBotPolling() {
                 });
                 resultsLog.push(
                   gRes.ok
-                    ? `✅ Опубліковано в <b>ГРУПІ «${currentGroupTitle}»</b> (<code>${currentGroupTarget}</code>)`
+                    ? `✅ Результат опубліковано в <b>ГРУПІ «${currentGroupTitle}»</b> (<code>${currentGroupTarget}</code>)`
                     : `⚠️ Помилка публікації в групу <code>${currentGroupTarget}</code>: ${gRes.description || 'перевірте права бота'}`,
                 );
               } else {
-                resultsLog.push(
-                  `⚠️ Група ще не прив'язана числовим ID (напишіть будь-яке повідомлення в групі з ботом або <code>/bind_group</code>)`,
-                );
+                resultsLog.push(`⚠️ Група ще не прив'язана числовим ID`);
               }
             }
 
@@ -1603,7 +2439,7 @@ async function startLiveTelegramBotPolling() {
               });
               resultsLog.push(
                 cRes.ok
-                  ? `✅ Опубліковано в <b>КАНАЛІ</b> (<code>${currentChannelTarget}</code>)`
+                  ? `✅ Результат опубліковано в <b>КАНАЛІ</b> (<code>${currentChannelTarget}</code>)`
                   : `⚠️ Помилка публікації в канал <code>${currentChannelTarget}</code>: ${cRes.description || 'перевірте права бота'}`,
               );
             }
@@ -1612,15 +2448,16 @@ async function startLiveTelegramBotPolling() {
               chatId,
               msgId,
               hasPhoto,
-              `🏆 <b>Звіт про публікацію переможця ${winner.first_name} (${winner.username}):</b>\n\n` +
+              `🏆 <b>Звіт про публікацію результату розіграшу — ${winner.first_name} (${winner.username}):</b>\n\n` +
                 resultsLog.join('\n\n') +
-                `\n\n👇 <i>Копія поста переможця:</i>\n\n` +
+                `\n\n👇 <i>Копія опублікованого поста переможця:</i>\n\n` +
                 winText,
-              getChannelAdminMarkup(),
+              getAdminGiveawayCardMarkup(),
             );
           } else if (cbData === 'cb_adm_send_quiz') {
+            const targetQuizChat = currentGroupTarget || currentChannelTarget;
             const pollRes: any = await tgApi('sendPoll', {
-              chat_id: currentChannelTarget,
+              chat_id: targetQuizChat,
               question: 'У якому місті ми відвідуємо музеї Mercedes-Benz і Porsche в окремому одноденному турі SVOI?',
               options: ['Мюнхен', 'Штутгарт 🏎', 'Франкфурт', 'Берлін'],
               type: 'quiz',
@@ -1629,25 +2466,44 @@ async function startLiveTelegramBotPolling() {
               is_anonymous: true,
             });
             const statusMsg = pollRes.ok
-              ? `✅ <b>Інтерактивний Telegram Quiz успішно опубліковано в <code>${currentChannelTarget}</code>!</b> 🧠🎉`
-              : `⚠️ Не вдалося опублікувати квіз у <code>${currentChannelTarget}</code>: <code>${pollRes.description || 'перевірте права бота в каналі'}</code>`;
+              ? `✅ <b>Інтерактивний Telegram Quiz успішно опубліковано в <code>${targetQuizChat}</code>!</b> 🧠🎉`
+              : `⚠️ Не вдалося опублікувати квіз у <code>${targetQuizChat}</code>: <code>${pollRes.description || 'перевірте права бота'}</code>`;
             await smartEditMessage(chatId, msgId, hasPhoto, statusMsg, getChannelAdminMarkup());
           } else if (cbData === 'cb_adm_set_group') {
-            chatSessions[chatId] = { mode: 'waiting_group_id' };
+            chatSessions[chatId] = { mode: 'waiting_group_id', pendingGroupAction: 'publish_giveaway' };
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `⚙️ <b>Прив'язка закритої ГРУПИ для публікації розіграшів та переможців</b>\n\n` +
+              `⚙️ <b>Прив'язка закритої ГРУПИ для публікації розіграшів та результатів</b>\n\n` +
                 `Поточна група: <code>${currentGroupTarget || 'ще не прив’язана'}</code>\n\n` +
-                `👉 <b>Як прив'язати групу (3 прості способи):</b>\n` +
-                `1️⃣ <b>Автоматично:</b> просто напишіть будь-яке повідомлення або команду <code>/bind_group</code> у вашій групі, де доданий бот @Svoi_TravelEU_bot!\n` +
-                `2️⃣ <b>Пересиланням:</b> перешліть сюди будь-яке повідомлення з групи.\n` +
-                `3️⃣ <b>Вручну:</b> надішліть числовий ID групи (починається з <code>-100...</code>).`,
+                `👉 <b>Найпростіший спосіб (в 1 клік):</b>\n` +
+                `Натисніть велику кнопку <b>«👥 Обрати ГРУПУ зі списку Telegram (в 1 клік)»</b> унизу екрана (на клавіатурі) і виберіть вашу групу! Бот сам автоматично отримає її числовий ID <code>-100...</code> та опублікує розіграш!`,
               {
-                inline_keyboard: [[{ text: '🔙 Назад в меню', callback_data: 'cb_adm_channel_menu' }]],
+                inline_keyboard: [[{ text: '🔙 Назад до розіграшу', callback_data: 'cb_adm_gw_card' }]],
               },
             );
+            const kbMsg: any = await tgApi('sendMessage', {
+              chat_id: chatId,
+              parse_mode: 'HTML',
+              text: `👇 <b>Натисніть кнопку нижче на клавіатурі, щоб обрати групу в 1 клік:</b>`,
+              reply_markup: {
+                keyboard: [
+                  [
+                    {
+                      text: '👥 Обрати ГРУПУ зі списку Telegram (в 1 клік)',
+                      request_chat: { request_id: 701, chat_is_channel: false },
+                    },
+                  ],
+                ],
+                resize_keyboard: true,
+                one_time_keyboard: true,
+              },
+            });
+            if (kbMsg && kbMsg.ok && kbMsg.result?.message_id && chatId > 0) {
+              activeBotMessages[String(chatId)] = [msgId, kbMsg.result.message_id];
+              saveTargetsToDisk();
+            }
           } else if (cbData === 'cb_adm_set_channel') {
             chatSessions[chatId] = { mode: 'waiting_channel_id' };
             await smartEditMessage(
@@ -1656,80 +2512,569 @@ async function startLiveTelegramBotPolling() {
               hasPhoto,
               `⚙️ <b>Прив'язка закритого каналу для публікації розіграшів</b>\n\n` +
                 `Поточний ID: <code>${currentChannelTarget}</code>\n\n` +
-                `👉 <b>Найпростіший спосіб:</b> просто <b>перешліть (Forward) сюди будь-який пост зі свого каналу</b>! Бот автоматично визначить числовий ID <code>-100...</code> вашого приватного каналу.`,
+                `👉 <b>Найпростіший спосіб (в 1 клік):</b> натисніть кнопку <b>«📢 Обрати КАНАЛ зі списку Telegram (в 1 клік)»</b> унизу екрана або <b>перешліть (Forward) сюди будь-який пост зі свого каналу</b>!`,
               {
-                inline_keyboard: [[{ text: '🔙 Назад в меню', callback_data: 'cb_adm_channel_menu' }]],
+                inline_keyboard: [[{ text: '🔙 Назад до розіграшу', callback_data: 'cb_adm_gw_card' }]],
               },
             );
+            const kbMsg: any = await tgApi('sendMessage', {
+              chat_id: chatId,
+              parse_mode: 'HTML',
+              text: `👇 <b>Натисніть кнопку нижче на клавіатурі, щоб обрати канал в 1 клік:</b>`,
+              reply_markup: {
+                keyboard: [
+                  [
+                    {
+                      text: '📢 Обрати КАНАЛ зі списку Telegram (в 1 клік)',
+                      request_chat: { request_id: 702, chat_is_channel: true },
+                    },
+                  ],
+                ],
+                resize_keyboard: true,
+                one_time_keyboard: true,
+              },
+            });
+            if (kbMsg && kbMsg.ok && kbMsg.result?.message_id && chatId > 0) {
+              activeBotMessages[String(chatId)] = [msgId, kbMsg.result.message_id];
+              saveTargetsToDisk();
+            }
           } else if (cbData === 'cb_games') {
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `🎮 <b>Ігровий клуб, Квізи та Опитування SVOI Travel</b> 🏆\n\n` +
-                `Оберіть вікторину, гру або опитування нижче та вигравайте приємні бонуси для майбутніх поїздок:`,
+              `🎮 <b>Ігровий клуб, Вікторини та Опитування SVOI Travel</b> 🏆\n\n` +
+                `Оберіть вікторину або інтерактивну гру нижче! У кожній вікторині є <b>декілька питань із варіантами відповідей (плашками)</b> та промокодами на бонуси:`,
               getGamesMarkup(),
             );
-          } else if (cbData === 'cb_game_geo') {
-            const geoQuizzes = [
-              `🕵️ <b>ГЕО-ДЕТЕКТИВ SVOI:</b>\n\nЗамок Ельц (Burg Eltz) захований у лісовій долині й зображувався на купюрі 500 німецьких марок. Скільки часу триває дорога до нього з Саарланду чи Люксембургу?\n\n✅ <b>Відповідь:</b> Лише <b>1.5–2 години</b>! Вартість поїздки (Замок Ельц + Кохем + підвісний міст Гайєрлай) — <b>85€</b>.`,
-              `🕵️ <b>ГЕО-ДЕТЕКТИВ SVOI:</b>\n\nУ якому місті за 1 день можна відвідати штаб-квартири та легендарні музеї одразу двох автогігантів — <b>Mercedes-Benz та Porsche</b>?\n\n✅ <b>Відповідь:</b> У <b>Штутгарті (Німеччина)</b>! Окрема одноденна поїздка з клубом SVOI — <b>95€</b>.`,
-              `🕵️ <b>ГЕО-ДЕТЕКТИВ SVOI:</b>\n\nЯкий казковий замок короля Людвіга II ми поєднуємо в одну поїздку з альпійською гірською ущелиною <b>Партнахкламм</b>?\n\n✅ <b>Відповідь:</b> <b>Замок Нойшванштайн (Баварія)</b>!`,
+          } else if (cbData === 'cb_game_geo' || cbData.startsWith('cb_geo_q_') || cbData.startsWith('cb_geo_ans_')) {
+            const GEO_QUESTIONS = [
+              {
+                photo: 'https://images.unsplash.com/photo-1584003564911-a7a321c84e1c?auto=format&fit=crop&w=1000&q=80',
+                q: 'У якому голландському селі старій частини взагалі немає автомобільних доріг, а пошту доставляють човнами по каналах?',
+                options: ['Гітхорн (Giethoorn)', 'Заандам (Zaandam)', 'Роттердам', 'Утрехт'],
+                correct: 0,
+                explain: 'Це казковий <b>Гітхорн («Голландська Венеція»)</b>! Ми їдемо туди в окремому авторському турі «Гітхорн + Амстердам» (120€).',
+                tripId: 'amsterdam',
+              },
+              {
+                photo: 'https://images.unsplash.com/photo-1599946347371-68eb71b16afc?auto=format&fit=crop&w=1000&q=80',
+                q: 'Який середньовічний замок у долині Мозеля ніколи не був зруйнований і зображувався на банкноті 500 німецьких марок?',
+                options: ['Замок Гогенцоллерн', 'Замок Ельц (Burg Eltz)', 'Замок Гайдельберг', 'Замок Ліхтенштейн'],
+                correct: 1,
+                explain: 'Це легендарний <b>Замок Ельц (Burg Eltz)</b>! Лише ~1.5 год від Саарланду та Люксембургу в турі «Замок Ельц + Кохем + міст Гайєрлай» (85€).',
+                tripId: 'eltz_cochem_mosel',
+              },
+              {
+                photo: 'https://images.unsplash.com/photo-1509869175650-a1d97972541a?auto=format&fit=crop&w=1000&q=80',
+                q: 'Біля якого альпійського замку короля Людвіга II ми проходимо крізь мальовничу гірську ущелину Партнахкламм з водоспадами?',
+                options: ['Замок Шверін', 'Замок Нойшванштайн', 'Замок Вадуц', 'Замок Гравенстен'],
+                correct: 1,
+                explain: 'Це <b>Замок Нойшванштайн + ущелина Партнахкламм</b> (120€) у Баварських Альпах!',
+                tripId: 'neuschwanstein',
+              },
+              {
+                photo: 'https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&w=1000&q=80',
+                q: 'У якому місті Німеччини знаходяться одночасно штаб-квартири та легендарні музеї автогігантів Mercedes-Benz і Porsche?',
+                options: ['Мюнхен', 'Штутгарт', 'Франкфурт', 'Кельн'],
+                correct: 1,
+                explain: 'У <b>Штутгарті</b>! Окрема одноденна поїздка «Штутгарт: Музеї Mercedes-Benz і Porsche» коштує лише 90€.',
+                tripId: 'stuttgart_tour',
+              },
+              {
+                photo: 'https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&w=1000&q=80',
+                q: 'Яке високогірне альпійське озеро та оглядовий майданчик Skywalk ми відвідуємо в нашому турі до Австрії разом із Зальцбургом?',
+                options: ['Гальштат (Хальштатт)', 'Озеро Гарда', 'Женевське озеро', 'Озеро Блед'],
+                correct: 0,
+                explain: 'Це всесвітньо відомий <b>Гальштат (Hallstatt)</b>! Наш тур «Зальцбург + Гальштат» — 135€.',
+                tripId: 'salzburg_hallstatt',
+              },
+              {
+                photo: 'https://images.unsplash.com/photo-1559113202-c916b8e44373?auto=format&fit=crop&w=1000&q=80',
+                q: 'У якому бельгійському місті височіє суворий середньовічний замок графів Фландрії Гравенстен просто посеред каналів?',
+                options: ['Гент', 'Льєж', 'Намюр', 'Остенде'],
+                correct: 0,
+                explain: 'Це <b>Гент</b>! Відвідуємо його в нашому золотому турі «Брюгге + Гент + Брюссель» (120€).',
+                tripId: 'bruges_ghent_brussels',
+              },
             ];
-            const picked = geoQuizzes[Math.floor(Math.random() * geoQuizzes.length)];
-            await smartEditMessage(chatId, msgId, hasPhoto, picked, getGamesMarkup());
-          } else if (cbData === 'cb_game_quiz') {
-            const tfQuizzes = [
-              `🧠 <b>ПРАВДА ЧИ НЕПРАВДА:</b>\n\nПоїздка в замок Нойшванштайн + ущелину Партнахкламм, поїздка в Берлін, поїздка в Леголенд та поїздка в Штутгарт — це <b>чотири різні окремі тури</b>?\n\n✅ <b>ПРАВДА!</b> Кожен із цих напрямків — окрема авторська подорож.`,
-              `🧠 <b>ПРАВДА ЧИ НЕПРАВДА:</b>\n\nЧи правда, що з Саарланду та Люксембургу до найкращого парку розваг Європи — <b>Europa-Park (Руст)</b> — їхати менше ніж 2.5 години?\n\n✅ <b>ПРАВДА!</b> Тому це один із найпопулярніших одноденних виїздів вихідного дня!`,
-              `🧠 <b>ПРАВДА ЧИ НЕПРАВДА:</b>\n\nЧи правда, що в турі до Ліхтенштейну ми за 1 день відвідуємо одразу 3 країни: Ліхтенштейн (Вадуц), Австрію (Брегенц) та Німеччину (Ліндау)?\n\n✅ <b>ПРАВДА!</b> 3 держави за один вихідний!`,
+
+            if (cbData.startsWith('cb_geo_ans_')) {
+              const parts = cbData.replace('cb_geo_ans_', '').split('_');
+              const qIdx = parseInt(parts[0], 10) || 0;
+              const optIdx = parseInt(parts[1], 10) || 0;
+              const item = GEO_QUESTIONS[qIdx % GEO_QUESTIONS.length];
+              const isCorrect = optIdx === item.correct;
+              const nextIdx = (qIdx + 1) % GEO_QUESTIONS.length;
+
+              const ansText =
+                `🕵️ <b>ГЕО-ДЕТЕКТИВ SVOI (Питання ${qIdx + 1} з ${GEO_QUESTIONS.length})</b>\n\n` +
+                (isCorrect
+                  ? `✅ <b>ПРАВИЛЬНО! Чудова інтуїція!</b> 🎉\n` +
+                    `Ваша відповідь: <b>${item.options[optIdx]}</b>\n\n`
+                  : `❌ <b>Майже! Ви обрали:</b> ${item.options[optIdx]}\n` +
+                    `👉 Правильна відповідь: <b>${item.options[item.correct]}</b>\n\n`) +
+                `💡 ${item.explain}\n` +
+                `🎁 <b>Бонус мандрівника:</b> промокод <code>GEO-SVOI5</code> дає безкоштовний вибір місця (+5€ → 0€)!`;
+
+              await smartEditMessage(
+                chatId,
+                msgId,
+                hasPhoto,
+                ansText,
+                {
+                  inline_keyboard: [
+                    [{ text: `➡️ Наступне питання (${nextIdx + 1}/${GEO_QUESTIONS.length})`, callback_data: `cb_geo_q_${nextIdx}` }],
+                    [{ text: '🗺 Відкрити програму цього туру', callback_data: `trip_${item.tripId}` }],
+                    [{ text: '🎮 До списку всіх ігор', callback_data: 'cb_games' }],
+                    [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+                  ],
+                },
+                item.photo,
+              );
+            } else {
+              const qIdx = cbData.startsWith('cb_geo_q_') ? parseInt(cbData.replace('cb_geo_q_', ''), 10) || 0 : 0;
+              const item = GEO_QUESTIONS[qIdx % GEO_QUESTIONS.length];
+              const nextIdx = (qIdx + 1) % GEO_QUESTIONS.length;
+              const qText =
+                `🕵️ <b>ГЕО-ДЕТЕКТИВ SVOI (Питання ${qIdx + 1} з ${GEO_QUESTIONS.length})</b> 🌍\n\n` +
+                `❓ <b>${item.q}</b>\n\n` +
+                `👇 <i>Натисніть на правильний варіант відповіді нижче:</i>`;
+
+              const optionRows = item.options.map((opt, idx) => [
+                { text: `🔹 ${opt}`, callback_data: `cb_geo_ans_${qIdx}_${idx}` },
+              ]);
+              optionRows.push([
+                { text: `🔄 Інше питання (${nextIdx + 1}/${GEO_QUESTIONS.length})`, callback_data: `cb_geo_q_${nextIdx}` },
+                { text: '🎮 До всіх ігор', callback_data: 'cb_games' },
+              ]);
+
+              await smartEditMessage(chatId, msgId, hasPhoto, qText, { inline_keyboard: optionRows }, item.photo);
+            }
+          } else if (cbData === 'cb_game_quiz' || cbData.startsWith('cb_tf_q_') || cbData.startsWith('cb_tf_ans_')) {
+            const TF_QUESTIONS = [
+              {
+                q: 'Чи правда, що Гітхорн + Амстердам та Заандам + Море + Амстердам у клубі SVOI — це дві різні окремі авторські поїздки до Голландії?',
+                isTrue: true,
+                explain: 'ПРАВДА! Ми спеціально розділили Голландію на 2 окремі поїздки (по 120€), щоб ви насолодилися кожною локацією без поспіху!',
+              },
+              {
+                q: 'Чи правда, що в одноденних поїздках SVOI потрібно платити 100% передоплати за місяць до виїзду?',
+                isTrue: false,
+                explain: 'НЕПРАВДА! Усі одноденні поїздки SVOI бронюються з <b>0% передоплати (0€)</b> — оплата відбувається при посадці в авто!',
+              },
+              {
+                q: 'Чи правда, що Бельгія в нашому клубі представлена трьома окремими турами: «Брюссель» (90€), «Антверпен + Брюгге» (110€) та «Брюгге + Гент + Брюссель» (120€)?',
+                isTrue: true,
+                explain: 'ПРАВДА! Ви можете обрати саме той маршрут Бельгією, який вам найбільше до душі.',
+              },
+              {
+                q: 'Чи правда, що в турі до Ліхтенштейну ми за 1 вихідний день відвідуємо одразу 3 держави: Ліхтенштейн (Вадуц), Австрію (Брегенц) та Німеччину (Ліндау)?',
+                isTrue: true,
+                explain: 'ПРАВДА! Три країни навколо альпійського Боденського озера за один день (120€)!',
+              },
+              {
+                q: 'Чи правда, що ми їздимо великими 50-місними двоповерховими автобусами з чергами на кордонах?',
+                isTrue: false,
+                explain: 'НЕПРАВДА! Ми подорожуємо виключно камерними групами до <b>8 пасажирів</b> у комфортабельному мінівені <b>Opel Vivaro</b> з адресним збором Door-to-Door!',
+              },
+              {
+                q: 'Чи правда, що з Саарланду та Люксембургу до найкращого парку розваг Європи — Europa-Park (Руст) — їхати лише близько 2 годин?',
+                isTrue: true,
+                explain: 'ПРАВДА! Саме тому поїздка в Європа-Парк (95€) проходить легко і дарує цілий день на атракціонах!',
+              },
             ];
-            const picked = tfQuizzes[Math.floor(Math.random() * tfQuizzes.length)];
-            await smartEditMessage(chatId, msgId, hasPhoto, picked, getGamesMarkup());
-          } else if (cbData === 'cb_game_gastro') {
-            const gastroQuizzes = [
-              `🍽 <b>ГАСТРО-КВІЗ «СМАКИ ЄВРОПИ»:</b>\n\nДе під час нашого туру по долині Мозеля (Замок Ельц + Кохем) ми куштуємо справжнє вино з крутих схилів?\n\n🍷 <b>Відповідь:</b> У містечку <b>Кохем</b> — знаменитий мозельський <b>Рислінг</b>!`,
-              `🍽 <b>ГАСТРО-КВІЗ «СМАКИ ЄВРОПИ»:</b>\n\nЯкий гастрономічний хіт чекає на вас у турі в Ельзас і Страсбург (80€)?\n\n🍕 <b>Відповідь:</b> <b>Тарт фламбе (Flammkuchen)</b> з вершками, цибулею та беконом з дров'яної печі!`,
+
+            if (cbData.startsWith('cb_tf_ans_')) {
+              const parts = cbData.replace('cb_tf_ans_', '').split('_');
+              const qIdx = parseInt(parts[0], 10) || 0;
+              const userSaidTrue = parts[1] === '1';
+              const item = TF_QUESTIONS[qIdx % TF_QUESTIONS.length];
+              const isCorrect = userSaidTrue === item.isTrue;
+              const nextIdx = (qIdx + 1) % TF_QUESTIONS.length;
+
+              const ansText =
+                `🧠 <b>ПРАВДА ЧИ НЕПРАВДА (Питання ${qIdx + 1} з ${TF_QUESTIONS.length})</b>\n\n` +
+                (isCorrect ? `✅ <b>БРАВО! Ви відповіли абсолютно вірно!</b> 🎉\n\n` : `❌ <b>Ой, цього разу не вгадали!</b> 😉\n\n`) +
+                `📌 <b>Твердження:</b> <i>${item.q}</i>\n\n` +
+                `💡 <b>Пояснення:</b> ${item.explain}`;
+
+              await smartEditMessage(chatId, msgId, hasPhoto, ansText, {
+                inline_keyboard: [
+                  [{ text: `➡️ Наступне питання (${nextIdx + 1}/${TF_QUESTIONS.length})`, callback_data: `cb_tf_q_${nextIdx}` }],
+                  [{ text: '🗺 Переглянути всі напрямки', callback_data: 'cb_trips' }],
+                  [{ text: '🎮 До списку всіх ігор', callback_data: 'cb_games' }],
+                  [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+                ],
+              });
+            } else {
+              const qIdx = cbData.startsWith('cb_tf_q_') ? parseInt(cbData.replace('cb_tf_q_', ''), 10) || 0 : 0;
+              const item = TF_QUESTIONS[qIdx % TF_QUESTIONS.length];
+              const nextIdx = (qIdx + 1) % TF_QUESTIONS.length;
+              const qText =
+                `🧠 <b>ВІКТОРИНА «ПРАВДА ЧИ НЕПРАВДА» (Питання ${qIdx + 1} з ${TF_QUESTIONS.length})</b> ✨\n\n` +
+                `❓ <b>${item.q}</b>\n\n` +
+                `👇 <i>Оберіть вашу відповідь на плашках нижче:</i>`;
+
+              await smartEditMessage(chatId, msgId, hasPhoto, qText, {
+                inline_keyboard: [
+                  [
+                    { text: '👍 ПРАВДА', callback_data: `cb_tf_ans_${qIdx}_1` },
+                    { text: '👎 НЕПРАВДА', callback_data: `cb_tf_ans_${qIdx}_0` },
+                  ],
+                  [
+                    { text: `🔄 Інше питання (${nextIdx + 1}/${TF_QUESTIONS.length})`, callback_data: `cb_tf_q_${nextIdx}` },
+                    { text: '🎮 До всіх ігор', callback_data: 'cb_games' },
+                  ],
+                ],
+              });
+            }
+          } else if (cbData === 'cb_game_gastro' || cbData.startsWith('cb_gastro_q_') || cbData.startsWith('cb_gastro_ans_')) {
+            const GASTRO_QUESTIONS = [
+              {
+                q: 'Яку традиційну страву на тонкому тісті з вершками, цибулею та беконом з дров’яної печі ми куштуємо в турі в Ельзас і Страсбург (80€)?',
+                options: ['🍕 Тарт Фламбе (Flammkuchen)', '🥘 Паелья з морепродуктами', '🥟 Вареники з вишнею'],
+                correct: 0,
+                explain: '<b>Тарт Фламбе (Flammkuchen)</b> — головний гастрономічний символ Ельзасу та Страсбурга!',
+              },
+              {
+                q: 'Яке знамените біле вино з крутих схилів річки Мозель ми дегустуємо в містечку Кохем після замку Ельц (85€)?',
+                options: ['🍷 Мозельський Рислінг (Riesling)', '🍺 Баварське темне пиво', '🥂 Шампанське з Реймса'],
+                correct: 0,
+                explain: 'Долина Мозеля та містечко Кохем славляться на весь світ своїм <b>Рислінгом</b>!',
+              },
+              {
+                q: 'Який десерт обов’язково треба скуштувати гарячим просто на золотій площі Гран-Плас у нашому турі до Брюсселя (90€)?',
+                options: ['🧇 Бельгійські вафлі з шоколадом і полуницею', '🥨 Мюнхенський брецель', '🍰 Віденський захер'],
+                correct: 0,
+                explain: 'Справжні <b>бельгійські вафлі</b> та праліне ручної роботи — візитівка Брюсселя, Брюгге та Гента!',
+              },
+              {
+                q: 'Де під час нашого 2-денного туру до Мон-Сен-Мішель та Сен-Мало (270€) ми куштуємо найсвіжіші океанські устриці просто біля ферм?',
+                options: ['🦪 У містечку Канкаль (Cancale)', '🧀 У сироварнях Заансе-Сханс', '🍕 У Мілані біля Дуомо'],
+                correct: 0,
+                explain: '<b>Канкаль (Cancale)</b> називають устричною столицею Бретані та всієї Франції!',
+              },
+              {
+                q: 'Які знамениті цукерки з марципаном, фісташкою та нугою є головним солодким сувеніром нашого туру в Зальцбург + Гальштат (135€)?',
+                options: ['🍬 Моцарткугель (Mozartkugel)', '🍫 Швейцарський Toblerone', '🥐 Паризький круасан'],
+                correct: 0,
+                explain: '<b>Оригінальні цукерки Mozartkugel</b> винайшли саме в Зальцбурзі — місті народження Моцарта!',
+              },
             ];
-            const picked = gastroQuizzes[Math.floor(Math.random() * gastroQuizzes.length)];
-            await smartEditMessage(chatId, msgId, hasPhoto, picked, getGamesMarkup());
-          } else if (cbData === 'cb_game_price') {
-            const priceQuizzes = [
-              `💶 <b>ЕКСПЕРТ МАРШРУТІВ (ЧАС І ЦІНИ):</b>\n\n• 🇫🇷 <b>Ельзас + Страсбург:</b> <code>80€</code> (~1.5 год у дорозі)\n• 🇩🇪 <b>Замок Ельц + Кохем + міст Гайєрлай:</b> <code>85€</code> (~1.5 год у дорозі)\n• 🇩🇪 <b>Гайдельберг + Баден-Баден:</b> <code>85€</code> (~1.5 год у дорозі)\n• 🇩🇪 <b>Європа-Парк / Штутгарт:</b> <code>95€</code> (~2 год у дорозі)\n• 🇩🇪 <b>Леголенд:</b> <code>115€</code>\n• 🇩🇪 <b>Нойшванштайн + ущелина:</b> <code>120€</code>\n• 🇩🇪 <b>Берлін + Дрезден (2 дні з готелем):</b> <code>240€</code>`,
+
+            if (cbData.startsWith('cb_gastro_ans_')) {
+              const parts = cbData.replace('cb_gastro_ans_', '').split('_');
+              const qIdx = parseInt(parts[0], 10) || 0;
+              const optIdx = parseInt(parts[1], 10) || 0;
+              const item = GASTRO_QUESTIONS[qIdx % GASTRO_QUESTIONS.length];
+              const isCorrect = optIdx === item.correct;
+              const nextIdx = (qIdx + 1) % GASTRO_QUESTIONS.length;
+
+              const ansText =
+                `🍽 <b>ГАСТРО-КВІЗ «СМАКИ ЄВРОПИ» (Питання ${qIdx + 1} з ${GASTRO_QUESTIONS.length})</b>\n\n` +
+                (isCorrect
+                  ? `✅ <b>СМАЧНО І ТОЧНО! Ви справжній гурман!</b> 👨‍🍳🎉\n\n`
+                  : `❌ <b>Майже! Правильна відповідь:</b> ${item.options[item.correct]}\n\n`) +
+                `💡 ${item.explain}`;
+
+              await smartEditMessage(chatId, msgId, hasPhoto, ansText, {
+                inline_keyboard: [
+                  [{ text: `➡️ Наступне гастро-питання (${nextIdx + 1}/${GASTRO_QUESTIONS.length})`, callback_data: `cb_gastro_q_${nextIdx}` }],
+                  [{ text: '🗺 Напрямки та дати поїздок', callback_data: 'cb_trips' }],
+                  [{ text: '🎮 До списку всіх ігор', callback_data: 'cb_games' }],
+                  [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+                ],
+              });
+            } else {
+              const qIdx = cbData.startsWith('cb_gastro_q_') ? parseInt(cbData.replace('cb_gastro_q_', ''), 10) || 0 : 0;
+              const item = GASTRO_QUESTIONS[qIdx % GASTRO_QUESTIONS.length];
+              const nextIdx = (qIdx + 1) % GASTRO_QUESTIONS.length;
+              const qText =
+                `🍽 <b>ГАСТРО-КВІЗ «СМАКИ ЄВРОПИ» (Питання ${qIdx + 1} з ${GASTRO_QUESTIONS.length})</b> 🥐🍷\n\n` +
+                `❓ <b>${item.q}</b>\n\n` +
+                `👇 <i>Оберіть правильну страву або напій нижче:</i>`;
+
+              const optionRows = item.options.map((opt, idx) => [
+                { text: opt, callback_data: `cb_gastro_ans_${qIdx}_${idx}` },
+              ]);
+              optionRows.push([
+                { text: `🔄 Інше питання (${nextIdx + 1}/${GASTRO_QUESTIONS.length})`, callback_data: `cb_gastro_q_${nextIdx}` },
+                { text: '🎮 До всіх ігор', callback_data: 'cb_games' },
+              ]);
+
+              await smartEditMessage(chatId, msgId, hasPhoto, qText, { inline_keyboard: optionRows });
+            }
+          } else if (cbData === 'cb_game_price' || cbData.startsWith('cb_price_q_') || cbData.startsWith('cb_price_ans_')) {
+            const PRICE_QUESTIONS = [
+              {
+                q: 'Яка вартість нашої найближчої одноденної поїздки «Ельзас + Страсбург + Кольмар» з адресним збором Door-to-Door?',
+                options: ['💶 80€ (0% передоплати)', '💶 130€', '💶 175€'],
+                correct: 0,
+                explain: 'Вартість поїздки <b>Ельзас + Страсбург + Кольмар</b> становить лише <b>80€</b> без передоплати!',
+              },
+              {
+                q: 'Скільки коштує окремий тур «Замок Ельц + Кохем + підвісний міст Гайєрлай» або «Гайдельберг + Баден-Баден»?',
+                options: ['💶 85€', '💶 140€', '💶 190€'],
+                correct: 0,
+                explain: 'Обидва ці мальовничі маршрути вихідного дня коштують лише <b>85€</b> (лише ~1.5 год у дорозі)!',
+              },
+              {
+                q: 'Яка ціна 2-денного туру «Берлін + Дрезден» (де готель на 1 ніч вже ВКЛЮЧЕНО у вартість)?',
+                options: ['💶 190€ (готель включено)', '💶 290€', '💶 350€'],
+                correct: 0,
+                explain: 'Дводенний тур <b>Берлін + Дрезден</b> з проживанням у готелі коштує лише <b>190€</b>!',
+              },
+              {
+                q: 'Скільки коштує нова альпійська поїздка до Австрії «Зальцбург + Гальштат (Хальштатт)»?',
+                options: ['💶 135€', '💶 95€', '💶 220€'],
+                correct: 0,
+                explain: 'Авторський виїзд <b>Зальцбург + Гальштат</b> (озеро, Skywalk та палац Мірабель) коштує <b>135€</b>!',
+              },
+              {
+                q: 'Скільки коштує фіксація конкретного улюбленого місця (1–6 або 8) у салоні нашого 8-місного Opel Vivaro?',
+                options: ['💺 Лише +5€ (а місце 7 та вільна посадка — 0€)', '💺 +25€', '💺 +50€'],
+                correct: 0,
+                explain: 'Вибір конкретного місця коштує символічні <b>+5€</b>, а місце №7 та вільна посадка — <b>0€</b>!',
+              },
             ];
-            await smartEditMessage(chatId, msgId, hasPhoto, priceQuizzes[0], getGamesMarkup());
-          } else if (cbData === 'cb_game_poll') {
-            const pollText =
-              `📊 <b>ОПИТУВАННЯ КЛУБУ SVOI TRAVEL:</b>\n\n` +
-              `<b>Який тур із Саарланду та Люксембургу ви б обрали на найближчі вихідні?</b>\n` +
-              `• 🎢 Європа-Парк (Руст) — <b>31%</b>\n` +
-              `• 🏰 Долина Мозеля: Замок Ельц + Кохем — <b>26%</b>\n` +
-              `• ♨️ Гайдельберг + терми Баден-Бадена — <b>24%</b>\n` +
-              `• 🏎 Штутгарт: Музеї Mercedes і Porsche — <b>19%</b>\n\n` +
-              `<blockquote>Відкрийте <b>🚀 SVOI Mini App</b> або вкладку ігор на сайті, щоб проголосувати у всіх 6 опитуваннях!</blockquote>`;
-            await smartEditMessage(chatId, msgId, hasPhoto, pollText, getGamesMarkup());
-          } else if (cbData === 'cb_game_match') {
-            const matchText =
-              `🎒 <b>ПІДБІР ІДЕАЛЬНОГО ТУРУ З СААРЛАНДУ ТА ЛЮКСЕМБУРГУ:</b>\n\n` +
-              `• <b>Хочете близько (1.5–2 год) і без втоми:</b> Ельзас + Страсбург (80€), Замок Ельц + Кохем (85€), Гайдельберг + Баден-Баден (85€)\n` +
-              `• <b>Хочете драйву та емоцій з родиною:</b> Європа-Парк (95€) або Леголенд (115€)\n` +
-              `• <b>Любите автомобілі та технології:</b> Штутгарт — Mercedes & Porsche (95€)\n` +
-              `• <b>Мрієте про Альпи та замки:</b> Замок Нойшванштайн + ущелина (120€) або Швейцарія (120€)\n` +
-              `• <b>Вікенд на 2–3 дні з готелем:</b> Берлін + Дрезден (240€), Комо + Мілан (270€), Мон-Сен-Мішель (270€)`;
-            await smartEditMessage(chatId, msgId, hasPhoto, matchText, getGamesMarkup());
+
+            if (cbData.startsWith('cb_price_ans_')) {
+              const parts = cbData.replace('cb_price_ans_', '').split('_');
+              const qIdx = parseInt(parts[0], 10) || 0;
+              const optIdx = parseInt(parts[1], 10) || 0;
+              const item = PRICE_QUESTIONS[qIdx % PRICE_QUESTIONS.length];
+              const isCorrect = optIdx === item.correct;
+              const nextIdx = (qIdx + 1) % PRICE_QUESTIONS.length;
+
+              const ansText =
+                `💶 <b>ІНТУЇЦІЯ: ЧАС І ЦІНИ SVOI (Питання ${qIdx + 1} з ${PRICE_QUESTIONS.length})</b>\n\n` +
+                (isCorrect ? `✅ <b>ТОЧНО В ЦІЛЬ!</b> 🎯\n\n` : `❌ <b>Правильна відповідь:</b> ${item.options[item.correct]}\n\n`) +
+                `💡 ${item.explain}`;
+
+              await smartEditMessage(chatId, msgId, hasPhoto, ansText, {
+                inline_keyboard: [
+                  [{ text: `➡️ Наступне питання (${nextIdx + 1}/${PRICE_QUESTIONS.length})`, callback_data: `cb_price_q_${nextIdx}` }],
+                  [{ text: '💺 Обрати місце та забронювати', callback_data: 'cb_book' }],
+                  [{ text: '🎮 До списку всіх ігор', callback_data: 'cb_games' }],
+                  [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+                ],
+              });
+            } else {
+              const qIdx = cbData.startsWith('cb_price_q_') ? parseInt(cbData.replace('cb_price_q_', ''), 10) || 0 : 0;
+              const item = PRICE_QUESTIONS[qIdx % PRICE_QUESTIONS.length];
+              const nextIdx = (qIdx + 1) % PRICE_QUESTIONS.length;
+              const qText =
+                `💶 <b>ІНТУЇЦІЯ: ЧАС, ЦІНИ ТА РЕКОРДИ (Питання ${qIdx + 1} з ${PRICE_QUESTIONS.length})</b> ⏱\n\n` +
+                `❓ <b>${item.q}</b>\n\n` +
+                `👇 <i>Натисніть на правильний варіант нижче:</i>`;
+
+              const optionRows = item.options.map((opt, idx) => [
+                { text: opt, callback_data: `cb_price_ans_${qIdx}_${idx}` },
+              ]);
+              optionRows.push([
+                { text: `🔄 Інше питання (${nextIdx + 1}/${PRICE_QUESTIONS.length})`, callback_data: `cb_price_q_${nextIdx}` },
+                { text: '🎮 До всіх ігор', callback_data: 'cb_games' },
+              ]);
+
+              await smartEditMessage(chatId, msgId, hasPhoto, qText, { inline_keyboard: optionRows });
+            }
+          } else if (cbData === 'cb_game_poll' || cbData.startsWith('cb_poll_q_') || cbData.startsWith('cb_poll_vote_')) {
+            const POLL_ITEMS = [
+              {
+                q: 'Який напрямок із нових турів SVOI ви найбільше хочете відвідати найближчими вихідними?',
+                options: [
+                  { label: '🇦🇹 Зальцбург + Гальштат (135€)', pct: 34 },
+                  { label: '🇧🇪 Брюгге + Гент + Брюссель (120€)', pct: 28 },
+                  { label: '🇳🇱 Гітхорн + Амстердам (120€)', pct: 22 },
+                  { label: '🇩🇪 Замок Нойшванштайн + ущелина (120€)', pct: 16 },
+                ],
+              },
+              {
+                q: 'Що для вас найважливіше у камерних поїздках на 8-місному Opel Vivaro?',
+                options: [
+                  { label: '🏠 Збір прямо від дому (Door-to-Door)', pct: 42 },
+                  { label: '👥 Маленька компанія до 8 осіб без черг', pct: 31 },
+                  { label: '💳 Бронь 0€ без передоплати на 1 день', pct: 19 },
+                  { label: '📸 Зупинки у найкрасивіших фото-локаціях', pct: 8 },
+                ],
+              },
+              {
+                q: 'Який формат подорожей вам підходить найкраще?',
+                options: [
+                  { label: '☀️ Одноденні виїзди у суботу або неділю', pct: 54 },
+                  { label: '🏨 Вікенд-тури на 2 дні з готелем (Комо, Мон-Сен-Мішель)', pct: 33 },
+                  { label: '🌴 Великі 3-денні виїзди (Лазурове узбережжя)', pct: 13 },
+                ],
+              },
+            ];
+
+            if (cbData.startsWith('cb_poll_vote_')) {
+              const parts = cbData.replace('cb_poll_vote_', '').split('_');
+              const qIdx = parseInt(parts[0], 10) || 0;
+              const optIdx = parseInt(parts[1], 10) || 0;
+              const poll = POLL_ITEMS[qIdx % POLL_ITEMS.length];
+              const nextIdx = (qIdx + 1) % POLL_ITEMS.length;
+
+              const bars = poll.options
+                .map((o, i) => {
+                  const mark = i === optIdx ? '✅ ' : '• ';
+                  const adjPct = i === optIdx ? o.pct + 2 : Math.max(5, o.pct - 1);
+                  const filled = Math.round(adjPct / 10);
+                  const bar = '🟩'.repeat(filled) + '⬜'.repeat(Math.max(0, 10 - filled));
+                  return `${mark}<b>${o.label}</b> — <code>${adjPct}%</code>\n${bar}`;
+                })
+                .join('\n\n');
+
+              const resText =
+                `📊 <b>ДЯКУЄМО ЗА ВАШ ГОЛОС! (Опитування ${qIdx + 1} з ${POLL_ITEMS.length})</b> 🎉\n\n` +
+                `❓ <b>${poll.q}</b>\n\n` +
+                `${bars}`;
+
+              await smartEditMessage(chatId, msgId, hasPhoto, resText, {
+                inline_keyboard: [
+                  [{ text: `➡️ Наступне опитування (${nextIdx + 1}/${POLL_ITEMS.length})`, callback_data: `cb_poll_q_${nextIdx}` }],
+                  [{ text: '🗺 Переглянути всі тури', callback_data: 'cb_trips' }],
+                  [{ text: '🎮 До списку всіх ігор', callback_data: 'cb_games' }],
+                  [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+                ],
+              });
+            } else {
+              const qIdx = cbData.startsWith('cb_poll_q_') ? parseInt(cbData.replace('cb_poll_q_', ''), 10) || 0 : 0;
+              const poll = POLL_ITEMS[qIdx % POLL_ITEMS.length];
+              const nextIdx = (qIdx + 1) % POLL_ITEMS.length;
+
+              const pollText =
+                `📊 <b>ОПИТУВАННЯ МАНДРІВНИКІВ SVOI (${qIdx + 1} з ${POLL_ITEMS.length})</b> 🗳\n\n` +
+                `❓ <b>${poll.q}</b>\n\n` +
+                `👇 <i>Натисніть на ваш варіант, щоб проголосувати та побачити статистику клубу:</i>`;
+
+              const rows = poll.options.map((o, idx) => [
+                { text: o.label, callback_data: `cb_poll_vote_${qIdx}_${idx}` },
+              ]);
+              rows.push([
+                { text: `🔄 Інше опитування (${nextIdx + 1}/${POLL_ITEMS.length})`, callback_data: `cb_poll_q_${nextIdx}` },
+                { text: '🎮 До всіх ігор', callback_data: 'cb_games' },
+              ]);
+
+              await smartEditMessage(chatId, msgId, hasPhoto, pollText, { inline_keyboard: rows });
+            }
+          } else if (cbData === 'cb_game_match' || cbData.startsWith('cb_match_')) {
+            if (cbData.startsWith('cb_match_')) {
+              const style = cbData.replace('cb_match_', '');
+              const recommendations: Record<string, { title: string; desc: string; trips: { label: string; id: string }[] }> = {
+                close: {
+                  title: '🌿 Близько (1.5–2 год у дорозі) та без втоми',
+                  desc: 'Ідеальні одноденні маршрути поруч із Саарландом та Люксембургом:',
+                  trips: [
+                    { label: '🇫🇷 Ельзас + Страсбург + Кольмар (80€)', id: 'alsace_strasbourg' },
+                    { label: '🇩🇪 Замок Ельц + Кохем + міст Гайєрлай (85€)', id: 'eltz_cochem_mosel' },
+                    { label: '🇩🇪 Гайдельберг + Баден-Баден (85€)', id: 'heidelberg_baden' },
+                    { label: '🇧🇪 Брюссель (90€)', id: 'brussels' },
+                  ],
+                },
+                alps: {
+                  title: '🏔 Альпійські гори, озера, водоспади та замки',
+                  desc: 'Найживописніші панорамні маршрути Європи:',
+                  trips: [
+                    { label: '🇦🇹 Зальцбург + Гальштат (135€)', id: 'salzburg_hallstatt' },
+                    { label: '🇩🇪 Замок Нойшванштайн + ущелина (120€)', id: 'neuschwanstein' },
+                    { label: '🇨🇭 Швейцарія: Рейнський водоспад + Люцерн (120€)', id: 'swiss_rhine_zurich' },
+                    { label: '🇨🇭 Швейцарія: Ааре + Лаутербруннен + Берн (120€)', id: 'swiss_aare_bern' },
+                    { label: '🇱🇮 Ліхтенштейн — 3 країни за 1 день (120€)', id: 'liechtenstein' },
+                  ],
+                },
+                water: {
+                  title: '🛶 Канали, човни, узбережжя та романтика',
+                  desc: 'Водні перлини Голландії, Бельгії та Франції:',
+                  trips: [
+                    { label: '🇳🇱 Гітхорн + Амстердам (120€)', id: 'amsterdam' },
+                    { label: '🇳🇱 Заандам + Море + Амстердам (120€)', id: 'zaandam_sea_amsterdam' },
+                    { label: '🇧🇪 Брюгге + Гент + Брюссель (120€)', id: 'bruges_ghent_brussels' },
+                    { label: '🇫🇷 Скелі Етрета + Париж (140€)', id: 'etretat_paris' },
+                  ],
+                },
+                family: {
+                  title: '🎢 Парки розваг, авто-музеї та сімейний драйв',
+                  desc: 'Максимум емоцій для дорослих і дітей:',
+                  trips: [
+                    { label: '🇩🇪 Європа-Парк / Europa-Park (95€)', id: 'europa_park' },
+                    { label: '🇩🇪 Парк розваг Леголенд (110€)', id: 'legoland_germany' },
+                    { label: '🇩🇪 Штутгарт: Mercedes-Benz & Porsche (90€)', id: 'stuttgart_tour' },
+                  ],
+                },
+                weekend: {
+                  title: '🏨 Багатоденні вікенд-тури (2–3 дні, готель включено)',
+                  desc: 'Повне занурення з ночівлею у перевірених готелях:',
+                  trips: [
+                    { label: '🇮🇹 Озеро Комо + Мілан (2 дні, 270€)', id: 'como_milan' },
+                    { label: '🇫🇷 Мон-Сен-Мішель + Сен-Мало (2 дні, 270€)', id: 'mont_saint_michel' },
+                    { label: '🇩🇪 Берлін + Дрезден (2 дні, 190€)', id: 'berlin_dresden' },
+                    { label: '🇫🇷 Лазурове узбережжя: Ніцца + Монако (3 дні, 440€)', id: 'cote_dazur' },
+                  ],
+                },
+              };
+              const rec = recommendations[style] || recommendations.close;
+              const rows = rec.trips.map((t) => [{ text: `👉 Відкрити тур: ${t.label}`, callback_data: `trip_${t.id}` }]);
+              rows.push([{ text: '🔄 Обрати інший стиль відпочинку', callback_data: 'cb_game_match' }]);
+              rows.push([
+                { text: '🎮 До всіх ігор', callback_data: 'cb_games' },
+                { text: '🔙 Назад в меню', callback_data: 'cb_back' },
+              ]);
+
+              await smartEditMessage(
+                chatId,
+                msgId,
+                hasPhoto,
+                `🎯 <b>ВАША ПЕРСОНАЛЬНА ДОБІРКА ТУРІВ SVOI:</b>\n\n` +
+                  `<b>${rec.title}</b>\n${rec.desc}\n\n` +
+                  `👇 <i>Натисніть на будь-який тур нижче, щоб переглянути повну програму та забронювати місце:</i>`,
+                { inline_keyboard: rows },
+              );
+            } else {
+              const matchText =
+                `🎒 <b>ТЕСТ: ПІДБІР ІДЕАЛЬНОГО ТУРУ З СААРЛАНДУ ТА ЛЮКСЕМБУРГУ</b> 🧭\n\n` +
+                `Оберіть на плашках нижче, який настрій та формат відпочинку вам зараз найближчий — і бот миттєво підбере найкращі маршрути:`;
+              await smartEditMessage(chatId, msgId, hasPhoto, matchText, {
+                inline_keyboard: [
+                  [{ text: '🌿 Близько (1.5–2 год) і без втоми (80–90€)', callback_data: 'cb_match_close' }],
+                  [{ text: '🏔 Альпи, замки, озера та водоспади', callback_data: 'cb_match_alps' }],
+                  [{ text: '🛶 Канали, море, човни та романтика (Голландія / Бельгія)', callback_data: 'cb_match_water' }],
+                  [{ text: '🎢 Парки розваг (Europa-Park, Леголенд) та авто-музеї', callback_data: 'cb_match_family' }],
+                  [{ text: '🏨 Вікенд на 2–3 дні з готелем (Комо, Нормандія, Ніцца)', callback_data: 'cb_match_weekend' }],
+                  [
+                    { text: '🎮 До всіх ігор', callback_data: 'cb_games' },
+                    { text: '🔙 Назад в меню', callback_data: 'cb_back' },
+                  ],
+                ],
+              });
+            }
           } else if (cbData === 'cb_game_wheel') {
             const prizes = [
-              '💺 Безкоштовний вибір будь-якого місця в 1-му або 2-му ряду (код: WHEEL-SEAT5)',
-              '☕ Кава та круасан на панорамній зупинці в подарунок (код: WHEEL-COFFEE)',
-              '💎 Знижка -10€ на будь-який багатоденний тур (код: WHEEL-10EUR)',
+              '💺 Безкоштовний вибір будь-якого місця в 1-му або 2-му ряду (+5€ → 0€) | Промокод: WHEEL-SEAT5',
+              '☕ Ароматна кава та круасан на панорамній зупинці в подарунок | Промокод: WHEEL-COFFEE',
+              '💎 Знижка -10€ на будь-який 2–3 денний тур (Комо, Мон-Сен-Мішель, Лазурний берег) | Промокод: WHEEL-10EUR',
+              '📸 Персональна міні-фотосесія на найкращій панорамній локації туру | Промокод: WHEEL-PHOTO',
             ];
             const won = prizes[Math.floor(Math.random() * prizes.length)];
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `🎰 <b>КОЛЕСО ФОРТУНИ SVOI!</b> 🎉\n\n🎁 Ваш виграш:\n<b>${won}</b>`,
-              getGamesMarkup(),
+              `🎰 <b>КОЛЕСО ФОРТУНИ SVOI TRAVEL!</b> 🎉\n\n` +
+                `🎁 <b>Ваш гарантований бонус до наступної поїздки:</b>\n` +
+                `<blockquote><b>${won}</b></blockquote>\n\n` +
+                `Назвіть цей промокод організатору або оберіть тур просто зараз!`,
+              {
+                inline_keyboard: [
+                  [{ text: '🔄 Крутити колесо ще раз', callback_data: 'cb_game_wheel' }],
+                  [{ text: '💺 Обрати місце та використати бонус', callback_data: 'cb_book' }],
+                  [
+                    { text: '🎮 До всіх ігор', callback_data: 'cb_games' },
+                    { text: '🔙 Назад в меню', callback_data: 'cb_back' },
+                  ],
+                ],
+              },
             );
           }
         }

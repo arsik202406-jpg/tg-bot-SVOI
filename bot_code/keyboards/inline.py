@@ -123,9 +123,21 @@ def get_trip_detail_keyboard(trip_id: str, is_admin: bool = False) -> InlineKeyb
             )
         ])
 
+    trip = TRIPS_CATALOG.get(trip_id, {})
+    date_str = get_trip_date(trip_id)
+    title = trip.get("title", "Тур SVOI")
+    price = trip.get("price", 120)
+    from urllib.parse import quote
+    share_link = f"https://t.me/Svoi_TravelEU_bot?startapp=tour_{trip_id}"
+    share_text = f"🚐 Поїхали разом у тур «{title}» ({price}€) з клубом SVOI! Дата: {date_str}"
+    tg_share_url = f"https://t.me/share/url?url={quote(share_link)}&text={quote(share_text)}"
+
     keyboard.append([
-        InlineKeyboardButton(text="📋 Лист очікування", callback_data=f"cb_waitlist_add_{trip_id}"),
+        InlineKeyboardButton(text="📤 Надіслати в чат", url=tg_share_url),
         InlineKeyboardButton(text="🚐 Своя компанія (5-8 ос.)", callback_data="cb_custom_trip")
+    ])
+    keyboard.append([
+        InlineKeyboardButton(text="📋 Лист очікування", callback_data=f"cb_waitlist_add_{trip_id}")
     ])
 
     # Блок управління для адміністратора: місця, дата, постер

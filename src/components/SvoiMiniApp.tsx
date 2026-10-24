@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Sparkles, Armchair, Compass, Clock, MapPin, 
@@ -126,7 +126,6 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
   const [filterDateWeekend, setFilterDateWeekend] = useState<string>('all');
   const [showCalendarModal, setShowCalendarModal] = useState<boolean>(false);
   const [calendarMonth, setCalendarMonth] = useState<'oct' | 'nov' | 'dec'>('oct');
-  const [starlightCeiling, setStarlightCeiling] = useState(true);
 
   // Form states & Validation
   const [passengerName, setPassengerName] = useState('Олександр');
@@ -136,6 +135,8 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
   const [pickupAddress, setPickupAddress] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const [lastBookingCode, setLastBookingCode] = useState<string>('SVOI-MINI-4829');
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
   const [touchedFields, setTouchedFields] = useState<{
     name?: boolean;
     handle?: boolean;
@@ -280,6 +281,16 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
           sendData: (data: string) => {
             console.log('[Dev WebApp] tg.sendData() transmitted:', data);
             setDevToast(`📤 tg.sendData: надіслано в бот ${data.length} байт`);
+            setTimeout(() => setDevToast(null), 4000);
+          },
+          openTelegramLink: (url: string) => {
+            console.log('[Dev WebApp] tg.openTelegramLink() called:', url);
+            setDevToast('📤 tg.openTelegramLink: відкрито нативний вибір чату в Telegram');
+            setTimeout(() => setDevToast(null), 4000);
+          },
+          switchInlineQuery: (query: string, chooseChatTypes?: string[]) => {
+            console.log('[Dev WebApp] tg.switchInlineQuery() called:', query, chooseChatTypes);
+            setDevToast(`📤 tg.switchInlineQuery: вибір чату (${(chooseChatTypes || []).join(', ')})`);
             setTimeout(() => setDevToast(null), 4000);
           },
           HapticFeedback: {
@@ -586,13 +597,49 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
     setTimeout(() => setDevToast(null), 4000);
   };
 
-  const handleShareTrip = (e: React.MouseEvent, trip: TripItem) => {
+  const buildTelegramSharePayload = (trip: TripItem, dateOverride?: string) => {
+    const chosenDate =
+      dateOverride ||
+      tripDateSelections[trip.id] ||
+      (selectedTrip.id === trip.id ? selectedDepartureDate : trip.departureDates?.[0]) ||
+      'Найближчі вихідні';
+    const tourDeepLink = `https://t.me/Svoi_TravelEU_bot?startapp=tour_${trip.id}`;
+    const shareText = `🚐 Поїхали разом у тур «${trip.title}» (${trip.price}${trip.currency}, ${trip.duration}) з клубом SVOI!\n📅 Дата виїзду: ${chosenDate}\n📍 Збір за адресою: Саарланд, Люксембург, Трір (0% передоплати)`;
+    const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(tourDeepLink)}&text=${encodeURIComponent(shareText)}`;
+    return { chosenDate, tourDeepLink, shareText, telegramShareUrl };
+  };
+
+  const handleSendTourToChat = (e: React.MouseEvent, trip: TripItem, dateOverride?: string) => {
     e.stopPropagation();
-    triggerHaptic('light');
-    setShareModalTrip(trip);
+    triggerHaptic('medium');
+    const { telegramShareUrl } = buildTelegramSharePayload(trip, dateOverride);
+
+    let openedViaNativeSdk = false;
+    try {
+      const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : undefined;
+      if (tg && typeof tg.openTelegramLink === 'function') {
+        tg.openTelegramLink(telegramShareUrl);
+        // Check if running inside real Telegram client (non-empty initData or real platform)
+        if ((typeof tg.initData === 'string' && tg.initData.length > 0) || (tg.platform && tg.platform !== 'unknown')) {
+          openedViaNativeSdk = true;
+        }
+      }
+    } catch (err) {
+      console.warn('Telegram WebApp openTelegramLink warning:', err);
+    }
+
     setCopiedShareLink(false);
-    setDevToast(`📤 Поширення туру «${trip.shortTitle}» у Telegram...`);
+    setDevToast(`📤 Відкрито вибір чату в Telegram для надсилання туру «${trip.shortTitle}»!`);
     setTimeout(() => setDevToast(null), 3500);
+
+    // In browser preview (outside native Telegram app), also display the interactive Telegram Chat Selector sheet
+    if (!openedViaNativeSdk) {
+      setShareModalTrip(trip);
+    }
+  };
+
+  const handleShareTrip = (e: React.MouseEvent, trip: TripItem) => {
+    handleSendTourToChat(e, trip);
   };
 
   // Filtered tours by search query, price range slider, duration, and calendar date
@@ -680,6 +727,26 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
           }
           if (user.username) {
             setPassengerHandle(`@${user.username}`);
+          }
+        }
+      }
+
+      // Auto-select tour if opened via shared Telegram deep link (?startapp=tour_<id> or tg.initDataUnsafe.start_param)
+      if (typeof window !== 'undefined') {
+        const tg = (window as any).Telegram?.WebApp;
+        const urlParams = new URLSearchParams(window.location.search);
+        const rawStartParam =
+          tg?.initDataUnsafe?.start_param || urlParams.get('startapp') || urlParams.get('tour');
+        if (rawStartParam && typeof rawStartParam === 'string') {
+          const cleanTripId = rawStartParam.replace(/^tour_/, '').trim();
+          const matchedTrip = TRIPS_LIST.find((t) => t.id === cleanTripId);
+          if (matchedTrip) {
+            setSelectedTrip(matchedTrip);
+            if (matchedTrip.departureDates && matchedTrip.departureDates.length > 0) {
+              setSelectedDepartureDate(matchedTrip.departureDates[0]);
+            }
+            setDevToast(`🎯 Відкрито тур за посиланням: «${matchedTrip.shortTitle}»`);
+            setTimeout(() => setDevToast(null), 4000);
           }
         }
       }
@@ -873,9 +940,12 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       console.warn('Telegram WebApp context error caught:', err);
     }
 
+    setLastBookingCode(bookingCode);
+
     setTimeout(() => {
       setIsSubmitting(false);
       setOrderSuccess(true);
+      bodyScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       triggerHaptic('success');
     }, 600);
   };
@@ -928,23 +998,6 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
           >
             <span>👑</span>
             <span className="hidden sm:inline">{isAdminMode ? 'Адмін: ON' : 'Адмін'}</span>
-          </button>
-
-          {/* Starlight toggle */}
-          <button
-            onClick={() => {
-              triggerHaptic('soft');
-              setStarlightCeiling(!starlightCeiling);
-            }}
-            className={`px-2 py-1 rounded-xl text-[10px] sm:text-[11px] font-semibold border transition-all flex items-center gap-1 ${
-              starlightCeiling 
-                ? 'bg-sky-500/20 border-sky-400/50 text-sky-200' 
-                : 'bg-slate-900/70 border-slate-800 text-slate-400'
-            }`}
-            title="Атмосферне підсвічування салону"
-          >
-            <Sparkles className="w-3 h-3 text-sky-400" />
-            <span className="hidden xs:inline">Атмосфера</span>
           </button>
 
           {onClose && (
@@ -1036,7 +1089,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
       </div>
 
       {/* Main Mini App Body Area */}
-      <div className="relative z-10 p-3 sm:p-5 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 [scrollbar-width:thin] [scrollbar-color:rgba(56,189,248,0.3)_transparent]">
+      <div
+        ref={bodyScrollRef}
+        className="relative z-10 p-3 sm:p-5 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 [scrollbar-width:thin] [scrollbar-color:rgba(56,189,248,0.3)_transparent]"
+      >
         {/* ================= STEP 1: TOURS SHOWCASE (CLEAN TOURIST DESIGN) ================= */}
         {activeStep === 'tours' && (
           <div className="space-y-4 pb-12 sm:pb-6">
@@ -1168,9 +1224,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   { q: '', label: '🌍 Усі напрямки' },
                   { q: 'Німеччина', label: '🇩🇪 Німеччина (7)' },
                   { q: 'Франція', label: '🇫🇷 Франція (5)' },
+                  { q: 'Бельгія', label: '🇧🇪 Бельгія (3)' },
                   { q: 'Швейцарія', label: '🇨🇭 Швейцарія (2)' },
-                  { q: 'Бельгія', label: '🇧🇪 Бельгія (2)' },
                   { q: 'Голландія', label: '🇳🇱 Голландія (2)' },
+                  { q: 'Австрія', label: '🇦🇹 Австрія' },
                   { q: 'Італія', label: '🇮🇹 Італія' },
                   { q: 'Ліхтенштейн', label: '🇱🇮 Ліхтенштейн' },
                   { q: 'Чехія', label: '🇨🇿 Чехія' }
@@ -1201,9 +1258,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 const qLow = searchQuery.toLowerCase().trim();
                 const countrySummaryMap: Record<string, string> = {
                   'франція': '🇫🇷 Франція: Ельзас і Страсбург, Скелі Етрета, Мон-Сен-Мішель, Париж та Лазурове узбережжя',
-                  'бельгія': '🇧🇪 Бельгія (2 окремі поїздки): 1) Брюссель (Гран-Плас і Атоміум) • 2) Антверпен + Брюгге',
+                  'бельгія': '🇧🇪 Бельгія (3 окремі поїздки): 1) Брюссель • 2) Антверпен + Брюгге • 3) Брюгге + Гент + Брюссель',
                   'голландія': '🇳🇱 Голландія (2 окремі поїздки): 1) Гітхорн + Амстердам • 2) Заандам + Море + Амстердам',
                   'німеччина': '🇩🇪 Німеччина (окремі тури): 1) Замок Нойшванштайн + ущелина • 2) Берлін + Дрезден • 3) Леголенд • 4) Штутгарт (Mercedes & Porsche) • 5) Європа-Парк • 6) Замок Ельц і Мозель • 7) Гайдельберг і Баден-Баден',
+                  'австрія': '🇦🇹 Австрія: Зальцбург + казковий Гальштат (Хальштатт) на альпійському озері',
                   'ліхтенштейн': '🇱🇮 Ліхтенштейн (3 країни за 1 день): Вадуц, австрійський Брегенц та острів Ліндау',
                   'швейцарія': '🇨🇭 Швейцарія: Рейнський водоспад, Цюрих, Люцерн, бірюзова ущелина Ааре, Лаутербруннен, Берн',
                   'італія': '🇮🇹 Італія: Озеро Комо, вілли Белладжо, Варенна та Мілан'
@@ -1517,15 +1575,16 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                             </span>
                           </div>
 
-                          {/* Top Right Price Pill & Share */}
+                          {/* Top Right Price Pill & Send to Chat */}
                           <div className="absolute top-3 right-3 flex items-center gap-1.5">
                             <button
                               type="button"
-                              onClick={(e) => handleShareTrip(e, trip)}
-                              className="w-8 h-8 rounded-xl bg-slate-950/75 hover:bg-slate-900 text-slate-200 hover:text-sky-300 border border-white/15 flex items-center justify-center backdrop-blur-md transition-all"
-                              title="Поділитися туром"
+                              onClick={(e) => handleSendTourToChat(e, trip)}
+                              className="px-2.5 h-8 rounded-xl bg-slate-950/80 hover:bg-sky-500/30 text-sky-200 hover:text-white border border-sky-400/30 flex items-center justify-center gap-1 backdrop-blur-md transition-all text-[11px] font-bold shadow-sm"
+                              title="Надіслати посилання на тур у чат Telegram"
                             >
-                              <Share2 className="w-3.5 h-3.5" />
+                              <Send className="w-3 h-3 text-sky-400" />
+                              <span className="hidden sm:inline">В чат</span>
                             </button>
                             <div className="px-3 py-1 rounded-xl bg-emerald-500 text-slate-950 font-black text-sm shadow-lg">
                               {trip.price}{trip.currency}
@@ -1703,17 +1762,30 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                             </AnimatePresence>
                           </div>
 
-                          {/* Clean Primary CTA Button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectTrip(trip);
-                            }}
-                            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-teal-500 hover:from-sky-400 hover:to-teal-400 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center justify-center gap-1.5 transition-all active:scale-[0.99]"
-                          >
-                            <span>Обрати місце та забронювати ({trip.price}€)</span>
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
+                          {/* Action Buttons: Primary Booking CTA + 'Надіслати в чат' via Telegram WebApp SDK */}
+                          <div className="space-y-2 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectTrip(trip);
+                              }}
+                              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-teal-500 hover:from-sky-400 hover:to-teal-400 text-white font-bold text-xs shadow-md shadow-sky-500/20 flex items-center justify-center gap-1.5 transition-all active:scale-[0.99]"
+                            >
+                              <span>Обрати місце та забронювати ({trip.price}€)</span>
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => handleSendTourToChat(e, trip)}
+                              className="w-full py-2 px-3.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-200 hover:text-white border border-sky-400/35 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.99]"
+                              title="Автоматично відкрити вибір чату в Telegram для надсилання посилання на тур"
+                            >
+                              <Send className="w-3.5 h-3.5 text-sky-400" />
+                              <span>Надіслати в чат</span>
+                            </button>
+                          </div>
                         </div>
                       </motion.div>
                     );
@@ -1917,20 +1989,8 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               </button>
             </div>
 
-            {/* Visual Cabin Container with Starlight Ceiling Effect (Seats Layout ON TOP immediately under button!) */}
+            {/* Visual Cabin Container (Seats Layout ON TOP immediately under button!) */}
             <div className="relative rounded-3xl p-4 sm:p-6 border-2 border-cyan-500/40 bg-gradient-to-b from-[#0a1128] via-[#090d20] to-[#060814] shadow-2xl overflow-hidden">
-              {/* Animated Constellation Starlight Headliner overlay */}
-              {starlightCeiling && (
-                <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute top-4 left-10 w-1 h-1 bg-white rounded-full shadow-[0_0_8px_#fff] animate-ping" style={{ animationDuration: '3s' }} />
-                  <div className="absolute top-12 right-20 w-1.5 h-1.5 bg-cyan-300 rounded-full shadow-[0_0_10px_#22d3ee] animate-pulse" />
-                  <div className="absolute top-28 left-1/3 w-1 h-1 bg-amber-200 rounded-full shadow-[0_0_8px_#fde68a] animate-ping" style={{ animationDuration: '4s' }} />
-                  <div className="absolute bottom-16 right-1/4 w-1 h-1 bg-purple-300 rounded-full shadow-[0_0_8px_#d8b4fe] animate-pulse" />
-                  <div className="absolute bottom-8 left-1/4 w-1.5 h-1.5 bg-white rounded-full shadow-[0_0_10px_#fff] animate-ping" style={{ animationDuration: '5s' }} />
-                  <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/5 via-purple-500/10 to-amber-500/5 opacity-60 pointer-events-none" />
-                </div>
-              )}
-
               {/* Front Windshield & Driver Cockpit */}
               <div className="mb-4 pb-3 border-b border-cyan-500/30 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1945,8 +2005,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
 
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] px-2.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-200 font-semibold flex items-center gap-1 shadow-sm">
-                    <Sparkles className="w-3 h-3 text-cyan-400" />
-                    Зоряне небо: {starlightCeiling ? 'УВІМКНЕНО' : 'ВИМКНЕНО'}
+                    ❄️ Клімат-контроль & USB-зарядки
                   </span>
                 </div>
               </div>
@@ -2260,10 +2319,15 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               {orderSuccess ? (
                 <motion.div
                   key="order-success-card"
-                  initial={{ opacity: 0, scale: 0.9, y: 24 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.94, y: -16 }}
-                  transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                  initial={{ opacity: 0, y: 90, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 48, scale: 0.96 }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 210,
+                    damping: 24,
+                    mass: 0.9
+                  }}
                   className="p-6 rounded-3xl bg-emerald-950/40 border-2 border-emerald-400/60 text-center space-y-4 shadow-[0_0_40px_rgba(16,185,129,0.25)] relative overflow-hidden"
                 >
                   {/* Subtle animated glow ring */}
@@ -2275,20 +2339,24 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   />
 
                   <motion.div
-                    initial={{ scale: 0, rotate: -25 }}
-                    animate={{ scale: [0, 1.2, 1], rotate: 0 }}
-                    transition={{ delay: 0.08, duration: 0.45, ease: 'easeOut' }}
+                    initial={{ opacity: 0, y: 24, scale: 0.6 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.08 }}
                     className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-400 flex items-center justify-center mx-auto text-2xl shadow-lg shadow-emerald-500/30 relative z-10"
                   >
                     🎉
                   </motion.div>
 
                   <motion.div
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: 24 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.16, duration: 0.3 }}
+                    transition={{ type: 'spring', stiffness: 220, damping: 24, delay: 0.14 }}
                     className="space-y-1.5 relative z-10"
                   >
+                    <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/35 text-[11px] font-mono font-bold text-emerald-300 mb-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Код броні: #{lastBookingCode}</span>
+                    </div>
                     <h3 className="text-xl font-black text-white">
                       Заявку успішно відправлено менеджеру SVOI!
                     </h3>
@@ -2298,9 +2366,9 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   </motion.div>
 
                   <motion.div
-                    initial={{ opacity: 0, y: 14, scale: 0.97 }}
+                    initial={{ opacity: 0, y: 28, scale: 0.97 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ delay: 0.24, duration: 0.32 }}
+                    transition={{ type: 'spring', stiffness: 210, damping: 24, delay: 0.22 }}
                     className="p-4 bg-slate-950/85 rounded-2xl border border-emerald-500/30 max-w-sm mx-auto text-xs space-y-1.5 text-left relative z-10 shadow-inner"
                   >
                     <div className="flex justify-between gap-2">
@@ -2326,9 +2394,9 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   </motion.div>
 
                   <motion.div
-                    initial={{ opacity: 0, y: 12 }}
+                    initial={{ opacity: 0, y: 24 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.32, duration: 0.3 }}
+                    transition={{ type: 'spring', stiffness: 210, damping: 24, delay: 0.3 }}
                     className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 relative z-10"
                   >
                     <a
@@ -2367,10 +2435,10 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
               ) : (
                 <motion.form
                   key="booking-checkout-form"
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.22 }}
+                  exit={{ opacity: 0, y: -24, scale: 0.98 }}
+                  transition={{ duration: 0.25, ease: 'easeOut' }}
                   onSubmit={handleSubmitBooking}
                   className="space-y-4"
                 >
@@ -3369,7 +3437,7 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                 }}
                 className="text-xs text-slate-400 hover:text-white underline"
               >
-                Показати всі 14 турів (без фільтра дат)
+                Показати всі {TRIPS_LIST.length} турів (без фільтра дат)
               </button>
               <button
                 onClick={() => {
@@ -3442,14 +3510,14 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   </div>
                 </div>
                 <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800/80 font-mono text-[10px] text-cyan-300 break-all">
-                  https://t.me/SVOI_Bot/app?startapp=tour_{shareModalTrip.id}
+                  https://t.me/Svoi_TravelEU_bot?startapp=tour_{shareModalTrip.id}
                 </div>
               </div>
 
               {/* Simulated Telegram Quick Contacts */}
               <div className="space-y-2">
                 <span className="text-[11px] font-bold text-slate-400 block">
-                  Надіслати в Telegram-повідомлення:
+                  Оберіть чат у Telegram для миттєвого надсилання:
                 </span>
                 <div className="grid grid-cols-4 gap-2 text-center">
                   {[
@@ -3463,6 +3531,15 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                       type="button"
                       onClick={() => {
                         triggerHaptic('success');
+                        const { telegramShareUrl } = buildTelegramSharePayload(shareModalTrip);
+                        try {
+                          const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : undefined;
+                          if (tg && typeof tg.openTelegramLink === 'function') {
+                            tg.openTelegramLink(telegramShareUrl);
+                          }
+                        } catch {
+                          // ignore
+                        }
                         setDevToast(`📨 Посилання на тур «${shareModalTrip.shortTitle}» надіслано в «${recipient.name}»!`);
                         setTimeout(() => setDevToast(null), 4000);
                         setShareModalTrip(null);
@@ -3486,10 +3563,8 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   type="button"
                   onClick={() => {
                     triggerHaptic('selection');
-                    const shareUrl = `https://t.me/SVOI_Bot/app?startapp=tour_${shareModalTrip.id}`;
-                    navigator.clipboard?.writeText(
-                      `🚐 Приєднуйся до туру «${shareModalTrip.title}» (${shareModalTrip.price}€) з клубом SVOI! Бронювання місця без передоплати: ${shareUrl}`
-                    );
+                    const { tourDeepLink, shareText } = buildTelegramSharePayload(shareModalTrip);
+                    navigator.clipboard?.writeText(`${shareText}\n👉 ${tourDeepLink}`);
                     setCopiedShareLink(true);
                     setDevToast(`🔗 Посилання на тур «${shareModalTrip.shortTitle}» скопійовано!`);
                     setTimeout(() => setDevToast(null), 3500);
@@ -3500,19 +3575,30 @@ export const SvoiMiniApp: React.FC<SvoiMiniAppProps> = ({
                   <span>{copiedShareLink ? 'Посилання скопійовано ✓' : 'Скопіювати посилання'}</span>
                 </button>
 
-                <button
-                  type="button"
+                <a
+                  href={buildTelegramSharePayload(shareModalTrip).telegramShareUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   onClick={() => {
                     triggerHaptic('success');
-                    setDevToast(`🚀 Відкрито системне вікно Telegram Share для туру «${shareModalTrip.shortTitle}»!`);
+                    const { telegramShareUrl } = buildTelegramSharePayload(shareModalTrip);
+                    try {
+                      const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : undefined;
+                      if (tg && typeof tg.openTelegramLink === 'function') {
+                        tg.openTelegramLink(telegramShareUrl);
+                      }
+                    } catch {
+                      // ignore
+                    }
+                    setDevToast(`🚀 Відкрито вибір чату Telegram для туру «${shareModalTrip.shortTitle}»!`);
                     setTimeout(() => setDevToast(null), 4000);
                     setShareModalTrip(null);
                   }}
                   className="w-full sm:flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-600/30 transition-all"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Поділитися в Telegram</span>
-                </button>
+                  <span>Надіслати в чат</span>
+                </a>
               </div>
             </motion.div>
           </motion.div>

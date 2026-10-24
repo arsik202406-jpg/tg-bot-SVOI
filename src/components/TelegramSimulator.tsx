@@ -40,13 +40,17 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     amsterdam: 5,
     zaandam_sea_amsterdam: 4,
     bruges: 4,
+    bruges_ghent_brussels: 5,
     liechtenstein: 4,
     neuschwanstein: 2,
     berlin_dresden: 4,
     legoland: 5,
+    legoland_germany: 5,
     stuttgart: 4,
+    stuttgart_tour: 4,
     europa_park: 2,
     eltz_cochem: 5,
+    eltz_cochem_mosel: 5,
     heidelberg_baden: 6,
     cote_dazur: 5,
     mont_saint_michel: 6,
@@ -54,6 +58,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     swiss_aare_bern: 3,
     brussels: 5,
     prague: 5,
+    salzburg_hallstatt: 5,
     alsace_strasbourg: 6,
     como_milan: 2
   });
@@ -66,6 +71,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
   const getCountryFlag = (country?: string): string => {
     const c = country || '';
     if (c.includes('Ліхтенштейн')) return '🇱🇮';
+    if (c.includes('Австрія')) return '🇦🇹';
     if (c.includes('Франція')) return '🇫🇷';
     if (c.includes('Голландія') || c.includes('Нідерланди')) return '🇳🇱';
     if (c.includes('Бельгія')) return '🇧🇪';
@@ -249,25 +255,34 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
   const getMainKeyboard = (): InlineBtn[][] => [
     [
-      { text: '🗺 Напрямки та дати', callbackData: 'cb_trips' },
-      { text: '⭐ Відгуки туристів', callbackData: 'cb_reviews' }
+      { text: '🚀 Відкрити SVOI Mini App (Вітрина 3D)', callbackData: 'cb_open_miniapp' }
     ],
     [
+      { text: '🗺 Напрямки та дати', callbackData: 'cb_trips' },
       { text: '💺 ЗАБРОНЮВАТИ МІСЦЕ', callbackData: 'cb_book' }
     ],
     [
+      { text: '🚐 Фото авто (Opel Vivaro)', callbackData: 'cb_car' },
+      { text: '📍 Точки збору (Door-to-Door)', callbackData: 'cb_meeting' }
+    ],
+    [
       { text: '❓ Часті питання (FAQ)', callbackData: 'cb_faq' },
-      { text: '🤝 Стати партнером клубу', callbackData: 'cb_partner' }
+      { text: '⭐ Відгуки туристів', callbackData: 'cb_reviews' }
     ],
     [
       { text: '🎮 Ігри та вікторини', callbackData: 'cb_games' },
-      { text: '📢 Наш канал', url: CHANNEL_URL }
+      { text: '🤝 Стати партнером клубу', callbackData: 'cb_partner' }
     ],
     [
+      { text: '🎁 Розіграш туру (В Групу)', callbackData: 'cb_adm_gw_card' },
+      { text: '🏆 Результат розіграшу', callbackData: 'cb_adm_gw_pick' }
+    ],
+    [
+      { text: '📢 Наш канал', url: CHANNEL_URL },
       { text: "💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url: MANAGER_URL }
     ],
     [
-      { text: '👑 Керування каналом (/channel)', callbackData: 'cb_adm_channel_menu' },
+      { text: '👑 Керування каналом та групою (/channel)', callbackData: 'cb_adm_channel_menu' },
       { text: '📋 Лист очікування', callbackData: 'cb_adm_waitlist' }
     ]
   ];
@@ -347,32 +362,77 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       return;
     }
 
-    if (data === 'cb_adm_gw_new' || data === 'cb_adm_gw_new_group') {
-      const isGroup = data === 'cb_adm_gw_new_group';
-      const targetName = isGroup ? 'ГРУПІ «Клуб мандрівників SVOI» 👥' : 'КАНАЛІ SVOI Travel 📢';
-      const gwText = 
-        `🎉🔥 <b>РОЗІГРАШ ОПУБЛІКОВАНО В ${targetName}!</b> 🌍✨\n\n` +
-        `Ми розігруємо:\n` +
+    if (data === 'cb_adm_gw_new' || data === 'cb_adm_gw_card') {
+      const gwAdminCardText = 
+        `👑 <b>КАРТКА РОЗІГРАШУ В АДМІН-ПАНЕЛІ (Керування Групою та Каналом)</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
+        `Ми розігруємо серед учасників нашої спільноти:\n` +
         `🎁 <b>Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼</b>\n\n` +
-        `<b>Умови участі для підписників:</b>\n` +
-        `1️⃣ Бути підписаним на офіційний канал SVOI\n` +
-        `2️⃣ Бути учасником групи клубу\n` +
-        `3️⃣ Натиснути кнопку «🎉 Брати участь!» нижче\n\n` +
-        `<blockquote>👑 <b>Плашка Адміністратора:</b> нижче під постом розміщена кнопка <b>«👑 Вибрати переможця [Тільки Адмін]»</b> — звичайні учасники не можуть її натиснути, а адмін після завершення обирає нею переможця і публікує підсумки в групу!</blockquote>`;
+        `<b>Умови участі максимально прості:</b>\n` +
+        `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
+        `2️⃣ Натиснути кнопку «🎉 Брати участь! (${giveawayParticipantsCount})» під постом у групі!\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `📊 <b>Зареєстровано учасників:</b> <b>${giveawayParticipantsCount}</b>\n\n` +
+        `👇 <b>Пряма публікація (бот вже адміністратор):</b>\n` +
+        `• Натисніть <b>«👥 Опублікувати РОЗІГРАШ у ГРУПІ напряму»</b>.\n` +
+        `• Після участі всіх натисніть <b>«🏆 Вибрати переможця та опублікувати результат»</b>.`;
+
+      const keyboard: InlineBtn[][] = [
+        [
+          { text: '👥 Опублікувати РОЗІГРАШ у ГРУПІ напряму', callbackData: 'cb_adm_gw_share_group' }
+        ],
+        [
+          { text: '📢 Опублікувати РОЗІГРАШ у КАНАЛІ', callbackData: 'cb_adm_gw_share_channel' }
+        ],
+        [
+          { text: `🏆 Вибрати переможця розіграшу (Учасників: ${giveawayParticipantsCount})`, callbackData: 'cb_adm_gw_pick' }
+        ],
+        [
+          { text: '🔙 Назад в головне меню', callbackData: 'cb_back' }
+        ]
+      ];
+
+      editLastBotMessage(gwAdminCardText, keyboard);
+      return;
+    }
+
+    if (data === 'cb_adm_gw_share_group' || data === 'cb_adm_gw_share_channel') {
+      const isGroup = data === 'cb_adm_gw_share_group';
+      fetch('/api/telegram/giveaway/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetType: isGroup ? 'group' : 'channel' }),
+      }).catch(() => {});
+
+      showToast(isGroup ? "✅ Бот опублікував розіграш у вашій ГРУПІ напряму!" : "✅ Бот опублікував розіграш у вашому КАНАЛІ!");
+
+      const sharedText = 
+        `✅ <b>РОЗІГРАШ ОПУБЛІКОВАНО НАПРЯМУ В ${isGroup ? 'ГРУПІ «Клуб мандрівників SVOI» 👥' : 'КАНАЛІ SVOI Travel 📢'}!</b>\n` +
+        `<i>Ось як виглядає чистий пост розіграшу для учасників у групі:</i>\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
+        `Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n` +
+        `🎁 <b>Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼</b>\n\n` +
+        `<b>Умови участі максимально прості:</b>\n` +
+        `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
+        `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (${giveawayParticipantsCount})»</b> нижче!\n\n` +
+        `<i>Бот автоматично реєструє кожного учасника. Нехай щастить! 🍀</i>`;
 
       const keyboard: InlineBtn[][] = [
         [
           { text: `🎉 Брати участь! (${giveawayParticipantsCount})`, callbackData: 'cb_sim_join_gw' }
         ],
         [
-          { text: '👑 Вибрати переможця [Тільки Адмін]', callbackData: 'cb_adm_gw_pick' }
+          { text: `🏆 Вибрати переможця та опублікувати результат у ГРУПІ`, callbackData: 'cb_adm_gw_pick' }
         ],
         [
-          { text: '🔙 Назад до керування каналом і групою', callbackData: 'cb_adm_channel_menu' }
+          { text: '👑 Повернутися до Картки Розіграшу', callbackData: 'cb_adm_gw_card' },
+          { text: '🔙 В головне меню', callbackData: 'cb_back' }
         ]
       ];
 
-      editLastBotMessage(gwText, keyboard);
+      editLastBotMessage(sharedText, keyboard);
       return;
     }
 
@@ -382,24 +442,23 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       showToast("🎉 Ви успішно зареєстровані в розіграші! Учасників: " + newCount + " ✅");
 
       const gwText = 
-        `🎉🔥 <b>РОЗІГРАШ У ГРУПІ ТА КАНАЛІ SVOI TRAVEL!</b> 🌍✨\n\n` +
-        `Ми розігруємо:\n` +
+        `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
+        `Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n` +
         `🎁 <b>Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼</b>\n\n` +
-        `<b>Умови участі для підписників:</b>\n` +
-        `1️⃣ Бути підписаним на офіційний канал SVOI\n` +
-        `2️⃣ Бути учасником групи клубу\n` +
-        `3️⃣ Натиснути кнопку «🎉 Брати участь!»\n\n` +
-        `<i>Бот автоматично реєструє учасників у реальному часі! Коли всі візьмуть участь, натисніть кнопку вибору переможця для адміна нижче:</i>`;
+        `<b>Умови участі максимально прості:</b>\n` +
+        `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
+        `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (${newCount})»</b> нижче!\n\n` +
+        `<i>Бот автоматично реєструє кожного учасника. Нехай щастить! 🍀</i>`;
 
       const keyboard: InlineBtn[][] = [
         [
           { text: `🎉 Брати участь! (${newCount})`, callbackData: 'cb_sim_join_gw' }
         ],
         [
-          { text: '👑 Вибрати переможця [Тільки Адмін]', callbackData: 'cb_adm_gw_pick' }
+          { text: `🏆 Вибрати переможця розіграшу (${newCount} уч.)`, callbackData: 'cb_adm_gw_pick' }
         ],
         [
-          { text: '🔙 Назад до керування каналом і групою', callbackData: 'cb_adm_channel_menu' }
+          { text: '🔙 Назад в головне меню', callbackData: 'cb_back' }
         ]
       ];
 
@@ -412,25 +471,28 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       const luckyWinner = candidates[Math.floor(Math.random() * candidates.length)];
 
       const winnerPost = 
-        `🏆 <b>ПЕРЕМОЖЦЯ РОЗІГРАШУ ОБРАНО [Панель Адміна]!</b> 🎉\n\n` +
+        `🏆 <b>ПЕРЕМОЖЦЯ РОЗІГРАШУ ОБРАНО!</b> 🎉\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
         `🎁 <b>Приз:</b> Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼\n` +
         `👥 <b>Усього брало участь:</b> ${giveawayParticipantsCount} учасників\n\n` +
         `✨ Генератор випадкових чисел обрав переможця: ✨\n` +
-        `🥳 <b>ПЕРЕМОЖЕЦЬ: ${luckyWinner}</b>! 🎉🎉🎉\n\n` +
-        `<blockquote>👑 <b>Керування для Адміна:</b> натисніть кнопку нижче, щоб миттєво опублікувати цей офіційний пост із вітанням переможця прямо в <b>ГРУПУ</b> або в <b>КАНАЛ</b>!</blockquote>`;
+        `🥳 <b>ПЕРЕМОЖЕЦЬ: ${luckyWinner}</b>! 🎉🎉🎉\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `👇 Натисніть <b>«👥 Опублікувати результат розіграшу в ГРУПІ напряму»</b>, щоб бот миттєво опублікував офіційні підсумки розіграшу прямо в групі:`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '👥 Опублікувати переможця в ГРУПІ', callbackData: 'cb_adm_pub_winner_group' }
+          { text: '👥 Опублікувати результат розіграшу в ГРУПІ напряму', callbackData: 'cb_adm_pub_winner_group' }
         ],
         [
-          { text: '📢 Опублікувати переможця в КАНАЛІ', callbackData: 'cb_adm_pub_winner_channel' }
+          { text: '📢 Опублікувати результат розіграшу в КАНАЛІ', callbackData: 'cb_adm_pub_winner_channel' }
         ],
         [
           { text: '🔄 Переобрати іншого переможця', callbackData: 'cb_adm_gw_pick' }
         ],
         [
-          { text: '🔙 Назад до панелі /channel', callbackData: 'cb_adm_channel_menu' }
+          { text: '🔙 До Картки розіграшу', callbackData: 'cb_adm_gw_card' },
+          { text: '🔙 В головне меню', callbackData: 'cb_back' }
         ]
       ];
 
@@ -440,9 +502,15 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
     if (data === 'cb_adm_pub_winner_group' || data === 'cb_adm_pub_winner_channel') {
       const isGroup = data === 'cb_adm_pub_winner_group';
-      showToast(isGroup ? "✅ Пост із переможцем опубліковано в ГРУПІ!" : "✅ Пост із переможцем опубліковано в КАНАЛІ!");
+      fetch('/api/telegram/giveaway/publish-winner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetType: isGroup ? 'group' : 'channel' }),
+      }).catch(() => {});
+
+      showToast(isGroup ? "✅ Результат розіграшу опубліковано в ГРУПІ напряму!" : "✅ Результат розіграшу опубліковано в КАНАЛІ!");
       const pubText =
-        `✅ <b>ОФІЦІЙНИЙ ПОСТ ПЕРЕМОЖЦЯ УСПІШНО ОПУБЛІКОВАНО В ${isGroup ? 'ГРУПІ 👥' : 'КАНАЛІ 📢'}!</b> 🎉\n\n` +
+        `✅ <b>ОФІЦІЙНИЙ РЕЗУЛЬТАТ РОЗІГРАШУ ОПУБЛІКОВАНО НАПРЯМУ В ${isGroup ? 'ГРУПІ 👥' : 'КАНАЛІ 📢'}!</b> 🎉\n\n` +
         `🎊🏆 <b>УВАГА! ПІДСУМКИ ГРАНДІОЗНОГО РОЗІГРАШУ SVOI TRAVEL!</b> 🏆🎊\n` +
         `🎁 <b>Приз:</b> Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼\n` +
         `👥 <b>Усього учасників:</b> ${giveawayParticipantsCount}\n` +
@@ -454,7 +522,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
           { text: '💬 Менеджер', url: MANAGER_URL }
         ],
         [
-          { text: '🔙 Назад до панелі /channel', callbackData: 'cb_adm_channel_menu' }
+          { text: '🔙 До Картки розіграшу', callbackData: 'cb_adm_gw_card' },
+          { text: '🔙 В головне меню', callbackData: 'cb_back' }
         ]
       ];
       editLastBotMessage(pubText, keyboard);
@@ -529,18 +598,18 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
     if (data === 'cb_adm_post_miniapp') {
       const miniappText = 
-        `🚀✨ <b>ЗУСТРІЧАЙТЕ НОВИЙ SVOI MINI APP «ЗОРЯНЕ НЕБО»!</b> 🌌🚐\n\n` +
-        `Тепер обрати тур та конкретне крісло в салоні можна у фірмовому 3D додатку прямо всередині Telegram!\n\n` +
+        `🚀✨ <b>ЗУСТРІЧАЙТЕ ОНОВЛЕНИЙ SVOI MINI APP!</b> 🌍🚐\n\n` +
+        `Тепер обрати тур та конкретне крісло в салоні можна у зручному інтерактивному додатку прямо всередині Telegram!\n\n` +
         `✨ <b>Можливості Mini App:</b>\n` +
         `• Інтерактивний вибір крісла у салоні Opel Vivaro\n` +
-        `• Стеля з оптоволоконним «Зоряним небом»\n` +
-        `• Вітрина всіх 14 турів з яскравими фото\n` +
+        `• Зручний пошук і фільтри за країнами та датами\n` +
+        `• Вітрина всіх ${TRIPS_LIST.length} авторських турів з яскравими фото\n` +
         `• Миттєве оформлення без передоплати!\n\n` +
         `Натискайте кнопку нижче для запуску:`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '🚀 Відкрити Mini App (Зоряне небо)', callbackData: 'cb_open_miniapp' }
+          { text: '🚀 Відкрити SVOI Mini App', callbackData: 'cb_open_miniapp' }
         ],
         [
           { text: '🔙 Назад до каналу', callbackData: 'cb_adm_channel_menu' }
@@ -584,24 +653,27 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         `• 🇧🇪 <b>Бельгія (окремі авторські виїзди):</b>\n` +
         `  — <b>Брюссель (90€):</b> золота площа Гран-Плас, монумент Атоміум, Королівський палац, галереї Св. Юбера та гарячі вафлі\n` +
         `  — <b>Антверпен + Брюгге (110€):</b> вокзал-палац та замок Стен у Антверпені + Озеро Кохання з лебедями й канали Брюгге\n` +
+        `  — <b>Брюгге + Гент + Брюссель (120€):</b> золоте тріо Бельгії — канали Брюгге, замок Гравенстен у Генті та вечірня Гран-Плас у Брюсселі\n` +
         `• 🇳🇱 <b>Голландія / Нідерланди (окремі авторські виїзди):</b>\n` +
         `  — <b>Гітхорн + Амстердам (120€):</b> водне село без авто Гітхорн («Голландська Венеція») + канали Амстердама і сироварні\n` +
         `  — <b>Заандам + Море + Амстердам (120€):</b> вітряки Заансе-Сханс і Заандам, пляж Північного моря та Амстердам\n` +
         `• 🇩🇪 <b>Німеччина (окремі авторські виїзди):</b>\n` +
         `  — <b>Замок Нойшванштайн + ущелина Партнахкламм (120€):</b> міст Марієнбрюке, озеро Альпзее та гірська ущелина з водоспадами\n` +
-        `  — <b>Берлін + Дрезден (2 дні, 240€):</b> Бранденбурзькі ворота, Рейхстаг, палац Цвінгер, Фрауенкірхе (готель включено)\n` +
-        `  — <b>Парк розваг Леголенд / LEGOLAND (115€):</b> сімейний виїзд у Гюнцбург (Мініленд та 60+ атракціонів)\n` +
-        `  — <b>Штутгарт (95€):</b> музеї Mercedes-Benz і Porsche + футуристична бібліотека\n` +
+        `  — <b>Берлін + Дрезден (2 дні, 190€):</b> Бранденбурзькі ворота, Рейхстаг, палац Цвінгер, Фрауенкірхе (готель включено)\n` +
+        `  — <b>Парк розваг Леголенд / LEGOLAND (110€):</b> сімейний виїзд у Гюнцбург (Мініленд та 60+ атракціонів)\n` +
+        `  — <b>Штутгарт (90€):</b> музеї Mercedes-Benz і Porsche + футуристична бібліотека\n` +
         `  — <b>Європа-Парк / Europa-Park (95€):</b> топ-парк розваг Європи в Русті (лише ~2 год від Саарланду)\n` +
         `  — <b>Долина Мозеля: Замок Ельц + Кохем + міст Гайєрлай (85€):</b> замок Burg Eltz, підвісний міст та дегустація Рислінгу\n` +
         `  — <b>Гайдельберг + курорт Баден-Баден (85€):</b> замок Гайдельберга та королівські терми\n` +
+        `• 🇦🇹 <b>Австрія (135€):</b>\n` +
+        `  — <b>Зальцбург + Гальштат (Хальштатт):</b> альпійське озеро Гальштат, панорама Skywalk, палац Мірабель та будинок Моцарта в Зальцбурзі\n` +
         `• 🇱🇮 <b>Ліхтенштейн (3 країни за 1 день, 120€):</b>\n` +
         `  — <b>Вадуц, Брегенц та Ліндау:</b> замок Вадуц, сцена на Боденському озері в Брегенці та острів Ліндау\n` +
         `• 🇨🇭 <b>Швейцарія (120€):</b>\n` +
         `  — <b>Рейнський водоспад + Цюрих + Люцерн</b> АБО <b>Ущелина Ааре + Лаутербруннен (72 водоспади) + Берн</b>\n` +
         `• 🇮🇹 <b>Італія (2 дні, 270€):</b> <b>Озеро Комо + Мілан</b> (вілли Белладжо, катер, собор Дуомо, готель включено)\n` +
         `• 🇨🇿 <b>Чехія (120€):</b> <b>Прага</b> (Празький Град, Карлів міст, куранти Орлой)\n\n` +
-        `<blockquote>🚐 <b>Авто:</b> 8-місний <b>Opel Vivaro</b> (клімат-контроль, USB, стеля «Зоряне небо», багаж до <code>10 кг</code>)\n` +
+        `<blockquote>🚐 <b>Авто:</b> 8-місний <b>Opel Vivaro</b> (клімат-контроль, USB, відкидні сидіння, багаж до <code>10 кг</code>)\n` +
         `📍 <b>Збір за адресою (Door-to-Door):</b> Саарланд, Трір та Люксембург\n` +
         `💳 <b>Оплата:</b> <code>0% передоплати</code> на всі одноденні тури!</blockquote>\n\n` +
         `👇 <b>Натисніть на будь-яку поїздку нижче, щоб відкрити погодинну програму, фото та забронювати місце:</b>`;
@@ -633,7 +705,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         `${programSteps || highlightsList}\n\n` +
         `✨ <b>Головні враження:</b>\n${highlightsList}\n\n` +
         `💶 <b>Вартість: ${trip.price}€</b> | 🔥 <b>Вільних місць: ${freeSeats} з 8</b>\n\n` +
-        `<blockquote>🚐 <b>Авто:</b> Opel Vivaro (8 місць, клімат-контроль, зоряне небо)\n` +
+        `<blockquote>🚐 <b>Авто:</b> Opel Vivaro (8 місць, клімат-контроль, USB-зарядки)\n` +
         `📍 <b>Збір:</b> За домашньою адресою (Саарланд, Трір, Люксембург)\n` +
         `💡 <b>Умови:</b> ${paymentRule}</blockquote>`;
 
@@ -648,9 +720,17 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         ]);
       }
 
+      const shareTourLink = `https://t.me/Svoi_TravelEU_bot?startapp=tour_${trip.id}`;
+      const shareTourText = `🚐 Поїхали разом у тур «${trip.title}» (${trip.price}€, ${trip.duration}) з клубом SVOI! Дата: ${dateStr}`;
+      const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(shareTourLink)}&text=${encodeURIComponent(shareTourText)}`;
+
       keyboard.push([
-        { text: '📋 Лист очікування', callbackData: `cb_waitlist_add_${trip.id}` },
+        { text: '📤 Надіслати в чат', url: telegramShareUrl },
         { text: '🚐 Індивідуальний виїзд', callbackData: 'cb_custom_trip' }
+      ]);
+
+      keyboard.push([
+        { text: '📋 Лист очікування', callbackData: `cb_waitlist_add_${trip.id}` }
       ]);
 
       // Admin quick controls: Seats, Date, Poster
@@ -785,7 +865,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         `Реальні відгуки наших мандрівників про поїздки, атмосферу та комфорт Opel Vivaro:\n\n` +
         `<b>Олена К.</b> (Саарбрюккен) — <i>Париж (Версаль + яхта)</i>\n` +
         `⭐⭐⭐⭐⭐ <b>5/5</b> (12.10.2026)\n` +
-        `«Неймовірна поїздка! Організація на висоті: забрали прямо біля будинку, мінівен дуже м'який і зручний, зоряне небо в салоні створило казку!»\n\n` +
+        `«Неймовірна поїздка! Організація на висоті: забрали прямо біля будинку, мінівен дуже м'який і зручний, дорога минула легко та з максимальним комфортом!»\n\n` +
         `───────────────\n\n` +
         `<b>Михайло В.</b> (Трір) — <i>Брюгге (Бельгія)</i>\n` +
         `⭐⭐⭐⭐⭐ <b>5/5</b> (05.10.2026)\n` +
@@ -846,34 +926,60 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       return;
     }
 
-    if (data === 'cb_car') {
+    if (data === 'cb_car' || data === 'cb_car_photo_1' || data === 'cb_car_photo_2' || data === 'cb_car_photo_3') {
+      const photoMap: Record<string, { url: string; subtitle: string }> = {
+        cb_car: {
+          url: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=1000&q=85',
+          subtitle: '📸 Фото 1/3: Комфортабельний 8-місний мінівен Opel Vivaro на маршрутах Європи'
+        },
+        cb_car_photo_1: {
+          url: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=1000&q=85',
+          subtitle: '📸 Фото 1/3: Екстер’єр мінівена Opel Vivaro для камерних груп до 8 осіб'
+        },
+        cb_car_photo_2: {
+          url: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1000&q=85',
+          subtitle: '📸 Фото 2/3: Просторий салон (схема 2+3+3), відкидні сидіння та клімат-контроль'
+        },
+        cb_car_photo_3: {
+          url: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1000&q=85',
+          subtitle: '📸 Фото 3/3: Панорамні вікна та містке багажне відділення (до 10 кг + ручна поклажа)'
+        }
+      };
+      const selectedPhoto = photoMap[data] || photoMap.cb_car;
+
       const carText = 
-        `🚐 <b>Наш мінівен: Opel Vivaro (8 пасажирських місць)</b> 🚗\n\n` +
-        `Ми дбаємо про те, щоб дорога була легкою та приємною!\n\n` +
-        `💺 <b>Схема місць у салоні (всього 8 місць):</b>\n` +
-        `• <b>1-й ряд (поруч із водієм):</b> 2 місця (Місце 1 — центр, Місце 2 — панорамне вікно)\n` +
-        `• <b>2-й ряд:</b> 3 місця (Місце 3 — вікно, Місце 4 — центр, Місце 5 — вікно)\n` +
-        `• <b>3-й ряд:</b> 3 місця (Місце 6 — вікно, Місце 7 — центр, Місце 8 — вікно)\n\n` +
+        `🚐 <b>Наш мінівен: Opel Vivaro (8 пасажирських місць)</b> ✨\n` +
+        `<i>${selectedPhoto.subtitle}</i>\n\n` +
+        `💺 <b>Схема місць у салоні (всього 8 місць, 2+3+3):</b>\n` +
+        `• <b>1-й ряд (поруч із водієм):</b> 2 місця (Місце 1 — панорамне +5€, Місце 2 — вікно +5€)\n` +
+        `• <b>2-й ряд:</b> 3 місця (Місце 3 — вікно, Місце 4 — центр, Місце 5 — вікно, +5€)\n` +
+        `• <b>3-й ряд:</b> 3 місця (Місце 6 — вікно +5€, Місце 7 — центр 0€, Місце 8 — вікно +5€)\n\n` +
         `🌟 <b>Оснащення та зручності:</b>\n` +
-        `• 💺 <b>Зручні сидіння:</b> індивідуальні ремені, відкидні спинки для сну в дорозі\n` +
-        `• 📏 <b>Простір для ніг:</b> вільно навіть для високих пасажирів\n` +
-        `• ❄️🔥 <b>Кондиціонер та опалення салону</b>\n` +
-        `• ⚡️ <b>Зарядка телефонів:</b> USB-порти для ваших смартфонів\n` +
-        `• 🧳 <b>Багажне відділення:</b> 10 кг при далеких поїздках + ручна поклажа в салон\n` +
-        `• 🧼 <b>Чистота:</b> регулярне вологе прибирання перед кожним рейсом\n\n` +
-        `<i>Ви можете обрати конкретне місце під час бронювання (+5€) або зайняти вільне при посадці (0€).</i>`;
+        `• 💺 <b>Зручні сидіння:</b> індивідуальні ремені, відкидні спинки для відпочинку в дорозі\n` +
+        `• ❄️🔥 <b>Двозонний клімат-контроль та автономний обігрівач салону</b>\n` +
+        `• ⚡️ <b>Зарядка телефонів:</b> USB / Type-C порти біля кожного ряду\n` +
+        `• 🧳 <b>Багажне відділення:</b> до 10 кг у багажник + ручна поклажа в салон\n\n` +
+        `<i>Ви можете обрати конкретне місце під час бронювання (+5€) або вільну посадку (0€).</i>`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '💺 Відкрити схему місць у салоні', callbackData: 'cb_open_car_visualizer' }
+          { text: '📸 Фото 1: Авто', callbackData: 'cb_car_photo_1' },
+          { text: '💺 Фото 2: Салон', callbackData: 'cb_car_photo_2' },
+          { text: '🏔 Фото 3: У дорозі', callbackData: 'cb_car_photo_3' }
         ],
         [
-          { text: '💺 Обрати місце (+5€)', callbackData: 'cb_book' },
+          { text: '💺 Відкрити інтерактивну 3D-схему салону', callbackData: 'cb_open_car_visualizer' }
+        ],
+        [
+          { text: '💺 Обрати місце та забронювати', callbackData: 'cb_book' },
+          { text: '❓ Назад до FAQ', callbackData: 'cb_faq' }
+        ],
+        [
           { text: '🔙 Назад до меню', callbackData: 'cb_back' }
         ]
       ];
 
-      editLastBotMessage(carText, keyboard);
+      editLastBotMessage(carText, keyboard, selectedPhoto.url);
       return;
     }
 
@@ -998,33 +1104,45 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
     if (data === 'cb_faq') {
       const faqText = 
-        `❓ <b>Часті питання про поїздки клубу SVOI (FAQ)</b> 💡\n\n` +
-        `Зібрали для вас детальні відповіді на найважливіші питання:\n\n` +
-        `• 📍 <b>Точки збору:</b> адресний збір (Door-to-Door) по Саарланду, Тріру та Люксембургу!\n` +
-        `• 💳 <b>Оплата:</b> працюємо БЕЗ ПЕРЕДОПЛАТИ на всі одноденні поїздки!\n` +
-        `• 🚐 <b>Комфорт буса:</b> Opel Vivaro з кліматом, USB та зоряним LED-небом\n` +
-        `• ⏱ <b>Таймінг:</b> від 5 до 8 годин вільного часу на локаціях без поспіху!\n\n` +
-        `👇 <i>Оберіть потрібну тему нижче:</i>`;
+        `❓ <b>Часті питання про поїздки клубу SVOI (FAQ) — Оберіть розділ</b> 💡\n\n` +
+        `Ми зібрали детальні відповіді на всі питання про наші поїздки. Натисніть на будь-яку плашку нижче, щоб відкрити подробиці:\n\n` +
+        `• 📍 <b>Звідки виїзд (Door-to-Door):</b> забираємо за адресою по Саарланду, Тріру та Люксембургу\n` +
+        `• 💳 <b>Оплата:</b> <code>0% передоплати</code> на всі одноденні тури (готель включено у 2–3 денні)\n` +
+        `• 🚐 <b>Автомобіль:</b> 8-місний <b>Opel Vivaro</b> з клімат-контролем та USB (з реальними фото авто!)\n` +
+        `• 💺 <b>Схема місць 1–8</b>, таймінг виїзду, багаж, поїздки з дітьми та скасування броні\n\n` +
+        `👇 <b>Натисніть на потрібну тему нижче:</b>`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '📍 Точки збору (Door-to-Door)', callbackData: 'cb_meeting' },
-          { text: '📜 Умови поїздок & 0% передоплати', callbackData: 'cb_terms' }
+          { text: '📍 Точки збору (Door-to-Door)', callbackData: 'cb_faq_pickup' },
+          { text: '💳 Оплата та 0% передоплати', callbackData: 'cb_faq_payment' }
         ],
         [
-          { text: '🚐 Фото та комфорт Opel Vivaro', callbackData: 'cb_car' },
-          { text: '🤝 Стати партнером клубу', callbackData: 'cb_partner' }
+          { text: '🚐 Фото авто та салон Opel Vivaro', callbackData: 'cb_car' },
+          { text: '💺 Схема місць (1–8) у бусі', callbackData: 'cb_faq_seats' }
         ],
         [
           { text: '⏱ Скільки часу на локаціях?', callbackData: 'cb_faq_time' },
           { text: '🚶 Як гуляємо на екскурсіях?', callbackData: 'cb_faq_walking' }
         ],
         [
-          { text: '🎮 Ігри та гео-вікторини', callbackData: 'cb_games' },
-          { text: '✍️ Залишити побажання', callbackData: 'cb_feedback' }
+          { text: '📜 Умови поїздок та документи', callbackData: 'cb_terms' },
+          { text: '🧳 Багаж та ручна поклажа', callbackData: 'cb_faq_luggage' }
         ],
         [
-          { text: '🔙 Повернутися в головне меню', callbackData: 'cb_back' }
+          { text: '🎯 Як обрати тур новачку?', callbackData: 'cb_faq_choose' },
+          { text: '👶 Поїздки з дітьми та зупинки', callbackData: 'cb_faq_children' }
+        ],
+        [
+          { text: '🔄 Правила скасування броні', callbackData: 'cb_faq_cancel' },
+          { text: '🤝 Стати партнером клубу', callbackData: 'cb_partner' }
+        ],
+        [
+          { text: '🚐 Індивідуальний виїзд (5–8 осіб)', callbackData: 'cb_custom_trip' },
+          { text: '✍️ Залишити відгук / питання', callbackData: 'cb_feedback' }
+        ],
+        [
+          { text: '🔙 Назад в головне меню', callbackData: 'cb_back' }
         ]
       ];
 
@@ -1151,11 +1269,12 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
         `• <b>Ельзас + Страсбург (80€)</b> — пряникові фахверкові вулички\n` +
         `• <b>Замок Нойшванштайн (120€)</b> — прогулянка до озера Альпзее та замку\n` +
         `• <b>Лазурове узбережжя (3 дні, 440€)</b> — курортний відпочинок біля моря з готелем\n\n` +
-        `⚡️ <b>Тури в темпі (активно, «галопом по Європах»):</b>\n` +
-        `• <b>Ліхтенштейн (3 країни за 1 день, 120€)</b> — Ліхтенштейн + Австрія + Швейцарія\n` +
+        `⚡️ <b>Тури в темпі (активно, максимум вражень за вихідний):</b>\n` +
+        `• <b>Ліхтенштейн (3 країни за 1 день, 120€)</b> — Ліхтенштейн (Вадуц) + Австрія (Брегенц) + Німеччина (Ліндау)\n` +
+        `• <b>Брюгге + Гент + Брюссель (120€)</b> — золоте тріо Бельгії за 1 день\n` +
+        `• <b>Зальцбург + Гальштат (135€)</b> — альпійське озеро та місто Моцарта\n` +
         `• <b>Етрета + Париж (140€)</b> — 5 год скелі Нормандії + 2–3 год Париж\n` +
-        `• <b>Швейцарія комбо (120€)</b> — 3 год Лаутербруннен + 2 год ущелина Ааре + 2 год Берн\n` +
-        `• <b>Париж чи Амстердам (120€)</b> — максимум вражень за 1 день\n\n` +
+        `• <b>Швейцарія комбо (120€)</b> — 3 год Лаутербруннен + 2 год ущелина Ааре + 2 год Берн\n\n` +
         `Напишіть менеджеру @SVOI_travel_admin — ми з радістю допоможемо підібрати тур!`;
 
       const keyboard: InlineBtn[][] = [
@@ -1168,40 +1287,106 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       return;
     }
 
+    if (data === 'cb_faq_luggage') {
+      const text =
+        `🧳 <b>Багаж, документи та що взяти в дорогу?</b> 🛂\n\n` +
+        `• <b>Документи:</b> закордонний паспорт або ID-картка / Aufenthaltstitel + медичне страхування.\n` +
+        `• <b>Норма багажу:</b> 1 місце багажу до <code>10 кг</code> у багажне відділення + невеликий рюкзак у салон.\n` +
+        `• <b>У дорогу:</b> зручне взуття, павербанк (у салоні також є USB-зарядки).`;
+      editLastBotMessage(text, [
+        [{ text: '🔙 До списку питань', callbackData: 'cb_faq' }, { text: '🏠 Головне меню', callbackData: 'cb_back' }]
+      ]);
+      return;
+    }
+
+    if (data === 'cb_faq_children') {
+      const text =
+        `👶 <b>Поїздки з дітьми та зупинки в дорозі</b> 🧸\n\n` +
+        `• Ми радо подорожуємо з родинами! За попереднім запитом надаємо <b>дитяче автокрісло або бустер безкоштовно</b>.\n` +
+        `• Оскільки в нашому Opel Vivaro лише 8 пасажирів, водій робить санітарну зупинку на перше ж прохання.`;
+      editLastBotMessage(text, [
+        [{ text: '🔙 До списку питань', callbackData: 'cb_faq' }, { text: '🏠 Головне меню', callbackData: 'cb_back' }]
+      ]);
+      return;
+    }
+
+    if (data === 'cb_faq_cancel') {
+      const text =
+        `🔄 <b>Перенесення або скасування броні</b> 🤝\n\n` +
+        `• Якщо ваші плани змінилися, будь ласка, попередьте нас не пізніше ніж за <b>48 годин до виїзду</b>, щоб ми могли запропонувати місце пасажирам із листа очікування.\n` +
+        `• Ви завжди можете безкоштовно перенести бронь на іншу дату або інший напрямок!`;
+      editLastBotMessage(text, [
+        [{ text: '🔙 До списку питань', callbackData: 'cb_faq' }, { text: '🏠 Головне меню', callbackData: 'cb_back' }]
+      ]);
+      return;
+    }
+
     if (data === 'cb_games') {
       const gamesText = 
-        `🎮 <b>Ігровий клуб та вікторини SVOI Travel (6 ігор)</b> 🏆\n\n` +
+        `🎮 <b>Ігровий клуб, Вікторини та Опитування SVOI Travel</b> 🏆\n\n` +
         `Відпочивайте з користю, перевіряйте свої знання про Європу та вигравайте приємні бонуси й Картку Пріоритету для поїздок!\n\n` +
         `✨ <b>Доступні ігри та вікторини:</b>\n` +
         `• 🕵️ <b>«Гео-Детектив» (6 локацій):</b> вгадайте локацію за описом\n` +
-        `• 🧠 <b>«Правда чи Неправда» (6 фактів):</b> закони та курйози Європи\n` +
+        `• 🧠 <b>«Правда чи Неправда» (6 фактів):</b> факти про тури SVOI\n` +
         `• 🍽 <b>Гастро-Квіз «Смаки Європи»:</b> кулінарна вікторина\n` +
-        `• 💶 <b>«Інтуїція Мандрівника»:</b> цифри, висоти та рекорди\n` +
+        `• 💶 <b>«Інтуїція Мандрівника»:</b> ціни, час та рекорди\n` +
+        `• 📊 <b>Опитування мандрівників:</b> голосування клубу\n` +
         `• 🎒 <b>Тест «Ідеальний тур»:</b> підбір поїздки за 10 секунд\n` +
         `• 🎰 <b>Колесо Фортуни SVOI:</b> миттєвий розіграш бонусу!\n\n` +
         `👇 <i>Оберіть гру:</i>`;
 
       const keyboard: InlineBtn[][] = [
         [
-          { text: '🕵️ Гра «Гео-Детектив»', callbackData: 'cb_game_geo' },
-          { text: '🧠 «Правда чи Неправда»', callbackData: 'cb_game_quiz' }
+          { text: '🕵️ Гра «Гео-Детектив» (6 питань)', callbackData: 'cb_game_geo' },
+          { text: '🧠 «Правда чи Неправда» (6 фактів)', callbackData: 'cb_game_quiz' }
         ],
         [
           { text: '🍽 Гастро-Квіз «Смаки Європи»', callbackData: 'cb_game_gastro' },
-          { text: '💶 Інтуїція: Цифри та рекорди', callbackData: 'cb_game_price' }
+          { text: '💶 Інтуїція: Час, Ціни та Рекорди', callbackData: 'cb_game_price' }
         ],
         [
-          { text: '🎒 Тест: Підбір ідеального туру', callbackData: 'cb_game_match' },
-          { text: '🎰 Колесо Фортуни SVOI', callbackData: 'cb_game_wheel' }
+          { text: '📊 Опитування мандрівників', callbackData: 'cb_game_poll' },
+          { text: '🎒 Тест: Підбір ідеального туру', callbackData: 'cb_game_match' }
         ],
         [
-          { text: '🎁 Розіграші у групі та каналі SVOI', callbackData: 'cb_game_group_info' }
+          { text: '🎰 Колесо Фортуни SVOI', callbackData: 'cb_game_wheel' },
+          { text: '🎁 Розіграш туру в Групі', callbackData: 'cb_adm_gw_card' }
         ],
         [
           { text: '🔙 Головне меню', callbackData: 'cb_back' }
         ]
       ];
       editLastBotMessage(gamesText, keyboard);
+      return;
+    }
+
+    if (data === 'cb_game_poll' || data.startsWith('cb_poll_vote_')) {
+      if (data.startsWith('cb_poll_vote_')) {
+        const resText =
+          `📊 <b>ДЯКУЄМО ЗА ВАШ ГОЛОС!</b> 🎉\n\n` +
+          `❓ <b>Який напрямок із нових турів SVOI ви найбільше хочете відвідати найближчими вихідними?</b>\n\n` +
+          `✅ <b>🇦🇹 Зальцбург + Гальштат (135€)</b> — <code>36%</code>\n🟩🟩🟩🟩⬜⬜⬜⬜⬜⬜\n\n` +
+          `• <b>🇧🇪 Брюгге + Гент + Брюссель (120€)</b> — <code>28%</code>\n🟩🟩🟩⬜⬜⬜⬜⬜⬜⬜\n\n` +
+          `• <b>🇳🇱 Гітхорн + Амстердам (120€)</b> — <code>21%</code>\n🟩🟩⬜⬜⬜⬜⬜⬜⬜⬜\n\n` +
+          `• <b>🇩🇪 Замок Нойшванштайн + ущелина (120€)</b> — <code>15%</code>\n🟩🟩⬜⬜⬜⬜⬜⬜⬜⬜`;
+        editLastBotMessage(resText, [
+          [{ text: '🗺 Переглянути всі тури', callbackData: 'cb_trips' }],
+          [{ text: '🎮 До списку всіх ігор', callbackData: 'cb_games' }],
+          [{ text: '🔙 Назад в головне меню', callbackData: 'cb_back' }]
+        ]);
+        return;
+      }
+      const pollText =
+        `📊 <b>ОПИТУВАННЯ МАНДРІВНИКІВ SVOI</b> 🗳\n\n` +
+        `❓ <b>Який напрямок із нових турів SVOI ви найбільше хочете відвідати найближчими вихідними?</b>\n\n` +
+        `👇 <i>Натисніть на ваш варіант, щоб проголосувати та побачити статистику клубу:</i>`;
+      editLastBotMessage(pollText, [
+        [{ text: '🇦🇹 Зальцбург + Гальштат (135€)', callbackData: 'cb_poll_vote_0' }],
+        [{ text: '🇧🇪 Брюгге + Гент + Брюссель (120€)', callbackData: 'cb_poll_vote_1' }],
+        [{ text: '🇳🇱 Гітхорн + Амстердам (120€)', callbackData: 'cb_poll_vote_2' }],
+        [{ text: '🇩🇪 Замок Нойшванштайн + ущелина (120€)', callbackData: 'cb_poll_vote_3' }],
+        [{ text: '🎮 До всіх ігор', callbackData: 'cb_games' }]
+      ]);
       return;
     }
 
@@ -1389,10 +1574,10 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
     if (data.startsWith('cb_match_')) {
       const style = data.replace('cb_match_', '');
       const map: Record<string, string> = {
-        alps: `🏔 <b>Ваш ідеальний вибір: Швейцарські Альпи або Монблан!</b>\n\n• <b>Ущелина Ааре + Лаутербруннен + Берн (120€)</b>\n• <b>Шамоні — Монблан на 2 дні (260€)</b>`,
+        alps: `🏔 <b>Ваш ідеальний вибір: Швейцарські Альпи або Австрія!</b>\n\n• <b>Ущелина Ааре + Лаутербруннен + Берн (120€)</b>\n• <b>Зальцбург + Гальштат (Хальштатт) (135€)</b>`,
         romance: `🥐 <b>Ваш ідеальний вибір: Париж або Етрета + Париж!</b>\n\n• <b>Париж: Версаль + круїз на яхті (120€)</b>\n• <b>Скелі Етрета + вечірній Париж (140€)</b>`,
-        castles: `🏰 <b>Ваш ідеальний вибір: Брюгге, Ельзас або Нойшванштайн!</b>\n\n• <b>Казковий Брюгге (110€)</b>\n• <b>Ельзас + Страсбург (80€)</b>\n• <b>Замок Нойшванштайн (120€)</b>`,
-        sea: `🌊 <b>Ваш ідеальний вибір: Італія або Лазурове узбережжя!</b>\n\n• <b>Озеро Комо + Мілан + Лугано на 2 дні (260€)</b>\n• <b>Лазурове узбережжя: Монако, Ніцца, Канни на 3 дні (440€)</b>`
+        castles: `🏰 <b>Ваш ідеальний вибір: Бельгія, Ельзас або Нойшванштайн!</b>\n\n• <b>Брюгге + Гент + Брюссель (120€)</b> або <b>Антверпен + Брюгге (110€)</b>\n• <b>Ельзас + Страсбург (80€)</b>\n• <b>Замок Нойшванштайн + ущелина Партнахкламм (120€)</b>`,
+        sea: `🌊 <b>Ваш ідеальний вибір: Італія або Лазурове узбережжя!</b>\n\n• <b>Озеро Комо + Мілан на 2 дні (270€)</b>\n• <b>Лазурове узбережжя: Монако, Ніцца, Канни на 3 дні (440€)</b>`
       };
       const text = `${map[style] || map.alps}\n\n🎁 <b>Бонус за проходження тесту:</b> безкоштовна фіксація місця в салоні за промокодом <code>MATCH-SVOI</code>!`;
       const keyboard: InlineBtn[][] = [
@@ -1668,35 +1853,23 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
 
   const editLastBotMessage = (newText: string, newKeyboard: InlineBtn[][], photoUrl?: string) => {
     setMessages((prev) => {
-      const copy = [...prev];
-      let lastBotIndex = -1;
-      for (let i = copy.length - 1; i >= 0; i--) {
-        if (copy[i].sender === 'bot') {
-          lastBotIndex = i;
+      let existingId = `msg-${Date.now()}`;
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].sender === 'bot') {
+          existingId = prev[i].id;
           break;
         }
       }
-
-      if (lastBotIndex !== -1) {
-        copy[lastBotIndex] = {
-          ...copy[lastBotIndex],
-          text: newText,
-          inlineKeyboard: newKeyboard,
-          photoUrl: photoUrl || undefined,
-          edited: true
-        };
-        return copy;
-      }
-
+      // Keep only the single active bot window (automatically deleting any old user commands or old messages)
       return [
-        ...copy,
         {
-          id: `msg-${Date.now()}`,
+          id: existingId,
           sender: 'bot',
           text: newText,
           time: getCurrentTime(),
           inlineKeyboard: newKeyboard,
-          photoUrl: photoUrl
+          photoUrl: photoUrl || undefined,
+          edited: true
         }
       ];
     });
@@ -1796,44 +1969,35 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({ onNewLead,
       return;
     }
 
-    // Default bot reply
+    // Default bot reply (single-window clean chat — replaces old messages)
     setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `bot-reply-${Date.now()}`,
-          sender: 'bot',
-          text: `👋 Вас зрозуміло! Для навігації скористайтеся кнопками меню або надішліть команду /start чи /channel.`,
-          time: getCurrentTime(),
-          inlineKeyboard: getMainKeyboard()
-        }
-      ]);
-    }, 400);
+      editLastBotMessage(
+        `👋 Вас зрозуміло! Для навігації скористайтеся кнопками меню або надішліть команду /start чи /channel.`,
+        getMainKeyboard(),
+      );
+    }, 300);
   };
 
   const showChannelMenuMessage = () => {
     const text = 
-      `📢 <b>Центр керування Telegram-каналом та групою SVOI Travel (/channel)</b>\n\n` +
+      `📢 <b>Центр керування Каналом та Групою SVOI Travel (/channel)</b>\n\n` +
       `👑 <b>Адміністратор ID:</b> <code>8450153980</code>\n` +
-      `👥 <b>Група:</b> Клуб мандрівників SVOI (авто-прив'язка ID)\n` +
+      `👥 <b>Група:</b> Клуб мандрівників SVOI (прив'язана ✅)\n` +
       `📢 <b>Канал:</b> SVOI Travel EU (@Svoi_TravelEU_bot)\n\n` +
       `<b>Поточний стан активностей:</b>\n` +
       `• 🎁 Активний розіграш: <i>Поїздка до Парижа на 1 день 🥐</i>\n` +
       `• 👥 Учасників зареєстровано: <b>${giveawayParticipantsCount}</b>\n\n` +
-      `<blockquote>👑 <b>Плашка Адміністратора:</b> оберіть куди опублікувати розіграш (у <b>ГРУПУ</b> або в <b>КАНАЛ</b>), а після участі всіх бажаючих натисніть <b>«🏆 Вибрати переможця розіграшу [Адмін]»</b> та опублікуйте переможця в групу!</blockquote>`;
+      `<blockquote>👑 <b>Як працює розіграш:</b>\n1️⃣ Бот публікує картку розіграшу <b>спочатку тут в Адмінці</b>.\n2️⃣ Тільки у вас під розіграшем є кнопка <b>«👥 Поділитися в ГРУПІ»</b> — натискаєте її, і бот публікує розіграш у групі.\n3️⃣ Після участі всіх натискаєте в Адмінці <b>«🏆 Вибрати переможця розіграшу»</b> та ділитесь переможцем у групі!</blockquote>`;
 
     const keyboard: InlineBtn[][] = [
       [
-        { text: '👥 Опублікувати розіграш у ГРУПІ', callbackData: 'cb_adm_gw_new_group' }
+        { text: '🎁 Створити / Відкрити розіграш в Адмінці', callbackData: 'cb_adm_gw_card' }
       ],
       [
-        { text: '📢 Опублікувати розіграш у КАНАЛІ', callbackData: 'cb_adm_gw_new' }
+        { text: '👥 Поділитися розіграшем у ГРУПІ', callbackData: 'cb_adm_gw_share_group' }
       ],
       [
-        { text: '🏆 Вибрати переможця розіграшу [Адмін]', callbackData: 'cb_adm_gw_pick' }
-      ],
-      [
-        { text: '👥 Опублікувати переможця в ГРУПІ', callbackData: 'cb_adm_pub_winner_group' }
+        { text: `🏆 Вибрати переможця розіграшу (${giveawayParticipantsCount} уч.)`, callbackData: 'cb_adm_gw_pick' }
       ],
       [
         { text: '📢 Опублікувати тур з кнопкою', callbackData: 'cb_adm_post_tour' },

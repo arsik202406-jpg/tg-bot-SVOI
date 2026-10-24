@@ -60,7 +60,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, leadsCou
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
-              <span>🚀 Mini App (Зоряне небо)</span>
+              <span>🚀 SVOI Mini App</span>
             </button>
 
             <button

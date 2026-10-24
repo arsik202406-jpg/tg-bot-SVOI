@@ -59,23 +59,21 @@ CURRENT_GROUP_TITLE = "Група SVOI Travel"
 
 def get_channel_menu_keyboard() -> InlineKeyboardMarkup:
     """Головне меню керування каналом та групою для адміна"""
+    gw = GIVEAWAYS_DB.get("gw_active", {})
+    count = len(gw.get("participants", []))
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="👥 Опублікувати розіграш у ГРУПІ", callback_data="cb_adm_gw_new_group")
+                InlineKeyboardButton(text="🎁 Створити новий розіграш (в Адмінці)", callback_data="cb_adm_gw_new")
             ],
             [
-                InlineKeyboardButton(text="📢 Опублікувати розіграш у КАНАЛІ", callback_data="cb_adm_gw_new")
+                InlineKeyboardButton(text=f"📋 Картка розіграшу в Адмінці ({count} уч.)", callback_data="cb_adm_gw_card")
             ],
             [
-                InlineKeyboardButton(text="🚀 Миттєвий пост розіграшу в ГРУПУ", callback_data="cb_adm_gw_pub_group_now")
+                InlineKeyboardButton(text="👥 Поділитися розіграшем у ГРУПІ", callback_data="cb_adm_gw_share_group")
             ],
             [
-                InlineKeyboardButton(text="🏆 Обрати переможця розіграшу [Адмін]", callback_data="cb_adm_gw_pick")
-            ],
-            [
-                InlineKeyboardButton(text="👥 Опублікувати переможця в ГРУПІ", callback_data="cb_adm_pub_winner_group"),
-                InlineKeyboardButton(text="📢 У КАНАЛІ", callback_data="cb_adm_pub_winner_channel")
+                InlineKeyboardButton(text=f"🏆 Вибрати переможця розіграшу ({count} уч.)", callback_data="cb_adm_gw_pick")
             ],
             [
                 InlineKeyboardButton(text="📢 Опублікувати тур у канал", callback_data="cb_adm_post_tour"),
@@ -96,17 +94,61 @@ def get_channel_menu_keyboard() -> InlineKeyboardMarkup:
     )
 
 def get_giveaway_button(gw_id: str, count: int) -> InlineKeyboardMarkup:
-    """Кнопка для поста розіграшу в групі та каналі з динамічним лічильником і кнопкою тільки для адміна"""
+    """Чиста кнопка для публічного поста розіграшу в ГРУПІ та КАНАЛІ (без адмінських кнопок)"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(text=f"🎉 Брати участь! ({count})", callback_data=f"gw_join_{gw_id}")
             ],
             [
-                InlineKeyboardButton(text="👑 Вибрати переможця [Тільки Адмін]", callback_data="gw_admin_pick_inline")
+                InlineKeyboardButton(text="💺 Забронювати місце в турі", url=f"https://t.me/{settings.BOT_USERNAME}?start=trips")
+            ]
+        ]
+    )
+
+def get_admin_giveaway_card_text() -> str:
+    """Текст картки розіграшу, який публікується спочатку В АДМІНЦІ"""
+    gw = GIVEAWAYS_DB.get("gw_active", {})
+    prize_text = gw.get("prize", "Безкоштовне місце в турі SVOI")
+    count = len(gw.get("participants", []))
+    grp_status = f"<code>{CURRENT_GROUP_TARGET}</code> ({CURRENT_GROUP_TITLE}) ✅" if CURRENT_GROUP_TARGET else "<i>ще не прив'язана (напишіть у групі будь-яке слово)</i>"
+    return (
+        "👑 <b>КАРТКА РОЗІГРАШУ В АДМІН-ПАНЕЛІ</b>\n"
+        "<i>(Цей пост та кнопки керування бачите ТІЛЬКИ ВИ як адміністратор)</i>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n"
+        "Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n"
+        f"🎁 <b>{prize_text}</b>\n\n"
+        "<b>Умови участі максимально прості:</b>\n"
+        "1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n"
+        f"2️⃣ Натиснути кнопку <b>«🎉 Брати участь! ({count})»</b> під постом у групі!\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>Зареєстровано учасників:</b> <b>{count}</b>\n"
+        f"👥 <b>Цільова група:</b> {grp_status}\n\n"
+        "👇 <b>Керування розіграшем (тільки для Адміна):</b>\n"
+        "• Натисніть <b>«👥 Поділитися в ГРУПІ»</b>, щоб бот опублікував цей розіграш у вашій групі.\n"
+        "• Коли всі учасники натиснуть «Брати участь!», натисніть <b>«🏆 Вибрати переможця розіграшу»</b>."
+    )
+
+def get_admin_giveaway_card_kb() -> InlineKeyboardMarkup:
+    gw = GIVEAWAYS_DB.get("gw_active", {})
+    count = len(gw.get("participants", []))
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="👥 Поділитися в ГРУПІ (Опублікувати розіграш у групі)", callback_data="cb_adm_gw_share_group")
             ],
             [
-                InlineKeyboardButton(text="💺 Забронювати місце", url=f"https://t.me/{settings.BOT_USERNAME}?start=trips")
+                InlineKeyboardButton(text="📢 Поділитися в КАНАЛІ", callback_data="cb_adm_gw_share_channel")
+            ],
+            [
+                InlineKeyboardButton(text=f"🏆 Вибрати переможця розіграшу (Учасників: {count})", callback_data="cb_adm_gw_pick")
+            ],
+            [
+                InlineKeyboardButton(text="✏️ Змінити приз / Новий розіграш", callback_data="cb_adm_gw_new")
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Назад до Адмін-панелі", callback_data="cb_adm_channel_menu")
             ]
         ]
     )
@@ -126,7 +168,7 @@ async def cmd_channel_admin(message: Message):
     gw = GIVEAWAYS_DB.get("gw_active", {})
     participants_count = len(gw.get("participants", []))
     prize_title = gw.get("prize", "Не призначено")
-    grp_status = f"<code>{CURRENT_GROUP_TARGET}</code> ({CURRENT_GROUP_TITLE}) ✅" if CURRENT_GROUP_TARGET else "<i>ще не прив'язана (напишіть у групі /giveaway або будь-яке слово)</i>"
+    grp_status = f"<code>{CURRENT_GROUP_TARGET}</code> ({CURRENT_GROUP_TITLE}) ✅" if CURRENT_GROUP_TARGET else "<i>ще не прив'язана (напишіть у групі будь-яке слово)</i>"
 
     text = (
         "📢 <b>Центр керування Каналом та Групою SVOI Travel [Адмін-панель]</b>\n\n"
@@ -137,7 +179,10 @@ async def cmd_channel_admin(message: Message):
         f"• 🎁 Активний розіграш: <i>{prize_title}</i>\n"
         f"• 👥 Учасників у базі: <b>{participants_count}</b>\n"
         f"• 📋 Заявок у листі очікування: <b>{len(WAITLIST_DATA)}</b>\n\n"
-        "Оберіть дію на плашці адміністратора нижче:"
+        "<b>Як працює розіграш:</b>\n"
+        "1️⃣ Створюєте розіграш — бот публікує картку розіграшу <b>тут в Адмінці</b>.\n"
+        "2️⃣ Натискаєте кнопку <b>«👥 Поділитися в ГРУПІ»</b> — бот публікує розіграш у групі.\n"
+        "3️⃣ Після участі всіх натискаєте <b>«🏆 Вибрати переможця розіграшу»</b> та ділитесь переможцем у групі!"
     )
     await message.answer(text, reply_markup=get_channel_menu_keyboard(), parse_mode="HTML")
 
@@ -166,8 +211,19 @@ async def cb_channel_menu(callback: CallbackQuery):
     )
     await callback.message.edit_text(text, reply_markup=get_channel_menu_keyboard(), parse_mode="HTML")
 
-# --- 1. ПУБЛІКАЦІЯ РОЗІГРАШУ В КАНАЛ АБО ГРУПУ ---
-@router.callback_query(F.data == "cb_adm_gw_new")
+# --- 1. СТВОРЕННЯ РОЗІГРАШУ В АДМІНЦІ ТА КНОПКА «ПОДІЛИТИСЯ В ГРУПІ» ---
+@router.callback_query(F.data == "cb_adm_gw_card")
+async def cb_giveaway_admin_card(callback: CallbackQuery):
+    await callback.answer()
+    if not (await check_is_admin(callback.from_user.id)):
+        return
+    await callback.message.edit_text(
+        get_admin_giveaway_card_text(),
+        reply_markup=get_admin_giveaway_card_kb(),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.in_({"cb_adm_gw_new", "cb_adm_gw_new_group"}))
 async def cb_giveaway_new_prompt(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     if not (await check_is_admin(callback.from_user.id)):
@@ -175,81 +231,65 @@ async def cb_giveaway_new_prompt(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ChannelAdminStates.waiting_for_giveaway_prize)
     
     text = (
-        f"📢 <b>Запуск нового РОЗІГРАШУ прямо в КАНАЛ <code>{CURRENT_CHANNEL_TARGET}</code></b>\n\n"
-        "Напишіть у відповідь: <b>який приз розігрується?</b>\n"
-        "<i>Наприклад: «Безкоштовне місце в турі в Брюгге на 1 день 🍫»</i>\n\n"
-        "Бот автоматично оформить пост, опублікує його в канал та додасть кнопки участі й вибору переможця."
-    )
-    cancel_kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="❌ Скасувати", callback_data="cb_adm_channel_menu")]]
-    )
-    await callback.message.edit_text(text, reply_markup=cancel_kb, parse_mode="HTML")
-
-@router.callback_query(F.data == "cb_adm_gw_new_group")
-async def cb_giveaway_new_group_prompt(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    if not (await check_is_admin(callback.from_user.id)):
-        return
-    await state.set_state(ChannelAdminStates.waiting_for_giveaway_prize_group)
-    
-    text = (
-        f"👥 <b>Запуск нового РОЗІГРАШУ прямо в ГРУПУ ({CURRENT_GROUP_TARGET or CURRENT_GROUP_TITLE})</b>\n\n"
+        "🎁 <b>Створення нового РОЗІГРАШУ в Адмін-панелі</b>\n\n"
         "Напишіть у відповідь: <b>який приз розігрується?</b>\n"
         "<i>Наприклад: «Безкоштовне місце в турі до Парижа 🥐🗼»</i>\n\n"
-        "Бот одразу опублікує пост у групу з кнопками «🎉 Брати участь!» та «👑 Вибрати переможця [Тільки Адмін]»!"
+        "Спочатку бот опублікує картку розіграшу <b>тут в Адмінці</b>, а під нею у вас з'явиться кнопка <b>«👥 Поділитися в ГРУПІ»</b>!"
     )
     cancel_kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🚀 Опублікувати поточний розіграш у ГРУПУ зараз", callback_data="cb_adm_gw_pub_group_now")],
+            [InlineKeyboardButton(text="📋 Відкрити поточну картку розіграшу в Адмінці", callback_data="cb_adm_gw_card")],
             [InlineKeyboardButton(text="❌ Скасувати", callback_data="cb_adm_channel_menu")]
         ]
     )
     await callback.message.edit_text(text, reply_markup=cancel_kb, parse_mode="HTML")
 
-@router.callback_query(F.data == "cb_adm_gw_pub_group_now")
-async def cb_giveaway_pub_group_now(callback: CallbackQuery, bot: Bot):
-    await callback.answer()
+@router.callback_query(F.data.in_({"cb_adm_gw_share_group", "cb_adm_gw_pub_group_now", "cb_adm_gw_share_channel"}))
+async def cb_giveaway_share_to_target(callback: CallbackQuery, bot: Bot):
     if not (await check_is_admin(callback.from_user.id)):
+        await callback.answer("⛔ Доступ лише для адміністратора!", show_alert=True)
         return
+    is_group = callback.data in ("cb_adm_gw_share_group", "cb_adm_gw_pub_group_now")
     gw = GIVEAWAYS_DB.get("gw_active", {})
     gw["is_active"] = True
     prize_text = gw.get("prize", "Безкоштовне місце в турі SVOI")
     count = len(gw.get("participants", []))
     post_text = (
-        f"🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ У ГРУПІ ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n"
-        f"Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n"
+        "🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n"
+        "Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n"
         f"🎁 <b>{prize_text}</b>\n\n"
         "<b>Умови участі максимально прості:</b>\n"
         "1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n"
         f"2️⃣ Натиснути кнопку <b>«🎉 Брати участь! ({count})»</b> нижче!\n\n"
-        "<i>Бот автоматично рахує учасників. Після завершення адміністратор обере переможця кнопкою нижче!</i>"
+        "<i>Бот автоматично реєструє кожного учасника. Нехай щастить! 🍀</i>"
     )
     kb = get_giveaway_button("gw_active", count)
-    if CURRENT_GROUP_TARGET:
-        try:
-            await bot.send_message(chat_id=CURRENT_GROUP_TARGET, text=post_text, reply_markup=kb, parse_mode="HTML")
-            await callback.message.edit_text(
-                f"✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в групу {CURRENT_GROUP_TITLE} (<code>{CURRENT_GROUP_TARGET}</code>)!</b> 👥🎉",
-                reply_markup=get_channel_menu_keyboard(),
-                parse_mode="HTML"
-            )
-            return
-        except Exception as e:
-            logger.warning("Помилка публікації в групу %s: %s", CURRENT_GROUP_TARGET, e)
+    target = CURRENT_GROUP_TARGET if is_group else CURRENT_CHANNEL_TARGET
 
-    await callback.message.edit_text(
-        "⚠️ <b>Група ще не прив'язана числовим ID!</b>\n"
-        "Додайте бота @Svoi_TravelEU_bot у вашу групу та напишіть у групі будь-яке повідомлення або <code>/giveaway</code> — бот миттєво сам визначить числовий ID <code>-100...</code> вашої закритої групи!",
-        reply_markup=get_channel_menu_keyboard(),
-        parse_mode="HTML"
-    )
-    await callback.message.answer(post_text, reply_markup=kb, parse_mode="HTML")
+    if is_group and not target:
+        await callback.answer("⚠️ Група ще не прив'язана! Напишіть у групі будь-яке слово або прив'яжіть ID.", show_alert=True)
+        return
+
+    try:
+        sent_msg = await bot.send_message(chat_id=target, text=post_text, reply_markup=kb, parse_mode="HTML")
+        gw["message_id"] = sent_msg.message_id
+        await callback.answer(
+            f"✅ Розіграш успішно опубліковано в {'ГРУПІ' if is_group else 'КАНАЛІ'}!",
+            show_alert=True
+        )
+        await callback.message.edit_text(
+            f"{get_admin_giveaway_card_text()}\n\n"
+            f"✅ <b>СТАТУС: Розіграш щойно ОПУБЛІКОВАНО в {'ГРУПІ ' + CURRENT_GROUP_TITLE if is_group else 'КАНАЛІ'} (<code>{target}</code>)!</b> 🎉",
+            reply_markup=get_admin_giveaway_card_kb(),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.warning("Помилка публікації в %s: %s", target, e)
+        await callback.answer(f"❌ Помилка публікації: {e}", show_alert=True)
 
 @router.message(ChannelAdminStates.waiting_for_giveaway_prize)
 @router.message(ChannelAdminStates.waiting_for_giveaway_prize_group)
-async def process_giveaway_prize(message: Message, state: FSMContext, bot: Bot):
-    current_state = await state.get_state()
-    is_group = current_state == ChannelAdminStates.waiting_for_giveaway_prize_group.state
+async def process_giveaway_prize(message: Message, state: FSMContext):
     prize_text = message.text.strip()
     await state.clear()
 
@@ -261,51 +301,15 @@ async def process_giveaway_prize(message: Message, state: FSMContext, bot: Bot):
         "winner": None
     }
 
-    post_text = (
-        f"🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n"
-        f"Ми розігруємо неймовірний приз:\n"
-        f"🎁 <b>{prize_text}</b>\n\n"
-        "<b>Умови участі максимально прості:</b>\n"
-        "1️⃣ Бути підписаним на наш офіційний канал та групу SVOI\n"
-        "2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (0)»</b> нижче!\n\n"
-        "<i>Бот автоматично рахує учасників. Після завершення адміністратор обере переможця кнопкою нижче!</i>"
+    await message.answer(
+        f"✅ <b>Розіграш створено та опубліковано в Адмін-панелі!</b>\n\n{get_admin_giveaway_card_text()}",
+        reply_markup=get_admin_giveaway_card_kb(),
+        parse_mode="HTML"
     )
-
-    kb = get_giveaway_button("gw_active", 0)
-    target = CURRENT_GROUP_TARGET if is_group else CURRENT_CHANNEL_TARGET
-    target_label = f"групу {CURRENT_GROUP_TITLE} ({target})" if is_group else f"канал {target}"
-
-    published = False
-    error_reason = ""
-    if target:
-        try:
-            sent_msg = await bot.send_message(chat_id=target, text=post_text, reply_markup=kb, parse_mode="HTML")
-            published = True
-            GIVEAWAYS_DB["gw_active"]["message_id"] = sent_msg.message_id
-        except Exception as e:
-            error_reason = str(e)
-            logger.warning("Не вдалося автоматично опублікувати в %s: %s", target, e)
-
-    if published:
-        await message.answer(
-            f"✅ <b>Розіграш УСПІШНО ОПУБЛІКОВАНО прямо в {target_label}!</b> 🎉\n\n"
-            "Учасники вже можуть натискати кнопку «🎉 Брати участь!», а після завершення натисніть «👑 Вибрати переможця [Тільки Адмін]».",
-            reply_markup=get_channel_menu_keyboard(),
-            parse_mode="HTML"
-        )
-    else:
-        await message.answer(
-            f"⚠️ <b>Не вдалося опублікувати в <code>{target or 'не прив’язано'}</code>!</b>\n"
-            f"Причина: <code>{error_reason or 'напишіть будь-яке повідомлення в групі з ботом для авто-прив’язки ID -100...'}</code>\n\n"
-            "Ось готовий пост розіграшу:",
-            reply_markup=get_channel_menu_keyboard(),
-            parse_mode="HTML"
-        )
-        await message.answer(post_text, reply_markup=kb, parse_mode="HTML")
 
 # --- 2. ОБРОБКА НАТИСКАННЯ «БРАТИ УЧАСТЬ!» У ГРУПІ ТА КАНАЛІ ---
 @router.callback_query(F.data.startswith("gw_join_"))
-async def cb_giveaway_join(callback: CallbackQuery, bot: Bot):
+async def cb_giveaway_join(callback: CallbackQuery):
     global CURRENT_GROUP_TARGET, CURRENT_GROUP_TITLE
     if callback.message and callback.message.chat and callback.message.chat.type in ["group", "supergroup"]:
         CURRENT_GROUP_TARGET = str(callback.message.chat.id)
@@ -495,7 +499,7 @@ async def cb_publish_trip_selected(callback: CallbackQuery, bot: Bot):
     post_text = (
         f"🌟 <b>Ексклюзивний виїзд: {trip.get('title', 'Тур Європою')}!</b> 🌍✨\n\n"
         f"💰 <b>Ціна: {trip.get('price', 100)}€</b> | Тривалість: <b>{trip.get('duration', '1 день')}</b>\n"
-        f"🚐 Комфортний трансфер Opel Vivaro (дводіапазонний клімат, відкидні крісла, USB, зоряне небо)\n"
+        f"🚐 Комфортний трансфер Opel Vivaro (дводіапазонний клімат, відкидні крісла, USB)\n"
         f"📍 Адресний збір: Саарланд, Трір, Люксембург (Door-to-Door)!\n\n"
         f"<b>У програмі поїздки:</b>\n"
         f"{highlights_text}\n\n"
@@ -596,19 +600,19 @@ async def cb_post_miniapp(callback: CallbackQuery, bot: Bot):
         return
 
     post_text = (
-        "🚀✨ <b>ЗУСТРІЧАЙТЕ НОВИЙ SVOI MINI APP У СТИЛІ «ЗОРЯНЕ НЕБО»!</b> 🌌🚐\n\n"
+        "🚀✨ <b>ЗУСТРІЧАЙТЕ ОНОВЛЕНИЙ SVOI MINI APP!</b> 🌍🚐\n\n"
         "Тепер обрати тур та місце в салоні стало неймовірно зручно прямо всередині Telegram!\n\n"
         "<b>Що всередині нашої Mini App:</b>\n"
         "✨ <b>Інтерактивний салон Opel Vivaro</b>: оберіть своє крісло на сенсорній схемі\n"
-        "🗺 <b>Вітрина всіх 14 турів</b> з яскравими фотографіями та описом\n"
+        f"🗺 <b>Вітрина всіх {len(TRIPS_DATA)} авторських турів</b> з яскравими фотографіями та описом\n"
         "⚡️ Прорахунок вартості та надсилання броні в 1 клік\n\n"
-        "Натискайте кнопку <b>«🚀 Відкрити Mini App»</b> та вирушайте в подорож Європою!"
+        "Натискайте кнопку <b>«🚀 Відкрити SVOI Mini App»</b> та вирушайте в подорож Європою!"
     )
 
     miniapp_kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🚀 Відкрити Mini App (Зоряне небо) 🌌", web_app=WebAppInfo(url=settings.MINI_APP_URL))
+                InlineKeyboardButton(text="🚀 Відкрити SVOI Mini App", web_app=WebAppInfo(url=settings.MINI_APP_URL))
             ],
             [
                 InlineKeyboardButton(text="🗺 Розклад турів", url=f"https://t.me/{settings.BOT_USERNAME}?start=trips"),

@@ -40,23 +40,39 @@ MAIN_MENU_TEXT = (
     "Ми організовуємо душевні та продумані поїздки найкрасивішими куточками Європи "
     "на комфортабельному мінівені Opel Vivaro без стресу, поспіху та мовних бар'єрів!\n\n"
     "✨ <b>Чому обирають SVOI:</b>\n"
-    "• 🚐 <i>Комфорт у дорозі:</i> просторий 8-місний мінівен з клімат-контролем та зоряним LED-небом\n"
+    "• 🚐 <i>Комфорт у дорозі:</i> просторий 8-місний мінівен з клімат-контролем та зручними відкидними кріслами\n"
     "• 💳 <i>Чесні умови:</i> працюємо <code>без передоплати</code> на одноденні поїздки!\n"
     "• 📍 <i>Зручний старт:</i> адресний збір (Door-to-Door) по Саарланду, Тріру та Люксембургу\n"
     "• 👥 <i>Маленькі душевні групи</i> (до 8 осіб)\n\n"
     "<blockquote>👇 Оберіть потрібний розділ нижче (всі переходи працюють в одному вікні):</blockquote>"
 )
 
+from aiogram.types import LinkPreviewOptions
+
 async def safe_edit_menu_message(callback: CallbackQuery, text: str, reply_markup):
-    """Редагує поточне повідомлення без створення спаму в чаті"""
+    """Редагує поточне повідомлення без видалення до підтвердження відправки"""
     if not callback.message:
         return
     try:
         if callback.message.photo:
-            await callback.message.delete()
-            await callback.message.answer(text=text, reply_markup=reply_markup, parse_mode="HTML")
+            sent = await callback.message.answer(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode="HTML",
+                link_preview_options=LinkPreviewOptions(is_disabled=True)
+            )
+            if sent:
+                try:
+                    await callback.message.delete()
+                except Exception:
+                    pass
         else:
-            await callback.message.edit_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
+            await callback.message.edit_text(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode="HTML",
+                link_preview_options=LinkPreviewOptions(is_disabled=True)
+            )
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             logger.debug("Помилка редагування повідомлення: %s", e)
@@ -115,7 +131,7 @@ async def process_car_info(callback: CallbackQuery):
         "🌟 <b>Оснащення та зручності:</b>\n"
         "• ❄️ Дводіапазонний клімат-контроль та обігрів салону\n"
         "• ⚡️ Швидкі USB-роз'єми в салоні для зарядки смартфонів\n"
-        "• 🌌 Ексклюзивна стеля <b>«Зоряне небо»</b> у вечірній час\n\n"
+        "• 💺 М'які сидіння з відкидними спинками та простором для ніг\n\n"
         "<blockquote>🧳 <b>Норма багажу:</b> до <code>10 кг</code> у багажне відділення при далеких поїздках + 1 ручна поклажа в салон.</blockquote>"
     )
     await safe_edit_menu_message(callback, car_text, get_back_keyboard())
