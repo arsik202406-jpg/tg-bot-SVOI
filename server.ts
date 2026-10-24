@@ -282,7 +282,63 @@ const activeGiveaway = {
   group_msg_id: null as number | null,
 };
 
-// Load persisted group/channel targets & active bot message IDs
+// Dynamic tour & car photo overrides for Admin (seats, dates, posters, car photos)
+const liveSeatsOverride: Record<string, number> = {
+  paris: 4,
+  etretat_paris: 6,
+  amsterdam: 5,
+  zaandam_sea_amsterdam: 4,
+  bruges: 4,
+  bruges_ghent_brussels: 5,
+  liechtenstein: 4,
+  neuschwanstein: 2,
+  berlin_dresden: 4,
+  legoland: 5,
+  legoland_germany: 5,
+  stuttgart: 4,
+  stuttgart_tour: 4,
+  europa_park: 2,
+  eltz_cochem: 5,
+  eltz_cochem_mosel: 5,
+  heidelberg_baden: 6,
+  cote_dazur: 5,
+  mont_saint_michel: 6,
+  swiss_rhine_zurich: 4,
+  swiss_aare_bern: 3,
+  brussels: 5,
+  prague: 5,
+  salzburg_hallstatt: 5,
+  alsace_strasbourg: 6,
+  como_milan: 2,
+};
+const liveDateOverride: Record<string, string> = {};
+const livePosterOverride: Record<string, string> = {};
+const liveCarPhotos: Record<string, string> = {};
+
+const DEFAULT_CAR_PHOTOS: Record<string, { url: string; shortLabel: string; subtitle: string }> = {
+  '1': {
+    url: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=1000&q=85',
+    shortLabel: '📸 1: Авто',
+    subtitle: '📸 Фото 1/4: Екстер’єр 8-місного мінівена Opel Vivaro для камерних груп',
+  },
+  '2': {
+    url: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1000&q=85',
+    shortLabel: '💺 2: Салон',
+    subtitle: '📸 Фото 2/4: Просторий салон (схема 2+3+3), відкидні сидіння та клімат-контроль',
+  },
+  '3': {
+    url: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1000&q=85',
+    shortLabel: '🏔 3: Крісла',
+    subtitle: '📸 Фото 3/4: Панорамні вікна, зручні крісла з підлокітниками та USB-зарядки',
+  },
+  '4': {
+    url: 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&w=1000&q=85',
+    shortLabel: '🧳 4: Багажник',
+    subtitle: '📸 Фото 4/4: Містке багажне відділення (валіза до 10 кг + ручна поклажа в салон)',
+  },
+};
+
+// Load persisted group/channel targets, active bot message IDs, and live overrides
 try {
   if (fs.existsSync(TARGETS_FILE)) {
     const saved = JSON.parse(fs.readFileSync(TARGETS_FILE, 'utf-8'));
@@ -297,6 +353,18 @@ try {
     }
     if (saved.activeGiveaway && typeof saved.activeGiveaway === 'object') {
       Object.assign(activeGiveaway, saved.activeGiveaway);
+    }
+    if (saved.liveCarPhotos && typeof saved.liveCarPhotos === 'object') {
+      Object.assign(liveCarPhotos, saved.liveCarPhotos);
+    }
+    if (saved.livePosterOverride && typeof saved.livePosterOverride === 'object') {
+      Object.assign(livePosterOverride, saved.livePosterOverride);
+    }
+    if (saved.liveDateOverride && typeof saved.liveDateOverride === 'object') {
+      Object.assign(liveDateOverride, saved.liveDateOverride);
+    }
+    if (saved.liveSeatsOverride && typeof saved.liveSeatsOverride === 'object') {
+      Object.assign(liveSeatsOverride, saved.liveSeatsOverride);
     }
   }
 } catch (_e) {
@@ -315,6 +383,10 @@ function saveTargetsToDisk() {
           activeBotMessages,
           knownAdminChatIds,
           activeGiveaway,
+          liveCarPhotos,
+          livePosterOverride,
+          liveDateOverride,
+          liveSeatsOverride,
         },
         null,
         2,
@@ -362,38 +434,6 @@ async function notifyAllAdmins(
   }
 }
 
-// Dynamic tour overrides for Admin (seats, dates, posters)
-const liveSeatsOverride: Record<string, number> = {
-  paris: 4,
-  etretat_paris: 6,
-  amsterdam: 5,
-  zaandam_sea_amsterdam: 4,
-  bruges: 4,
-  bruges_ghent_brussels: 5,
-  liechtenstein: 4,
-  neuschwanstein: 2,
-  berlin_dresden: 4,
-  legoland: 5,
-  legoland_germany: 5,
-  stuttgart: 4,
-  stuttgart_tour: 4,
-  europa_park: 2,
-  eltz_cochem: 5,
-  eltz_cochem_mosel: 5,
-  heidelberg_baden: 6,
-  cote_dazur: 5,
-  mont_saint_michel: 6,
-  swiss_rhine_zurich: 4,
-  swiss_aare_bern: 3,
-  brussels: 5,
-  prague: 5,
-  salzburg_hallstatt: 5,
-  alsace_strasbourg: 6,
-  como_milan: 2,
-};
-const liveDateOverride: Record<string, string> = {};
-const livePosterOverride: Record<string, string> = {};
-
 function getCountryFlag(country?: string): string {
   const c = country || '';
   if (c.includes('Ліхтенштейн')) return '🇱🇮';
@@ -430,10 +470,13 @@ interface ChatSessionState {
     | 'waiting_group_id'
     | 'waiting_admin_date'
     | 'waiting_admin_poster'
+    | 'waiting_car_photo'
     | 'waiting_booking_contact'
     | 'waiting_feedback'
     | null;
   tripId?: string;
+  carPhotoSlot?: string;
+  pendingPhotoFileId?: string;
   paxCount?: string;
   pendingGroupAction?: 'publish_giveaway' | 'publish_winner' | null;
 }
@@ -750,6 +793,16 @@ async function sendCleanBotMessage(chatId: number, payload: Record<string, unkno
   return sent;
 }
 
+function makeSafePhotoCaption(html: string): string {
+  if (html.length <= 1010) return html;
+  // Strip tags if truncating so Telegram HTML parser never fails on unclosed tags
+  const plain = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?[^>]+(>|$)/g, '')
+    .slice(0, 980);
+  return `${plain}...`;
+}
+
 // Smart single-window editor: edits text or media in place and cleans up any stray old messages
 async function smartEditMessage(
   chatId: number,
@@ -768,7 +821,7 @@ async function smartEditMessage(
 
   // Case 1: Admin uploaded a custom Telegram file_id photo
   if (isFileIdPhoto && newPhotoUrl) {
-    const safeCaption = text.length <= 1020 ? text : text.slice(0, 950) + '...\n</blockquote>';
+    const safeCaption = makeSafePhotoCaption(text);
     if (hasPhotoInCurrentMsg) {
       const mediaRes: any = await tgApi('editMessageMedia', {
         chat_id: chatId,
@@ -799,7 +852,9 @@ async function smartEditMessage(
       reply_markup: replyMarkup,
     });
     if (sent.ok) {
-      await tgApi('deleteMessage', { chat_id: chatId, message_id: msgId });
+      if (msgId) {
+        await tgApi('deleteMessage', { chat_id: chatId, message_id: msgId }).catch(() => {});
+      }
       if (chatId > 0 && sent.result?.message_id) {
         activeBotMessages[String(chatId)] = [sent.result.message_id];
         saveTargetsToDisk();
@@ -821,7 +876,7 @@ async function smartEditMessage(
         is_disabled: true,
       };
 
-  if (!hasPhotoInCurrentMsg) {
+  if (!hasPhotoInCurrentMsg && msgId) {
     const editRes: any = await tgApi('editMessageText', {
       chat_id: chatId,
       message_id: msgId,
@@ -849,11 +904,108 @@ async function smartEditMessage(
   });
   if (sentMsg.ok) {
     if (msgId) {
-      await tgApi('deleteMessage', { chat_id: chatId, message_id: msgId });
+      await tgApi('deleteMessage', { chat_id: chatId, message_id: msgId }).catch(() => {});
     }
     if (chatId > 0 && sentMsg.result?.message_id) {
       activeBotMessages[String(chatId)] = [sentMsg.result.message_id];
       saveTargetsToDisk();
+    }
+  }
+}
+
+async function sendCarCardToChat(
+  chatId: number,
+  msgId: number | null,
+  hasPhoto: boolean,
+  slot: string = '1',
+  statusBanner: string = '',
+) {
+  const safeSlot = DEFAULT_CAR_PHOTOS[slot] ? slot : '1';
+  const defaultMeta = DEFAULT_CAR_PHOTOS[safeSlot];
+  const customPhoto = liveCarPhotos[safeSlot];
+  const photoUrlOrFileId = customPhoto || defaultMeta.url;
+  const isCustom = Boolean(customPhoto);
+
+  const carText =
+    (statusBanner ? `${statusBanner}\n` : '') +
+    `🚐 <b>Наш автомобіль: 8-місний Opel Vivaro</b> ✨\n` +
+    `<i>${defaultMeta.subtitle}${isCustom ? ' (Ваше реальне фото ✅)' : ''}</i>\n\n` +
+    `Ми подорожуємо камерною групою до <b>8 пасажирів</b> у максимальному комфорті:\n\n` +
+    `• 💺 <b>Схема салону (2+3+3):</b>\n` +
+    `  — <b>1-й ряд (біля водія):</b> Місця 1, 2 (<code>+5€</code>)\n` +
+    `  — <b>2-й ряд:</b> Місця 3, 4, 5 — крісла з регулюванням нахилу (<code>+5€</code>)\n` +
+    `  — <b>3-й ряд:</b> Місця 6 (<code>+5€</code>), 7 (Центр — <code>0€</code>), 8 (<code>+5€</code>)\n` +
+    `  — <b>🎲 Вільна посадка:</b> без фіксації місця — <code>0€</code>\n` +
+    `• ❄️ <b>Двозонний клімат-контроль та автономна пічка</b>\n` +
+    `• 🔌 <b>USB / Type-C зарядки</b> біля кожного ряду\n` +
+    `• 🧳 <b>Багаж:</b> валіза до <code>10 кг</code> + рюкзак у салон\n` +
+    `• 🛑 <b>Кавові зупинки:</b> кожні 2.5–3 год + за вимогою!`;
+
+  const rows: any[][] = [
+    [
+      { text: safeSlot === '1' ? '✅ 1: Авто' : '📸 1: Авто', callback_data: 'cb_car_photo_1' },
+      { text: safeSlot === '2' ? '✅ 2: Салон' : '💺 2: Салон', callback_data: 'cb_car_photo_2' },
+      { text: safeSlot === '3' ? '✅ 3: Крісла' : '🏔 3: Крісла', callback_data: 'cb_car_photo_3' },
+      { text: safeSlot === '4' ? '✅ 4: Багажник' : '🧳 4: Багажник', callback_data: 'cb_car_photo_4' },
+    ],
+    [
+      {
+        text: `📥 Завантажити реальне фото сюди (Фото №${safeSlot})`,
+        callback_data: `cb_adm_car_upload_${safeSlot}`,
+      },
+    ],
+  ];
+
+  if (isCustom) {
+    rows.push([
+      {
+        text: `🔄 Скинути Фото №${safeSlot} на стандартне`,
+        callback_data: `cb_adm_car_reset_${safeSlot}`,
+      },
+    ]);
+  }
+
+  rows.push([
+    { text: '💺 Обрати місце та забронювати', callback_data: 'cb_book' },
+    { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
+  ]);
+  rows.push([
+    { text: '❓ Усі питання (FAQ)', callback_data: 'cb_faq' },
+    { text: '🔙 Назад в меню', callback_data: 'cb_back' },
+  ]);
+
+  const markup = { inline_keyboard: rows };
+
+  if (msgId) {
+    await smartEditMessage(chatId, msgId, hasPhoto, carText, markup, photoUrlOrFileId);
+  } else {
+    const isHttp = photoUrlOrFileId.startsWith('http://') || photoUrlOrFileId.startsWith('https://');
+    if (!isHttp) {
+      // Send via Telegram file_id photo and clean up previous bot messages
+      const sent: any = await tgApi('sendPhoto', {
+        chat_id: chatId,
+        photo: photoUrlOrFileId,
+        caption: makeSafePhotoCaption(carText),
+        parse_mode: 'HTML',
+        reply_markup: markup,
+      });
+      if (sent && sent.ok && sent.result?.message_id && chatId > 0) {
+        await cleanupOldBotMessages(chatId, sent.result.message_id);
+        activeBotMessages[String(chatId)] = [sent.result.message_id];
+        saveTargetsToDisk();
+      }
+    } else {
+      await sendCleanBotMessage(chatId, {
+        text: `<a href="${photoUrlOrFileId}">&#8203;</a>${carText}`,
+        parse_mode: 'HTML',
+        link_preview_options: {
+          is_disabled: false,
+          url: photoUrlOrFileId,
+          prefer_large_media: true,
+          show_above_text: true,
+        },
+        reply_markup: markup,
+      });
     }
   }
 }
@@ -919,15 +1071,30 @@ async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto
     await smartEditMessage(chatId, msgId, hasPhoto, cardCaption, markup, posterUrl);
   } else {
     const isHttpPhoto = Boolean(posterUrl && (posterUrl.startsWith('http://') || posterUrl.startsWith('https://')));
-    const finalText = isHttpPhoto ? `<a href="${posterUrl}">&#8203;</a>${cardCaption}` : cardCaption;
-    await sendCleanBotMessage(chatId, {
-      text: finalText,
-      parse_mode: 'HTML',
-      link_preview_options: isHttpPhoto
-        ? { is_disabled: false, url: posterUrl, prefer_large_media: true, show_above_text: true }
-        : { is_disabled: true },
-      reply_markup: markup,
-    });
+    if (posterUrl && !isHttpPhoto) {
+      const sent: any = await tgApi('sendPhoto', {
+        chat_id: chatId,
+        photo: posterUrl,
+        caption: makeSafePhotoCaption(cardCaption),
+        parse_mode: 'HTML',
+        reply_markup: markup,
+      });
+      if (sent && sent.ok && sent.result?.message_id && chatId > 0) {
+        await cleanupOldBotMessages(chatId, sent.result.message_id);
+        activeBotMessages[String(chatId)] = [sent.result.message_id];
+        saveTargetsToDisk();
+      }
+    } else {
+      const finalText = isHttpPhoto ? `<a href="${posterUrl}">&#8203;</a>${cardCaption}` : cardCaption;
+      await sendCleanBotMessage(chatId, {
+        text: finalText,
+        parse_mode: 'HTML',
+        link_preview_options: isHttpPhoto
+          ? { is_disabled: false, url: posterUrl, prefer_large_media: true, show_above_text: true }
+          : { is_disabled: true },
+        reply_markup: markup,
+      });
+    }
   }
 }
 
@@ -1287,6 +1454,30 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
+          // Handle Admin Car Photo or URL upload
+          if (session.mode === 'waiting_car_photo') {
+            const slot = session.carPhotoSlot || '1';
+            let newCarPhoto = '';
+            if (msg.photo && msg.photo.length > 0) {
+              newCarPhoto = msg.photo[msg.photo.length - 1].file_id;
+            } else if (text.startsWith('http://') || text.startsWith('https://')) {
+              newCarPhoto = text;
+            }
+            if (newCarPhoto) {
+              liveCarPhotos[slot] = newCarPhoto;
+              saveTargetsToDisk();
+              chatSessions[chatId] = { mode: null };
+              await sendCarCardToChat(
+                chatId,
+                null,
+                false,
+                slot,
+                `✅ <b>Реальне фото авто (Слот №${slot}) успішно збережено!</b> 🎉`,
+              );
+              continue;
+            }
+          }
+
           // Handle Admin Poster Photo or URL upload
           if (session.mode === 'waiting_admin_poster' && session.tripId) {
             const targetTripId = session.tripId;
@@ -1298,16 +1489,40 @@ async function startLiveTelegramBotPolling() {
             }
             if (newPoster) {
               livePosterOverride[targetTripId] = newPoster;
+              saveTargetsToDisk();
               chatSessions[chatId] = { mode: null };
               await sendTourCardToChat(chatId, null, false, targetTripId, userId);
               continue;
             }
           }
 
+          // Smart handler: if user sends ANY photo in private chat without pressing a button first, offer to set it as Car Photo 1..4 in 1 click!
+          if (chatType === 'private' && msg.photo && msg.photo.length > 0) {
+            const fileId = msg.photo[msg.photo.length - 1].file_id;
+            chatSessions[chatId] = { mode: null, pendingPhotoFileId: fileId };
+            await sendCleanBotMessage(chatId, {
+              parse_mode: 'HTML',
+              text:
+                `📸 <b>Ваше реальне фото отримано!</b> ✨\n\n` +
+                `Куди встановити це фото в розділі <b>«🚐 Наше авто (Opel Vivaro)»</b>? Натисніть на потрібний слот нижче:`,
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '📸 Установити як Фото №1: Екстер’єр авто', callback_data: 'cb_set_pending_car_1' }],
+                  [{ text: '💺 Установити як Фото №2: Салон (2+3+3)', callback_data: 'cb_set_pending_car_2' }],
+                  [{ text: '🏔 Установити як Фото №3: Крісла та вікна', callback_data: 'cb_set_pending_car_3' }],
+                  [{ text: '🧳 Установити як Фото №4: Багажне відділення', callback_data: 'cb_set_pending_car_4' }],
+                  [{ text: '🔙 Скасувати / В головне меню', callback_data: 'cb_back' }],
+                ],
+              },
+            });
+            continue;
+          }
+
           // Handle Admin Date text input
           if (session.mode === 'waiting_admin_date' && session.tripId && text) {
             const targetTripId = session.tripId;
             liveDateOverride[targetTripId] = text;
+            saveTargetsToDisk();
             chatSessions[chatId] = { mode: null };
             await sendTourCardToChat(chatId, null, false, targetTripId, userId);
             continue;
@@ -2003,63 +2218,63 @@ async function startLiveTelegramBotPolling() {
                 getAdminGiveawayCardMarkup(),
               );
             }
-          } else if (cbData === 'cb_car' || cbData === 'cb_car_photo_1' || cbData === 'cb_car_photo_2' || cbData === 'cb_car_photo_3') {
-            const photoMap: Record<string, { url: string; subtitle: string }> = {
-              cb_car: {
-                url: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=1000&q=85',
-                subtitle: '📸 Фото 1/3: Комфортабельний 8-місний мінівен Opel Vivaro на маршрутах Європи',
-              },
-              cb_car_photo_1: {
-                url: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=1000&q=85',
-                subtitle: '📸 Фото 1/3: Екстер’єр мінівена Opel Vivaro для камерних груп до 8 осіб',
-              },
-              cb_car_photo_2: {
-                url: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1000&q=85',
-                subtitle: '📸 Фото 2/3: Просторий салон (схема 2+3+3), відкидні сидіння та клімат-контроль',
-              },
-              cb_car_photo_3: {
-                url: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1000&q=85',
-                subtitle: '📸 Фото 3/3: Панорамні вікна та містке багажне відділення (до 10 кг + ручна поклажа)',
-              },
-            };
-            const selectedPhoto = photoMap[cbData] || photoMap.cb_car;
-            const carText =
-              `🚐 <b>Наш автомобіль: 8-місний Opel Vivaro</b> ✨\n` +
-              `<i>${selectedPhoto.subtitle}</i>\n\n` +
-              `Ми подорожуємо камерною групою до <b>8 пасажирів</b> у максимальному комфорті без натовпу великих автобусів:\n\n` +
-              `• 💺 <b>Схема салону (2+3+3):</b>\n` +
-              `  — <b>1-й ряд (біля водія):</b> Місце 1 (Панорамне <code>+5€</code>), Місце 2 (Вікно <code>+5€</code>)\n` +
-              `  — <b>2-й ряд:</b> Місця 3, 4, 5 — зручні крісла з підлокітниками та регулюванням нахилу (<code>+5€</code>)\n` +
-              `  — <b>3-й ряд:</b> Місця 6 (<code>+5€</code>), 7 (Центр — <code>0€ без доплати</code>), 8 (<code>+5€</code>)\n` +
-              `  — <b>🎲 Вільна посадка:</b> без фіксації конкретного місця — <code>0€</code>\n` +
-              `• ❄️ <b>Двозонний клімат-контроль та автономний обігрівач:</b> ідеальна температура влітку та взимку\n` +
-              `• 🔌 <b>USB / Type-C зарядки:</b> біля кожного ряду сидінь для ваших смартфонів та камер\n` +
-              `• 🧳 <b>Багажне відділення:</b> валіза або дорожня сумка до <code>10 кг</code> у багажник + невеликий рюкзак у салон\n` +
-              `• 🛑 <b>Санітарні та кавові зупинки:</b> кожні 2.5–3 години + у будь-який момент за вашим проханням!`;
+          } else if (
+            cbData === 'cb_car' ||
+            cbData === 'cb_car_photo_1' ||
+            cbData === 'cb_car_photo_2' ||
+            cbData === 'cb_car_photo_3' ||
+            cbData === 'cb_car_photo_4'
+          ) {
+            chatSessions[chatId] = { mode: null };
+            const slot = cbData.startsWith('cb_car_photo_') ? cbData.replace('cb_car_photo_', '') : '1';
+            await sendCarCardToChat(chatId, msgId, hasPhoto, slot);
+          } else if (cbData.startsWith('cb_adm_car_upload_')) {
+            const slot = cbData.replace('cb_adm_car_upload_', '') || '1';
+            const slotMeta = DEFAULT_CAR_PHOTOS[slot] || DEFAULT_CAR_PHOTOS['1'];
+            chatSessions[chatId] = { mode: 'waiting_car_photo', carPhotoSlot: slot };
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              carText,
+              `📥 <b>Завантаження реального фото авто — Слот №${slot} (${slotMeta.shortLabel})</b>\n\n` +
+                `👉 <b>Просто надішліть у цей чат реальне фото вашого Opel Vivaro</b> з галереї телефону або комп'ютера (як звичайну фотографію в Telegram)!\n\n` +
+                `<i>Також можна надіслати пряме посилання на фото (https://...).</i>\n\n` +
+                `Бот автоматично збереже ваше фото і одразу покаже його в розділі «🚐 Фото авто»!`,
               {
                 inline_keyboard: [
-                  [
-                    { text: '📸 Фото 1: Авто', callback_data: 'cb_car_photo_1' },
-                    { text: '💺 Фото 2: Салон', callback_data: 'cb_car_photo_2' },
-                    { text: '🏔 Фото 3: У дорозі', callback_data: 'cb_car_photo_3' },
-                  ],
-                  [
-                    { text: '💺 Обрати місце та забронювати', callback_data: 'cb_book' },
-                    { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
-                  ],
-                  [
-                    { text: '❓ Усі питання (FAQ)', callback_data: 'cb_faq' },
-                    { text: '🔙 Назад в меню', callback_data: 'cb_back' },
-                  ],
+                  [{ text: '🔙 Назад до Фото авто', callback_data: `cb_car_photo_${slot}` }],
                 ],
               },
-              selectedPhoto.url,
             );
+          } else if (cbData.startsWith('cb_adm_car_reset_')) {
+            const slot = cbData.replace('cb_adm_car_reset_', '') || '1';
+            delete liveCarPhotos[slot];
+            saveTargetsToDisk();
+            chatSessions[chatId] = { mode: null };
+            await sendCarCardToChat(
+              chatId,
+              msgId,
+              hasPhoto,
+              slot,
+              `🔄 <b>Фото №${slot} повернуто до стандартного зображення.</b>`,
+            );
+          } else if (cbData.startsWith('cb_set_pending_car_')) {
+            const slot = cbData.replace('cb_set_pending_car_', '') || '1';
+            const pendingId = chatSessions[chatId]?.pendingPhotoFileId;
+            if (pendingId) {
+              liveCarPhotos[slot] = pendingId;
+              saveTargetsToDisk();
+              chatSessions[chatId] = { mode: null };
+              await sendCarCardToChat(
+                chatId,
+                msgId,
+                hasPhoto,
+                slot,
+                `✅ <b>Реальне фото авто успішно встановлено у Слот №${slot}!</b> 🎉`,
+              );
+            } else {
+              await sendCarCardToChat(chatId, msgId, hasPhoto, slot);
+            }
           } else if (cbData === 'cb_meeting') {
             const meetingText =
               `📍 <b>Точки збору та адресний виїзд (Door-to-Door)</b> 🚐🏠\n\n` +
