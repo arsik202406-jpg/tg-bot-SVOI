@@ -224,6 +224,55 @@ async function startServer() {
     }
   });
 
+  // API endpoint to get all persistent client leads / applications
+  app.get('/api/leads', (_req, res) => {
+    res.json({
+      ok: true,
+      leads: savedLeads,
+    });
+  });
+
+  // API endpoint to record a new client lead from Mini App or Simulator and send permanent non-deletable Telegram notification to Admin
+  app.post('/api/leads', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const newLead = await recordAndNotifyLead({
+        id: body.id || `lead-${Date.now()}`,
+        bookingCode: body.bookingCode || `SVOI-${Math.floor(1000 + Math.random() * 9000)}`,
+        type: body.type || 'booking',
+        tripTitle: body.tripTitle || 'Обраний тур SVOI',
+        duration: body.duration || '1 день',
+        seatType: body.seatType || 'Вільна посадка (0€)',
+        basePrice: body.basePrice,
+        seatFee: body.seatFee,
+        totalCost: body.totalCost,
+        meetingPoint: body.meetingPoint || 'За адресою (Саарланд / Трір / Люксембург)',
+        userName: body.userName || 'Мандрівник',
+        userHandle: body.userHandle || 'не вказано',
+        phone: body.phone || '',
+        userId: Number(body.userId) || 0,
+        text: body.text || '',
+        timestamp: body.timestamp || new Date().toLocaleString('uk-UA'),
+        status: 'new',
+      });
+      res.json({ ok: true, lead: newLead, leads: savedLeads });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // API endpoint to update lead status in Admin CRM
+  app.patch('/api/leads/:id', (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body || {};
+    const found = savedLeads.find((l) => l.id === id || l.bookingCode === id);
+    if (found && status) {
+      found.status = status;
+      saveTargetsToDisk();
+    }
+    res.json({ ok: true, leads: savedLeads });
+  });
+
   // Bind port 3000 immediately so readiness probes succeed without waiting for Vite cold-start
   app.listen(port, '0.0.0.0', () => {
     console.log(`SVOI Travel server running on http://0.0.0.0:${port}`);
@@ -253,6 +302,9 @@ async function startServer() {
 
 const DEFAULT_BOT_TOKEN = process.env.BOT_TOKEN || '8969834514:AAGg--q9hqQQIQooZUkCbhenT9ykhuCc6D0';
 const ADMIN_ID = Number(process.env.ADMIN_ID) || 8450153980;
+const OWNER_ADMIN_IDS = [ADMIN_ID, 1654337127];
+const ADMIN_USERNAMES = new Set(['svoi_travel_admin', 'arsenkirimli']);
+
 let currentMiniAppUrl =
   process.env.MINI_APP_URL ||
   'https://arsik202406-jpg.github.io/tg-bot-SVOI/?miniapp=1';
@@ -260,7 +312,68 @@ let currentChannelTarget = process.env.CHANNEL_CHAT_ID || '@svoi_traveleu';
 let currentGroupTarget = process.env.GROUP_CHAT_ID || '';
 let currentGroupTitle = 'Група SVOI Travel';
 let activeBotMessages: Record<string, number[]> = {};
-let knownAdminChatIds: number[] = [ADMIN_ID];
+let knownAdminChatIds: number[] = [...OWNER_ADMIN_IDS];
+let explicitAdminIds: number[] = [...OWNER_ADMIN_IDS];
+const adminClientPreviewMode: Record<number, boolean> = {};
+
+export interface PersistedLeadItem {
+  id: string;
+  type: 'booking' | 'feedback' | 'waitlist';
+  bookingCode?: string;
+  tripTitle?: string;
+  duration?: string;
+  seatType?: string;
+  basePrice?: number;
+  seatFee?: number;
+  totalCost?: number;
+  meetingPoint?: string;
+  userName: string;
+  userHandle: string;
+  phone?: string;
+  userId: number;
+  text?: string;
+  timestamp: string;
+  status: 'new' | 'processing' | 'confirmed' | 'archived';
+}
+
+let savedLeads: PersistedLeadItem[] = [
+  {
+    id: 'lead-1',
+    type: 'booking',
+    bookingCode: 'SVOI-7842',
+    tripTitle: 'Париж (Версаль + яхта + Ейфелева вежа) • 25.10.2026',
+    duration: '1 день',
+    seatType: '💺 Місце 2 (1-й ряд, Вікно +5€)',
+    basePrice: 120,
+    seatFee: 5,
+    totalCost: 125,
+    meetingPoint: 'За адресою: Саарбрюккен',
+    userName: 'Олена К.',
+    userHandle: '@elena_de_voyage',
+    phone: '+49 171 5849201',
+    userId: 541829012,
+    timestamp: '16.10.2026, 14:10',
+    status: 'new',
+  },
+  {
+    id: 'lead-2',
+    type: 'booking',
+    bookingCode: 'SVOI-5193',
+    tripTitle: 'Лазурове узбережжя (3 дні: Ніцца, Монако, Канни)',
+    duration: '3 дні',
+    seatType: '💺 Місце 3 (2-й ряд, Ліве вікно +5€)',
+    basePrice: 440,
+    seatFee: 5,
+    totalCost: 445,
+    meetingPoint: 'За адресою: Люксембург',
+    userName: 'Михайло В.',
+    userHandle: '@mike_traveler',
+    phone: '+352 621 394810',
+    userId: 781923401,
+    timestamp: '16.10.2026, 12:45',
+    status: 'confirmed',
+  },
+];
 
 const DEFAULT_DEMO_PARTICIPANTS: Array<{ user_id: number; username: string; first_name: string }> = [
   { user_id: 101, username: '@alex_traveler', first_name: 'Олександр М.' },
@@ -273,6 +386,7 @@ const DEFAULT_DEMO_PARTICIPANTS: Array<{ user_id: number; username: string; firs
 const activeGiveaway = {
   id: 'gw_active',
   prize: 'Безкоштовна поїздка до Парижа на 1 день (Версаль + яхта) 🥐🗼',
+  drawDate: 'Неділя, 1 листопада о 20:00 (за центральноєвропейським часом)',
   participants: [] as Array<{ user_id: number; username: string; first_name: string }>,
   winner: null as { user_id: number; username: string; first_name: string } | null,
   is_active: true,
@@ -338,7 +452,7 @@ const DEFAULT_CAR_PHOTOS: Record<string, { url: string; shortLabel: string; subt
   },
 };
 
-// Load persisted group/channel targets, active bot message IDs, and live overrides
+// Load persisted group/channel targets, active bot message IDs, leads, and live overrides
 try {
   if (fs.existsSync(TARGETS_FILE)) {
     const saved = JSON.parse(fs.readFileSync(TARGETS_FILE, 'utf-8'));
@@ -348,11 +462,20 @@ try {
     if (saved.activeBotMessages && typeof saved.activeBotMessages === 'object') {
       activeBotMessages = saved.activeBotMessages;
     }
+    if (Array.isArray(saved.explicitAdminIds)) {
+      explicitAdminIds = Array.from(new Set([...OWNER_ADMIN_IDS, ...saved.explicitAdminIds]));
+    }
     if (Array.isArray(saved.knownAdminChatIds)) {
-      knownAdminChatIds = Array.from(new Set([...knownAdminChatIds, ...saved.knownAdminChatIds]));
+      knownAdminChatIds = Array.from(new Set([...OWNER_ADMIN_IDS, ...saved.knownAdminChatIds]));
     }
     if (saved.activeGiveaway && typeof saved.activeGiveaway === 'object') {
       Object.assign(activeGiveaway, saved.activeGiveaway);
+      if (!activeGiveaway.drawDate) {
+        activeGiveaway.drawDate = 'Неділя, 1 листопада о 20:00 (за центральноєвропейським часом)';
+      }
+    }
+    if (Array.isArray(saved.savedLeads) && saved.savedLeads.length > 0) {
+      savedLeads = saved.savedLeads;
     }
     if (saved.liveCarPhotos && typeof saved.liveCarPhotos === 'object') {
       Object.assign(liveCarPhotos, saved.liveCarPhotos);
@@ -382,7 +505,9 @@ function saveTargetsToDisk() {
           currentGroupTitle,
           activeBotMessages,
           knownAdminChatIds,
+          explicitAdminIds,
           activeGiveaway,
+          savedLeads,
           liveCarPhotos,
           livePosterOverride,
           liveDateOverride,
@@ -399,12 +524,32 @@ function saveTargetsToDisk() {
 }
 
 function registerAdminChat(chatId: number) {
-  if (chatId > 0 && !knownAdminChatIds.includes(chatId)) {
-    knownAdminChatIds.push(chatId);
+  if (chatId > 0) {
+    if (!knownAdminChatIds.includes(chatId)) {
+      knownAdminChatIds.push(chatId);
+    }
+    if (!explicitAdminIds.includes(chatId)) {
+      explicitAdminIds.push(chatId);
+    }
     saveTargetsToDisk();
   }
 }
 
+function isAdminUser(userId?: number, username?: string, chatId?: number): boolean {
+  const uid = userId || chatId || 0;
+  if (!uid) return false;
+  if (adminClientPreviewMode[uid]) return false;
+  if (OWNER_ADMIN_IDS.includes(uid) || explicitAdminIds.includes(uid)) {
+    return true;
+  }
+  if (username && ADMIN_USERNAMES.has(username.replace(/^@/, '').toLowerCase())) {
+    registerAdminChat(uid);
+    return true;
+  }
+  return false;
+}
+
+// Send a general status message to admins (for group/channel binding notifications)
 async function notifyAllAdmins(
   payloadOrText: string | { text: string; parse_mode?: string; reply_markup?: any },
   replyMarkup?: any,
@@ -432,6 +577,100 @@ async function notifyAllAdmins(
       // ignore
     }
   }
+}
+
+// Record a new client application/lead to persistent storage AND send a PERMANENT (non-deletable) message to all Admins!
+async function recordAndNotifyLead(leadInput: Partial<PersistedLeadItem> & { userName: string; userHandle: string }): Promise<PersistedLeadItem> {
+  const bookingCode = leadInput.bookingCode || `SVOI-${Math.floor(1000 + Math.random() * 9000)}`;
+  const nowStr = leadInput.timestamp || new Date().toLocaleString('uk-UA');
+  const newLead: PersistedLeadItem = {
+    id: leadInput.id || `lead-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    type: leadInput.type || 'booking',
+    bookingCode,
+    tripTitle: leadInput.tripTitle || 'Обраний тур SVOI',
+    duration: leadInput.duration || '1 день',
+    seatType: leadInput.seatType || '🎲 Вільна посадка (0€)',
+    basePrice: leadInput.basePrice,
+    seatFee: leadInput.seatFee,
+    totalCost: leadInput.totalCost,
+    meetingPoint: leadInput.meetingPoint || 'За адресою (Саарланд / Трір / Люксембург)',
+    userName: leadInput.userName || 'Мандрівник',
+    userHandle: leadInput.userHandle || 'не вказано',
+    phone: leadInput.phone || '',
+    userId: leadInput.userId || 0,
+    text: leadInput.text || '',
+    timestamp: nowStr,
+    status: leadInput.status || 'new',
+  };
+
+  savedLeads = [newLead, ...savedLeads];
+  saveTargetsToDisk();
+
+  // Build permanent notification text for Admin
+  const cleanHandle = newLead.userHandle.startsWith('@') ? newLead.userHandle.slice(1) : '';
+  const contactUrl = cleanHandle
+    ? `https://t.me/${cleanHandle}`
+    : newLead.userId > 0
+      ? `tg://user?id=${newLead.userId}`
+      : 'https://t.me/SVOI_travel_admin';
+
+  let notifText = '';
+  if (newLead.type === 'booking') {
+    notifText =
+      `🔔🔥 <b>НОВА ЗАЯВКА НА БРОНЮВАННЯ #${bookingCode}!</b> 📌\n` +
+      `<i>(Це повідомлення закріплено в історії та НЕ видаляється)</i>\n\n` +
+      `🗺 <b>Напрямок:</b> ${newLead.tripTitle}\n` +
+      `💺 <b>Обране місце:</b> <code>${newLead.seatType}</code>\n` +
+      (newLead.totalCost !== undefined ? `💶 <b>Сума до оплати:</b> <code>${newLead.totalCost}€</code>\n` : '') +
+      `👤 <b>Клієнт:</b> <b>${newLead.userName}</b> (${newLead.userHandle})\n` +
+      (newLead.phone ? `📱 <b>Телефон:</b> <code>${newLead.phone}</code>\n` : '') +
+      (newLead.meetingPoint ? `📍 <b>Точка збору:</b> ${newLead.meetingPoint}\n` : '') +
+      `🕒 <b>Дата заявки:</b> ${newLead.timestamp}\n` +
+      `📋 <b>Усього заявок у списку адмінки:</b> <b>${savedLeads.length}</b>`;
+  } else if (newLead.type === 'waitlist') {
+    notifText =
+      `📋🔔 <b>НОВИЙ ЗАПИС У ЛИСТ ОЧІКУВАННЯ #${bookingCode}!</b> 📌\n` +
+      `<i>(Це повідомлення НЕ видаляється)</i>\n\n` +
+      `🗺 <b>Тур:</b> ${newLead.tripTitle}\n` +
+      `👤 <b>Клієнт:</b> <b>${newLead.userName}</b> (${newLead.userHandle})\n` +
+      `🕒 <b>Дата заявки:</b> ${newLead.timestamp}\n` +
+      `📋 <b>Усього заявок у списку адмінки:</b> <b>${savedLeads.length}</b>`;
+  } else {
+    notifText =
+      `💬🔔 <b>НОВЕ ЗВЕРНЕННЯ / ВІДГУК КЛІЄНТА #${bookingCode}!</b> 📌\n` +
+      `<i>(Це повідомлення НЕ видаляється)</i>\n\n` +
+      `👤 <b>Клієнт:</b> <b>${newLead.userName}</b> (${newLead.userHandle})\n` +
+      (newLead.tripTitle ? `🗺 <b>Тур:</b> ${newLead.tripTitle}\n` : '') +
+      (newLead.text ? `📝 <b>Повідомлення:</b> <i>${newLead.text}</i>\n` : '') +
+      `🕒 <b>Дата:</b> ${newLead.timestamp}`;
+  }
+
+  const notifMarkup = {
+    inline_keyboard: [
+      [{ text: `💬 Написати клієнту (${newLead.userName})`, url: contactUrl }],
+      [{ text: `📋 Відкрити список усіх заявок (${savedLeads.length})`, callback_data: 'cb_notif_open_leads' }],
+    ],
+  };
+
+  // Send to ALL known Admin chats and NEVER add this message_id to activeBotMessages so it is NEVER deleted!
+  const targetAdmins = Array.from(new Set([...OWNER_ADMIN_IDS, ...knownAdminChatIds]));
+  for (const admId of targetAdmins) {
+    if (admId <= 0) continue;
+    try {
+      await tgApi('sendMessage', {
+        chat_id: admId,
+        parse_mode: 'HTML',
+        text: notifText,
+        reply_markup: notifMarkup,
+      });
+      // INTENTIONALLY DO NOT push message_id into activeBotMessages[admId]!
+      // This guarantees cleanupOldBotMessages will NEVER delete lead notifications!
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  return newLead;
 }
 
 function getCountryFlag(country?: string): string {
@@ -466,6 +705,7 @@ function getLiveFreeSeats(tripId: string): number {
 interface ChatSessionState {
   mode:
     | 'waiting_gw_prize'
+    | 'waiting_gw_date'
     | 'waiting_channel_id'
     | 'waiting_group_id'
     | 'waiting_admin_date'
@@ -499,7 +739,12 @@ function findTripById(tripId: string) {
   return TRIPS_LIST.find((t) => t.id === normalized || t.id === tripId);
 }
 
-function getMainMenuMarkup(_userId?: number) {
+// Main Menu Markup:
+// - "Точки збору (Door-to-Door)" is moved inside "❓ Часті питання (FAQ)" as requested!
+// - Clients see "🎁 Розіграш та призи" (cb_giveaway — read-only dates & winner + participate button).
+// - Only Admin sees the Admin Panel & Client Leads List buttons!
+function getMainMenuMarkup(userId?: number, username?: string, chatId?: number) {
+  const isAdmin = isAdminUser(userId, username, chatId);
   const rows: any[][] = [
     [
       { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
@@ -508,26 +753,25 @@ function getMainMenuMarkup(_userId?: number) {
     [{ text: '💺 ЗАБРОНЮВАТИ МІСЦЕ', callback_data: 'cb_book' }],
     [
       { text: '🚐 Фото авто (Opel Vivaro)', callback_data: 'cb_car' },
-      { text: '📍 Точки збору (Door-to-Door)', callback_data: 'cb_meeting' },
+      { text: '❓ Часті питання та Точки збору', callback_data: 'cb_faq' },
     ],
     [
-      { text: '❓ Часті питання (FAQ)', callback_data: 'cb_faq' },
       { text: '🎮 Ігри та вікторини', callback_data: 'cb_games' },
-    ],
-    [
-      { text: '🎁 Розіграш туру (В Групу)', callback_data: 'cb_adm_gw_card' },
-      { text: '🏆 Результат розіграшу', callback_data: 'cb_adm_gw_pick' },
+      { text: '🎁 Розіграш (Дати та Переможець)', callback_data: 'cb_giveaway' },
     ],
     [
       { text: '🤝 Стати партнером клубу', callback_data: 'cb_partner' },
       { text: '📢 Наш канал', url: 'https://t.me/+Flt_2r6vi3U4ZDg6' },
     ],
     [{ text: "💬 ЗВ'ЯЗОК З МЕНЕДЖЕРОМ", url: 'https://t.me/SVOI_travel_admin' }],
-    [
-      { text: '👑 Адмін: Група та Розіграш (/channel)', callback_data: 'cb_adm_channel_menu' },
-      { text: '📋 Лист очікування', callback_data: 'cb_adm_waitlist' },
-    ],
   ];
+
+  if (isAdmin) {
+    rows.push([
+      { text: `📋 Заявки клієнтів (${savedLeads.length})`, callback_data: 'cb_adm_leads' },
+      { text: '👑 Адмін-панель (Розіграш / Авто)', callback_data: 'cb_admin_panel' },
+    ]);
+  }
 
   return { inline_keyboard: rows };
 }
@@ -563,10 +807,12 @@ function getPublicGiveawayMarkup(count: number) {
 }
 
 function getPublicGiveawayText(prize: string, count: number) {
+  const drawDateStr = activeGiveaway.drawDate || 'Неділя о 20:00';
   return (
     `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b> 🌍✨\n\n` +
     `Ми розігруємо неймовірний приз серед учасників нашої спільноти:\n` +
     `🎁 <b>${prize}</b>\n\n` +
+    `📅 <b>Дата підбиття підсумків:</b> <code>${drawDateStr}</code>\n\n` +
     `<b>Умови участі максимально прості:</b>\n` +
     `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
     `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (${count})»</b> нижче!\n\n` +
@@ -574,10 +820,61 @@ function getPublicGiveawayText(prize: string, count: number) {
   );
 }
 
+// Client-only Giveaway View inside the Bot ("клиентам можно просто просматривать даты и победителя")
+function getClientGiveawayText() {
+  const count = activeGiveaway.participants.length;
+  const drawDateStr = activeGiveaway.drawDate || 'Неділя, 1 листопада о 20:00';
+  const statusBadge = activeGiveaway.is_active
+    ? `🟢 <b>Триває прийом учасників!</b>`
+    : `🏁 <b>Розіграш завершено — переможця визначено!</b>`;
+
+  const winnerBlock = activeGiveaway.winner
+    ? `🏆 <b>Переможець розіграшу:</b>\n` +
+      `🥳 <b>${activeGiveaway.winner.first_name} (${activeGiveaway.winner.username})</b> 🎉\n` +
+      `<i>Вітаємо переможця! Для отримання сертифіката напишіть менеджеру @SVOI_travel_admin.</i>`
+    : `🏆 <b>Переможець розіграшу:</b>\n` +
+      `⏳ <i>Переможця буде визначено випадковим чином у вказану дату (${drawDateStr}) та опубліковано в нашій групі й у цьому розділі!</i>`;
+
+  return (
+    `🎁 <b>Розіграші та призи туристичного клубу SVOI Travel</b> 🌍✨\n\n` +
+    `📌 <b>Поточний головний приз:</b>\n` +
+    `<blockquote>🎁 <b>${activeGiveaway.prize}</b></blockquote>\n\n` +
+    `📅 <b>Дата проведення та оголошення результатів:</b>\n` +
+    `• <code>${drawDateStr}</code>\n` +
+    `📊 <b>Статус:</b> ${statusBadge}\n` +
+    `👥 <b>Зареєстровано учасників:</b> <b>${count}</b>\n\n` +
+    `${winnerBlock}\n\n` +
+    `💡 <b>Як взяти участь:</b>\n` +
+    `Натисніть кнопку <b>«🎉 Брати участь у розіграші!»</b> нижче або у закріпленому пості нашої групи SVOI!`
+  );
+}
+
+function getClientGiveawayMarkup(isAdmin: boolean) {
+  const count = activeGiveaway.participants.length;
+  const rows: any[][] = [];
+  if (activeGiveaway.is_active) {
+    rows.push([{ text: `🎉 Брати участь у розіграші! (Учасників: ${count})`, callback_data: 'gw_join_client' }]);
+  }
+  rows.push([
+    { text: '👥 Наша група SVOI у Telegram', url: 'https://t.me/+J50liyDUHPgzYTQy' },
+    { text: '📢 Наш канал', url: 'https://t.me/+Flt_2r6vi3U4ZDg6' },
+  ]);
+  rows.push([
+    { text: '🗺 Напрямки та дати поїздок', callback_data: 'cb_trips' },
+    { text: '💺 Забронювати місце', callback_data: 'cb_book' },
+  ]);
+  if (isAdmin) {
+    rows.push([{ text: '👑 [Адмін] Публікація та керування розіграшем', callback_data: 'cb_adm_gw_card' }]);
+  }
+  rows.push([{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }]);
+  return { inline_keyboard: rows };
+}
+
 // Admin-only Giveaway Card published IN THE ADMIN PANEL ("в админке")
 function getAdminGiveawayCardText() {
   const count = activeGiveaway.participants.length;
   const grpLabel = currentGroupTarget ? `${currentGroupTitle} (<code>${currentGroupTarget}</code>) ✅` : `очікує вибору в 1 клік`;
+  const drawDateStr = activeGiveaway.drawDate || 'Неділя, 1 листопада о 20:00';
   const partList =
     count > 0
       ? activeGiveaway.participants
@@ -587,17 +884,20 @@ function getAdminGiveawayCardText() {
       : '<i>Поки що 0 учасників (натисніть «👥 Опублікувати РОЗІГРАШ у ГРУПІ напряму» нижче)</i>';
 
   return (
-    `👑 <b>КЕРУВАННЯ РОЗІГРАШЕМ ТА ПУБЛІКАЦІЄЮ В ГРУПІ</b> 🎁\n\n` +
-    `🎉🔥 <b>ГРАНДІОЗНИЙ РОЗІГРАШ ВІД ТУРИСТИЧНОГО КЛУБУ SVOI!</b>\n` +
-    `🎁 <b>Приз:</b> <b>${activeGiveaway.prize}</b>\n\n` +
-    `📊 <b>Статус проведення:</b>\n` +
+    `👑 <b>АДМІН-ПАНЕЛЬ: КЕРУВАННЯ РОЗІГРАШЕМ ТА ПУБЛІКАЦІЄЮ В ГРУПІ</b> 🎁\n\n` +
+    `🎁 <b>Приз:</b> <b>${activeGiveaway.prize}</b>\n` +
+    `📅 <b>Дата розіграшу (бачать клієнти):</b> <code>${drawDateStr}</code>\n` +
+    `📊 <b>Статус:</b> ${activeGiveaway.is_active ? '🟢 Активний' : '🏁 Завершено'}\n` +
     `• 👥 <b>Учасників зареєстровано:</b> <b>${count}</b>\n` +
+    (activeGiveaway.winner
+      ? `• 🏆 <b>Обраний переможець:</b> <b>${activeGiveaway.winner.first_name} (${activeGiveaway.winner.username})</b>\n`
+      : '') +
     `• 💬 <b>Цільова група:</b> ${grpLabel}\n` +
     `• 📢 <b>Цільовий канал:</b> <code>${currentChannelTarget}</code>\n\n` +
     `👥 <b>Список учасників:</b>\n${partList}\n\n` +
-    `<blockquote>👇 <b>Пряма публікація в Групу (де бот вже Адмін):</b>\n` +
-    `1️⃣ Натисніть <b>«👥 Опублікувати РОЗІГРАШ у ГРУПІ напряму»</b> — і бот одразу викладе пост розіграшу у вашій групі!\n` +
-    `2️⃣ Щоб підбити підсумки, натисніть <b>«🏆 Вибрати переможця розіграшу»</b> або <b>«🎊 Опублікувати РЕЗУЛЬТАТ розіграшу в ГРУПІ напряму»</b>!</blockquote>`
+    `<blockquote>👇 <b>Керування для Адміністратора:</b>\n` +
+    `• Публікувати розіграш і результати в групу може <b>тільки Адмін</b>.\n` +
+    `• Клієнти в меню бачать лише дату проведення, поточний приз та ім'я переможця.</blockquote>`
   );
 }
 
@@ -634,11 +934,15 @@ function getAdminGiveawayCardMarkup() {
         },
       ],
       [
-        { text: '🔄 Оновити лічильник', callback_data: 'cb_adm_gw_card' },
         { text: '✏️ Змінити приз розіграшу', callback_data: 'cb_adm_gw_new' },
+        { text: '📅 Змінити дату розіграшу', callback_data: 'cb_adm_gw_date' },
       ],
       [
+        { text: '🔄 Перезапустити (новий набір)', callback_data: 'cb_adm_gw_restart' },
         { text: '⚙️ Обрати / Змінити ГРУПУ', callback_data: 'cb_adm_set_group' },
+      ],
+      [
+        { text: '👑 В Адмін-панель', callback_data: 'cb_admin_panel' },
         { text: '🔙 В головне меню', callback_data: 'cb_back' },
       ],
     ],
@@ -648,6 +952,9 @@ function getAdminGiveawayCardMarkup() {
 function getChannelAdminMarkup() {
   return {
     inline_keyboard: [
+      [
+        { text: `📋 Список заявок клієнтів (${savedLeads.length})`, callback_data: 'cb_adm_leads' },
+      ],
       [
         { text: '👑 Картка РОЗІГРАШУ (Публікація в Групу + Результат)', callback_data: 'cb_adm_gw_card' },
       ],
@@ -659,18 +966,103 @@ function getChannelAdminMarkup() {
       ],
       [
         { text: '🏆 Вибрати переможця розіграшу', callback_data: 'cb_adm_gw_pick' },
-        { text: '🎁 Новий розіграш (змінити приз)', callback_data: 'cb_adm_gw_new' },
+        { text: '📅 Змінити дату розіграшу', callback_data: 'cb_adm_gw_date' },
+      ],
+      [
+        { text: '🚐 Керування фото авто (Opel Vivaro)', callback_data: 'cb_car' },
+        { text: '🗺 Редагувати тури', callback_data: 'cb_trips' },
       ],
       [
         { text: '⚙️ Обрати ГРУПУ в 1 клік', callback_data: 'cb_adm_set_group' },
         { text: '⚙️ Обрати КАНАЛ в 1 клік', callback_data: 'cb_adm_set_channel' },
       ],
       [
-        { text: '🧠 Надіслати вікторину (Квіз)', callback_data: 'cb_adm_send_quiz' },
+        { text: '🧠 Надіслати вікторину (Квіз) у групу', callback_data: 'cb_adm_send_quiz' },
       ],
-      [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+      [
+        { text: '👁 Режим перегляду очима клієнта', callback_data: 'cb_adm_preview_client' },
+        { text: '🔙 Назад в головне меню', callback_data: 'cb_back' },
+      ],
     ],
   };
+}
+
+// Render persistent Client Applications / Leads List inside the Bot Admin Panel
+function getAdminLeadsListView(page = 0) {
+  const pageSize = 6;
+  const total = savedLeads.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.max(0, Math.min(page, totalPages - 1));
+  const slice = savedLeads.slice(safePage * pageSize, (safePage + 1) * pageSize);
+
+  const itemsHtml =
+    slice.length === 0
+      ? `<i>Поки що немає збережених заявок.</i>`
+      : slice
+          .map((lead, idx) => {
+            const num = safePage * pageSize + idx + 1;
+            const statusIcon =
+              lead.status === 'confirmed' ? '✅' : lead.status === 'archived' ? '🗄' : '🟢';
+            const typeBadge =
+              lead.type === 'booking'
+                ? '💺 Бронь'
+                : lead.type === 'waitlist'
+                  ? '📋 Лист очікування'
+                  : '💬 Відгук/Питання';
+            return (
+              `<b>${num}. ${statusIcon} [${typeBadge}] #${lead.bookingCode || lead.id.slice(-4)}</b> (${lead.timestamp})\n` +
+              `   👤 <b>Клієнт:</b> ${lead.userName} (${lead.userHandle})${lead.phone ? ` • 📱 <code>${lead.phone}</code>` : ''}\n` +
+              (lead.tripTitle ? `   🗺 <b>Тур:</b> ${lead.tripTitle}\n` : '') +
+              (lead.seatType && lead.type === 'booking'
+                ? `   💺 <b>Місце:</b> ${lead.seatType}${lead.totalCost ? ` • 💶 <b>${lead.totalCost}€</b>` : ''}\n`
+                : '') +
+              (lead.meetingPoint && lead.type === 'booking' ? `   📍 <b>Збір:</b> ${lead.meetingPoint}\n` : '') +
+              (lead.text ? `   📝 <i>${lead.text}</i>\n` : '')
+            );
+          })
+          .join('\n');
+
+  const text =
+    `📋 <b>АДМІН-ПАНЕЛЬ: СПИСОК ЗАЯВОК КЛІЄНТІВ (${total})</b> 👑\n` +
+    `<i>Сторінка ${safePage + 1} з ${totalPages} • Усі заявки надійно зберігаються в базі та не видаляються!</i>\n\n` +
+    `${itemsHtml}\n\n` +
+    `<blockquote>💡 <b>Підказка:</b> Натисніть на кнопку з ім'ям клієнта нижче, щоб відкрити картку заявки, написати клієнту в 1 клік або підтвердити бронь!</blockquote>`;
+
+  const rows: any[][] = [];
+
+  // Quick action buttons for each lead on the current page
+  for (let i = 0; i < slice.length; i++) {
+    const lead = slice[i];
+    const absIdx = safePage * pageSize + i;
+    const statusIcon = lead.status === 'confirmed' ? '✅' : '🟢';
+    rows.push([
+      {
+        text: `${statusIcon} #${lead.bookingCode || absIdx + 1}: ${lead.userName} (${lead.userHandle}) — ${lead.tripTitle?.slice(0, 22) || 'Заявка'}`,
+        callback_data: `cb_adm_lead_item_${absIdx}`,
+      },
+    ]);
+  }
+
+  // Pagination row if more than 1 page
+  if (totalPages > 1) {
+    const navRow: any[] = [];
+    if (safePage > 0) {
+      navRow.push({ text: '⬅️ Попередня', callback_data: `cb_adm_leads_p_${safePage - 1}` });
+    }
+    navRow.push({ text: `📄 ${safePage + 1}/${totalPages}`, callback_data: 'cb_adm_leads' });
+    if (safePage < totalPages - 1) {
+      navRow.push({ text: 'Наступна ➡️', callback_data: `cb_adm_leads_p_${safePage + 1}` });
+    }
+    rows.push(navRow);
+  }
+
+  rows.push([
+    { text: '🔄 Оновити список заявок', callback_data: `cb_adm_leads_p_${safePage}` },
+    { text: '👑 В Адмін-панель', callback_data: 'cb_admin_panel' },
+  ]);
+  rows.push([{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }]);
+
+  return { text, markup: { inline_keyboard: rows } };
 }
 
 function getGamesMarkup() {
@@ -690,45 +1082,48 @@ function getGamesMarkup() {
       ],
       [
         { text: '🎰 Колесо Фортуни SVOI', callback_data: 'cb_game_wheel' },
-        { text: '🎁 Розіграш туру в Групі', callback_data: 'cb_adm_gw_card' },
+        { text: '🎁 Розіграш (Дати та Переможець)', callback_data: 'cb_giveaway' },
       ],
       [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
     ],
   };
 }
 
+// FAQ Markup with "📍 Точки збору та адресний виїзд (Door-to-Door)" prominently placed at the top!
 function getFaqMarkup() {
   return {
     inline_keyboard: [
       [
-        { text: '📍 Точки збору (Door-to-Door)', callback_data: 'cb_faq_pickup' },
-        { text: '💳 Оплата та 0% передоплати', callback_data: 'cb_faq_payment' },
+        { text: '📍 Точки збору та виїзд від дому (Door-to-Door)', callback_data: 'cb_meeting' },
       ],
       [
-        { text: '🚐 Фото авто та салон Opel Vivaro', callback_data: 'cb_car' },
+        { text: '💳 Оплата та 0% передоплати', callback_data: 'cb_faq_payment' },
         { text: '💺 Схема місць (1–8) у бусі', callback_data: 'cb_faq_seats' },
       ],
       [
+        { text: '🚐 Фото авто та салон Opel Vivaro', callback_data: 'cb_car' },
         { text: '⏱ Скільки часу на локаціях?', callback_data: 'cb_faq_time' },
+      ],
+      [
         { text: '🚶 Як гуляємо на екскурсіях?', callback_data: 'cb_faq_walking' },
+        { text: '📜 Що входить у вартість туру?', callback_data: 'cb_terms' },
       ],
       [
-        { text: '📜 Умови поїздок та документи', callback_data: 'cb_terms' },
-        { text: '🧳 Багаж та ручна поклажа', callback_data: 'cb_faq_luggage' },
-      ],
-      [
+        { text: '🧳 Багаж, документи та ручна поклажа', callback_data: 'cb_faq_luggage' },
         { text: '🎯 Як обрати тур новачку?', callback_data: 'cb_faq_choose' },
+      ],
+      [
         { text: '👶 Поїздки з дітьми та зупинки', callback_data: 'cb_faq_children' },
-      ],
-      [
         { text: '🔄 Правила скасування броні', callback_data: 'cb_faq_cancel' },
-        { text: '🤝 Стати партнером клубу', callback_data: 'cb_partner' },
       ],
       [
+        { text: '🤝 Стати партнером клубу', callback_data: 'cb_partner' },
         { text: '🚐 Індивідуальний виїзд (5–8 осіб)', callback_data: 'cb_custom_trip' },
-        { text: '✍️ Залишити відгук / питання', callback_data: 'cb_feedback' },
       ],
-      [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+      [
+        { text: '✍️ Залишити відгук / питання', callback_data: 'cb_feedback' },
+        { text: '🔙 Назад в головне меню', callback_data: 'cb_back' },
+      ],
     ],
   };
 }
@@ -919,6 +1314,7 @@ async function sendCarCardToChat(
   hasPhoto: boolean,
   slot: string = '1',
   statusBanner: string = '',
+  isAdmin: boolean = false,
 ) {
   const safeSlot = DEFAULT_CAR_PHOTOS[slot] ? slot : '1';
   const defaultMeta = DEFAULT_CAR_PHOTOS[safeSlot];
@@ -929,7 +1325,7 @@ async function sendCarCardToChat(
   const carText =
     (statusBanner ? `${statusBanner}\n` : '') +
     `🚐 <b>Наш автомобіль: 8-місний Opel Vivaro</b> ✨\n` +
-    `<i>${defaultMeta.subtitle}${isCustom ? ' (Ваше реальне фото ✅)' : ''}</i>\n\n` +
+    `<i>${defaultMeta.subtitle}${isCustom && isAdmin ? ' (Ваше реальне фото ✅)' : ''}</i>\n\n` +
     `Ми подорожуємо камерною групою до <b>8 пасажирів</b> у максимальному комфорті:\n\n` +
     `• 💺 <b>Схема салону (2+3+3):</b>\n` +
     `  — <b>1-й ряд (біля водія):</b> Місця 1, 2 (<code>+5€</code>)\n` +
@@ -948,21 +1344,24 @@ async function sendCarCardToChat(
       { text: safeSlot === '3' ? '✅ 3: Крісла' : '🏔 3: Крісла', callback_data: 'cb_car_photo_3' },
       { text: safeSlot === '4' ? '✅ 4: Багажник' : '🧳 4: Багажник', callback_data: 'cb_car_photo_4' },
     ],
-    [
-      {
-        text: `📥 Завантажити реальне фото сюди (Фото №${safeSlot})`,
-        callback_data: `cb_adm_car_upload_${safeSlot}`,
-      },
-    ],
   ];
 
-  if (isCustom) {
+  // ONLY Admin can upload or reset car photos!
+  if (isAdmin) {
     rows.push([
       {
-        text: `🔄 Скинути Фото №${safeSlot} на стандартне`,
-        callback_data: `cb_adm_car_reset_${safeSlot}`,
+        text: `📥 [Адмін] Завантажити реальне фото (Фото №${safeSlot})`,
+        callback_data: `cb_adm_car_upload_${safeSlot}`,
       },
     ]);
+    if (isCustom) {
+      rows.push([
+        {
+          text: `🔄 [Адмін] Скинути Фото №${safeSlot} на стандартне`,
+          callback_data: `cb_adm_car_reset_${safeSlot}`,
+        },
+      ]);
+    }
   }
 
   rows.push([
@@ -970,7 +1369,7 @@ async function sendCarCardToChat(
     { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
   ]);
   rows.push([
-    { text: '❓ Усі питання (FAQ)', callback_data: 'cb_faq' },
+    { text: '❓ Часті питання та Точки збору', callback_data: 'cb_faq' },
     { text: '🔙 Назад в меню', callback_data: 'cb_back' },
   ]);
 
@@ -1010,10 +1409,18 @@ async function sendCarCardToChat(
   }
 }
 
-async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto: boolean, tripId: string, _userId: number) {
+async function sendTourCardToChat(
+  chatId: number,
+  msgId: number | null,
+  hasPhoto: boolean,
+  tripId: string,
+  userId: number,
+  username?: string,
+) {
   const trip = findTripById(tripId);
   if (!trip) return;
 
+  const isAdmin = isAdminUser(userId, username, chatId);
   const freeSeats = getLiveFreeSeats(trip.id);
   const flag = getCountryFlag(trip.country);
   const dateStr = getLiveTripDate(trip.id, trip.departureDates);
@@ -1054,11 +1461,14 @@ async function sendTourCardToChat(chatId: number, msgId: number | null, hasPhoto
     { text: '📋 Лист очікування', callback_data: `waitlist_add_${trip.id}` },
   ]);
 
-  rows.push([
-    { text: `⚙️ Місця (${freeSeats}/8)`, callback_data: `adm_seats_${trip.id}` },
-    { text: `📅 Дата`, callback_data: `adm_date_${trip.id}` },
-    { text: `🖼 Постер`, callback_data: `adm_poster_${trip.id}` },
-  ]);
+  // ONLY Admin sees tour seat / date / poster edit buttons!
+  if (isAdmin) {
+    rows.push([
+      { text: `⚙️ [Адмін] Місця (${freeSeats}/8)`, callback_data: `adm_seats_${trip.id}` },
+      { text: `📅 Дата`, callback_data: `adm_date_${trip.id}` },
+      { text: `🖼 Постер`, callback_data: `adm_poster_${trip.id}` },
+    ]);
+  }
 
   rows.push([
     { text: '🗺 До списку напрямків', callback_data: 'cb_trips' },
@@ -1173,11 +1583,15 @@ async function startLiveTelegramBotPolling() {
           const chatId: number = msg.chat.id;
           const chatType: string = msg.chat.type || 'private';
           const userId: number = msg.from?.id || 0;
+          const usernameRaw: string | undefined = msg.from?.username;
           const text: string = (msg.text || '').trim();
           const session = chatSessions[chatId] || { mode: null };
+          const isAdmin = isAdminUser(userId, usernameRaw, chatId);
 
           if (chatType === 'private') {
-            registerAdminChat(chatId);
+            if (isAdmin) {
+              registerAdminChat(chatId);
+            }
             // Delete user's own message in private chat so old messages never clutter the screen
             if (msg.message_id) {
               tgApi('deleteMessage', { chat_id: chatId, message_id: msg.message_id }).catch(() => {});
@@ -1202,8 +1616,8 @@ async function startLiveTelegramBotPolling() {
               });
             }
 
-            // Commands inside the group for Admin (no broken ADMIN_ID restriction)
-            if (text.startsWith('/bind_group')) {
+            // Commands inside the group for Admin only
+            if (isAdmin && text.startsWith('/bind_group')) {
               await tgApi('sendMessage', {
                 chat_id: chatId,
                 parse_mode: 'HTML',
@@ -1212,7 +1626,7 @@ async function startLiveTelegramBotPolling() {
               continue;
             }
 
-            if (text.startsWith('/giveaway')) {
+            if (isAdmin && text.startsWith('/giveaway')) {
               const count = activeGiveaway.participants.length;
               const pubRes: any = await tgApi('sendMessage', {
                 chat_id: chatId,
@@ -1227,7 +1641,7 @@ async function startLiveTelegramBotPolling() {
               continue;
             }
 
-            if (text.startsWith('/winner')) {
+            if (isAdmin && text.startsWith('/winner')) {
               if (!activeGiveaway.winner) {
                 const pool = activeGiveaway.participants.length > 0 ? activeGiveaway.participants : DEFAULT_DEMO_PARTICIPANTS;
                 activeGiveaway.winner = pool[Math.floor(Math.random() * pool.length)];
@@ -1254,11 +1668,11 @@ async function startLiveTelegramBotPolling() {
             }
           }
 
-          // Handle shared contact (request_contact=True) in Step 3 of booking
-          if (msg.contact) {
-            const phone = msg.contact.phone_number || '';
+          // Handle shared contact (request_contact=True) OR typed phone number in Step 3 of booking
+          if (msg.contact || (session.mode === 'waiting_booking_contact' && text && !text.startsWith('/'))) {
+            const phone = msg.contact?.phone_number || text;
             const firstName = msg.from?.first_name || 'Мандрівник';
-            const username = msg.from?.username ? `@${msg.from.username}` : 'не вказано';
+            const username = msg.from?.username ? `@${msg.from.username}` : firstName;
             const tripId = session.tripId || 'paris';
             const paxCount = session.paxCount || '1';
             chatSessions[chatId] = { mode: null };
@@ -1296,22 +1710,8 @@ async function startLiveTelegramBotPolling() {
               tgApi('deleteMessage', { chat_id: chatId, message_id: rmKb.result.message_id }).catch(() => {});
             }
 
-            // Notify other Admins without cluttering the current user's single-window screen
-            await notifyAllAdmins(
-              {
-                parse_mode: 'HTML',
-                text:
-                  `🔥 <b>НОВА БРОНЬ У 2 КЛІКИ #${bookingCode}!</b>\n\n` +
-                  `🗺 <b>Напрямок:</b> ${flag} ${tripTitle} | ${dateStr}\n` +
-                  `💺 <b>Обране місце:</b> <code>${selectedSeat.label}</code>\n` +
-                  `💶 <b>Сума:</b> <code>${totalCost}€</code>\n` +
-                  `👤 <b>Клієнт:</b> ${firstName} (${username})\n` +
-                  `📱 <b>Телефон:</b> <code>${phone}</code>`,
-              },
-              undefined,
-              chatId,
-            );
-
+            // Clean up client's previous bot messages BEFORE sending permanent admin notification
+            // (so if Admin is testing from their own account, the new lead notification stays on screen!)
             await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
               text:
@@ -1329,11 +1729,58 @@ async function startLiveTelegramBotPolling() {
                 ],
               },
             });
+
+            // Save to persistent leads list AND send PERMANENT (non-deletable) message to Admin!
+            await recordAndNotifyLead({
+              bookingCode,
+              type: 'booking',
+              tripTitle: `${flag} ${tripTitle} | ${dateStr}`,
+              duration: trip?.duration || '1 день',
+              seatType: selectedSeat.label,
+              basePrice: price,
+              seatFee: selectedSeat.fee,
+              totalCost,
+              meetingPoint: 'За адресою (Саарланд / Трір / Люксембург)',
+              userName: firstName,
+              userHandle: username,
+              phone,
+              userId,
+            });
             continue;
           }
 
-          // 2A. Handle 1-click native Telegram Group/Channel Picker (msg.chat_shared from request_chat button)
-          if (msg.chat_shared) {
+          // Handle client written feedback or question if in waiting_feedback mode
+          if (session.mode === 'waiting_feedback' && text && !text.startsWith('/')) {
+            const firstName = msg.from?.first_name || 'Мандрівник';
+            const username = msg.from?.username ? `@${msg.from.username}` : firstName;
+            chatSessions[chatId] = { mode: null };
+
+            await sendCleanBotMessage(chatId, {
+              parse_mode: 'HTML',
+              text:
+                `✅ <b>Дякуємо за ваше повідомлення, ${firstName}!</b> ⭐\n\n` +
+                `Ваш відгук / запитання передано організатору клубу <b>SVOI Travel</b>.`,
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '❓ Назад до Частих питань', callback_data: 'cb_faq' }],
+                  [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+                ],
+              },
+            });
+
+            await recordAndNotifyLead({
+              type: 'feedback',
+              tripTitle: 'Відгук / Питання з бота',
+              userName: firstName,
+              userHandle: username,
+              userId,
+              text,
+            });
+            continue;
+          }
+
+          // 2A. Handle 1-click native Telegram Group/Channel Picker (msg.chat_shared from request_chat button) — Admin only
+          if (isAdmin && msg.chat_shared) {
             const sharedChatId = String(msg.chat_shared.chat_id);
             const reqId = msg.chat_shared.request_id;
             const sharedTitle = msg.chat_shared.title || (reqId === 702 ? 'Канал SVOI' : 'Група SVOI Travel');
@@ -1420,9 +1867,9 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
-          // Check if user forwarded a post from their private channel or group
+          // Check if Admin forwarded a post from their private channel or group
           const fwdChat = msg.forward_origin?.chat || msg.forward_from_chat;
-          if (fwdChat && (fwdChat.type === 'channel' || fwdChat.type === 'supergroup' || fwdChat.type === 'group')) {
+          if (isAdmin && fwdChat && (fwdChat.type === 'channel' || fwdChat.type === 'supergroup' || fwdChat.type === 'group')) {
             if (fwdChat.type === 'channel' && session.mode !== 'waiting_group_id') {
               currentChannelTarget = String(fwdChat.id);
               saveTargetsToDisk();
@@ -1454,8 +1901,8 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
-          // Handle Admin Car Photo or URL upload
-          if (session.mode === 'waiting_car_photo') {
+          // Handle Admin Car Photo or URL upload (ONLY Admin!)
+          if (isAdmin && session.mode === 'waiting_car_photo') {
             const slot = session.carPhotoSlot || '1';
             let newCarPhoto = '';
             if (msg.photo && msg.photo.length > 0) {
@@ -1473,13 +1920,14 @@ async function startLiveTelegramBotPolling() {
                 false,
                 slot,
                 `✅ <b>Реальне фото авто (Слот №${slot}) успішно збережено!</b> 🎉`,
+                true,
               );
               continue;
             }
           }
 
-          // Handle Admin Poster Photo or URL upload
-          if (session.mode === 'waiting_admin_poster' && session.tripId) {
+          // Handle Admin Poster Photo or URL upload (ONLY Admin!)
+          if (isAdmin && session.mode === 'waiting_admin_poster' && session.tripId) {
             const targetTripId = session.tripId;
             let newPoster = '';
             if (msg.photo && msg.photo.length > 0) {
@@ -1491,19 +1939,19 @@ async function startLiveTelegramBotPolling() {
               livePosterOverride[targetTripId] = newPoster;
               saveTargetsToDisk();
               chatSessions[chatId] = { mode: null };
-              await sendTourCardToChat(chatId, null, false, targetTripId, userId);
+              await sendTourCardToChat(chatId, null, false, targetTripId, userId, usernameRaw);
               continue;
             }
           }
 
-          // Smart handler: if user sends ANY photo in private chat without pressing a button first, offer to set it as Car Photo 1..4 in 1 click!
-          if (chatType === 'private' && msg.photo && msg.photo.length > 0) {
+          // Smart handler: if ADMIN sends ANY photo in private chat without pressing a button first, offer to set it as Car Photo 1..4 in 1 click!
+          if (isAdmin && chatType === 'private' && msg.photo && msg.photo.length > 0) {
             const fileId = msg.photo[msg.photo.length - 1].file_id;
             chatSessions[chatId] = { mode: null, pendingPhotoFileId: fileId };
             await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
               text:
-                `📸 <b>Ваше реальне фото отримано!</b> ✨\n\n` +
+                `📸 <b>[Адмін] Ваше реальне фото отримано!</b> ✨\n\n` +
                 `Куди встановити це фото в розділі <b>«🚐 Наше авто (Opel Vivaro)»</b>? Натисніть на потрібний слот нижче:`,
               reply_markup: {
                 inline_keyboard: [
@@ -1518,23 +1966,43 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
-          // Handle Admin Date text input
-          if (session.mode === 'waiting_admin_date' && session.tripId && text) {
+          // Handle Admin Date text input (ONLY Admin!)
+          if (isAdmin && session.mode === 'waiting_admin_date' && session.tripId && text) {
             const targetTripId = session.tripId;
             liveDateOverride[targetTripId] = text;
             saveTargetsToDisk();
             chatSessions[chatId] = { mode: null };
-            await sendTourCardToChat(chatId, null, false, targetTripId, userId);
+            await sendTourCardToChat(chatId, null, false, targetTripId, userId, usernameRaw);
             continue;
           }
 
-          // 2B. Smart handler if user sends a Telegram link (https://t.me/...) or numeric -100... ID in private chat!
+          // Handle Admin Giveaway Date text input (ONLY Admin!)
+          if (isAdmin && session.mode === 'waiting_gw_date' && text && !text.startsWith('/')) {
+            activeGiveaway.drawDate = text;
+            saveTargetsToDisk();
+            chatSessions[chatId] = { mode: null };
+            const sentAdmMsg: any = await sendCleanBotMessage(chatId, {
+              parse_mode: 'HTML',
+              text:
+                `✅ <b>Нову дату розіграшу збережено:</b> <code>${activeGiveaway.drawDate}</code>\n\n` +
+                getAdminGiveawayCardText(),
+              reply_markup: getAdminGiveawayCardMarkup(),
+            });
+            if (sentAdmMsg && sentAdmMsg.ok && sentAdmMsg.result) {
+              activeGiveaway.admin_chat_id = chatId;
+              activeGiveaway.admin_msg_id = sentAdmMsg.result.message_id;
+            }
+            continue;
+          }
+
+          // 2B. Smart handler if ADMIN sends a Telegram link (https://t.me/...) or numeric -100... ID in private chat!
           if (
+            isAdmin &&
             chatType === 'private' &&
             session.mode !== 'waiting_gw_prize' &&
+            session.mode !== 'waiting_gw_date' &&
             (text.includes('t.me/') || text.startsWith('-100') || (session.mode === 'waiting_group_id' && text.startsWith('@')))
           ) {
-            // Case 1: Link to a message inside a private group/supergroup: https://t.me/c/1234567890/15 -> chat_id is -1001234567890
             const privatePostMatch = text.match(/t\.me\/c\/(\d+)/i);
             if (privatePostMatch) {
               const extractedId = `-100${privatePostMatch[1]}`;
@@ -1557,7 +2025,6 @@ async function startLiveTelegramBotPolling() {
               continue;
             }
 
-            // Case 2: Private invite link https://t.me/+... or https://t.me/joinchat/...
             if (text.includes('t.me/+') || text.includes('joinchat/')) {
               chatSessions[chatId] = { mode: null, pendingGroupAction: 'publish_giveaway' };
               await sendCleanBotMessage(chatId, {
@@ -1588,7 +2055,6 @@ async function startLiveTelegramBotPolling() {
               continue;
             }
 
-            // Case 3: Public group/channel link https://t.me/groupname or @groupname or -100...
             let normalizedTarget = text;
             const publicLinkMatch = text.match(/t\.me\/([a-zA-Z0-9_]{4,})/i);
             if (publicLinkMatch) {
@@ -1625,14 +2091,38 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
+          if (text.startsWith('/admin')) {
+            delete adminClientPreviewMode[userId];
+            delete adminClientPreviewMode[chatId];
+            registerAdminChat(chatId);
+            chatSessions[chatId] = { mode: null };
+            const grpStatus = currentGroupTarget
+              ? `<code>${currentGroupTarget}</code> (${currentGroupTitle}) ✅`
+              : `<i>ще не прив'язана</i>`;
+            await sendCleanBotMessage(chatId, {
+              parse_mode: 'HTML',
+              text:
+                `👑 <b>Адмін-панель клубу SVOI Travel</b>\n\n` +
+                `📋 <b>Усього заявок клієнтів у базі:</b> <b>${savedLeads.length}</b>\n` +
+                `👥 <b>Цільова ГРУПА:</b> ${grpStatus}\n` +
+                `📢 <b>Цільовий КАНАЛ:</b> <code>${currentChannelTarget}</code>\n` +
+                `🎁 <b>Поточний розіграш:</b> <b>${activeGiveaway.prize}</b>\n` +
+                `📅 <b>Дата розіграшу:</b> <code>${activeGiveaway.drawDate}</code>`,
+              reply_markup: getChannelAdminMarkup(),
+            });
+            continue;
+          }
+
           if (text.startsWith('/start') || text.startsWith('/menu')) {
+            delete adminClientPreviewMode[userId];
+            delete adminClientPreviewMode[chatId];
             chatSessions[chatId] = { mode: null };
             const startArg = text.startsWith('/start ') ? text.slice(7).trim() : '';
             if (startArg.startsWith('tour_')) {
               const targetTripId = startArg.replace(/^tour_/, '');
               const found = TRIPS_LIST.find((t) => t.id === targetTripId);
               if (found) {
-                await sendTourCardToChat(chatId, null, false, found.id, userId);
+                await sendTourCardToChat(chatId, null, false, found.id, userId, usernameRaw);
                 continue;
               }
             }
@@ -1647,13 +2137,22 @@ async function startLiveTelegramBotPolling() {
             await sendCleanBotMessage(chatId, {
               text: WELCOME_HTML,
               parse_mode: 'HTML',
-              reply_markup: getMainMenuMarkup(userId),
+              reply_markup: getMainMenuMarkup(userId, usernameRaw, chatId),
             });
             continue;
           }
 
-          if (text.startsWith('/channel') || text.startsWith('/giveaway')) {
+          if (isAdmin && (text.startsWith('/channel') || text.startsWith('/giveaway') || text.startsWith('/leads'))) {
             chatSessions[chatId] = { mode: null };
+            if (text.startsWith('/leads')) {
+              const view = getAdminLeadsListView(0);
+              await sendCleanBotMessage(chatId, {
+                parse_mode: 'HTML',
+                text: view.text,
+                reply_markup: view.markup,
+              });
+              continue;
+            }
             const sentAdm: any = await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
               text: getAdminGiveawayCardText(),
@@ -1666,7 +2165,7 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
-          if (session.mode === 'waiting_channel_id' && text) {
+          if (isAdmin && session.mode === 'waiting_channel_id' && text) {
             chatSessions[chatId] = { mode: null };
             currentChannelTarget = text;
             saveTargetsToDisk();
@@ -1678,7 +2177,7 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
-          if (session.mode === 'waiting_group_id' && text) {
+          if (isAdmin && session.mode === 'waiting_group_id' && text) {
             chatSessions[chatId] = { mode: null };
             currentGroupTarget = text;
             saveTargetsToDisk();
@@ -1691,12 +2190,13 @@ async function startLiveTelegramBotPolling() {
           }
 
           // When Admin creates a new giveaway: publish the Giveaway Card IN THE ADMIN PANEL FIRST!
-          if (session.mode === 'waiting_gw_prize' && text) {
+          if (isAdmin && session.mode === 'waiting_gw_prize' && text) {
             chatSessions[chatId] = { mode: null };
             activeGiveaway.prize = text;
             activeGiveaway.participants = [];
             activeGiveaway.winner = null;
             activeGiveaway.is_active = true;
+            saveTargetsToDisk();
 
             const sentAdmMsg: any = await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
@@ -1715,6 +2215,8 @@ async function startLiveTelegramBotPolling() {
           const msgId: number | undefined = cb.message?.message_id;
           const hasPhoto = Boolean(cb.message?.photo);
           const userId: number = cb.from?.id || 0;
+          const usernameRaw: string | undefined = cb.from?.username;
+          const isAdmin = isAdminUser(userId, usernameRaw, chatId);
           const cbData: string = cb.data || '';
 
           // Auto-capture group ID if callback was clicked inside a group/supergroup
@@ -1740,6 +2242,7 @@ async function startLiveTelegramBotPolling() {
                 username: cb.from?.username ? `@${cb.from.username}` : cb.from?.first_name || 'Учасник',
                 first_name: cb.from?.first_name || 'Мандрівник',
               });
+              saveTargetsToDisk();
             }
             const count = activeGiveaway.participants.length;
             await tgApi('answerCallbackQuery', {
@@ -1749,13 +2252,23 @@ async function startLiveTelegramBotPolling() {
                 : `🎉 Вітаємо, ${cb.from?.first_name || 'Мандрівник'}! Ви успішно зареєстровані в розіграші! Ваш номер: #${count}`,
               show_alert: true,
             });
-            // Update the counter on the public Group/Channel message
+            // Update the counter on the client giveaway screen OR public Group/Channel message
             if (chatId && msgId) {
-              await tgApi('editMessageReplyMarkup', {
-                chat_id: chatId,
-                message_id: msgId,
-                reply_markup: getPublicGiveawayMarkup(count),
-              });
+              if (cbData === 'gw_join_client') {
+                await smartEditMessage(
+                  chatId,
+                  msgId,
+                  hasPhoto,
+                  getClientGiveawayText(),
+                  getClientGiveawayMarkup(isAdmin),
+                );
+              } else {
+                await tgApi('editMessageReplyMarkup', {
+                  chat_id: chatId,
+                  message_id: msgId,
+                  reply_markup: getPublicGiveawayMarkup(count),
+                });
+              }
             }
             // Also live-update the Admin Panel Giveaway Card if open
             if (activeGiveaway.admin_chat_id && activeGiveaway.admin_msg_id) {
@@ -1779,7 +2292,106 @@ async function startLiveTelegramBotPolling() {
 
           if (cbData === 'cb_back') {
             chatSessions[chatId] = { mode: null };
-            await smartEditMessage(chatId, msgId, hasPhoto, WELCOME_HTML, getMainMenuMarkup(userId));
+            await smartEditMessage(chatId, msgId, hasPhoto, WELCOME_HTML, getMainMenuMarkup(userId, usernameRaw, chatId));
+          } else if (cbData === 'cb_giveaway') {
+            // Client-facing Giveaway Screen: view draw dates, prize, winner, and participate!
+            chatSessions[chatId] = { mode: null };
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              getClientGiveawayText(),
+              getClientGiveawayMarkup(isAdmin),
+            );
+          } else if (cbData === 'cb_notif_open_leads') {
+            // Clicked on a PERMANENT Admin Lead Notification message:
+            // Do NOT edit/delete the notification message (`msgId`)! Open the Leads list in a separate clean menu message!
+            chatSessions[chatId] = { mode: null };
+            const view = getAdminLeadsListView(0);
+            await sendCleanBotMessage(chatId, {
+              parse_mode: 'HTML',
+              text: view.text,
+              reply_markup: view.markup,
+            });
+          } else if (cbData === 'cb_adm_leads' || cbData.startsWith('cb_adm_leads_p_')) {
+            if (!isAdmin) continue;
+            chatSessions[chatId] = { mode: null };
+            const page = cbData.startsWith('cb_adm_leads_p_') ? parseInt(cbData.replace('cb_adm_leads_p_', ''), 10) || 0 : 0;
+            const view = getAdminLeadsListView(page);
+            await smartEditMessage(chatId, msgId, hasPhoto, view.text, view.markup);
+          } else if (cbData.startsWith('cb_adm_lead_item_')) {
+            if (!isAdmin) continue;
+            const idx = parseInt(cbData.replace('cb_adm_lead_item_', ''), 10) || 0;
+            const lead = savedLeads[idx];
+            if (!lead) {
+              const view = getAdminLeadsListView(0);
+              await smartEditMessage(chatId, msgId, hasPhoto, view.text, view.markup);
+              continue;
+            }
+            const cleanHandle = lead.userHandle.startsWith('@') ? lead.userHandle.slice(1) : '';
+            const contactUrl = cleanHandle
+              ? `https://t.me/${cleanHandle}`
+              : lead.userId > 0
+                ? `tg://user?id=${lead.userId}`
+                : 'https://t.me/SVOI_travel_admin';
+
+            const statusLabel =
+              lead.status === 'confirmed'
+                ? '✅ Підтверджена'
+                : lead.status === 'archived'
+                  ? '🗄 В архіві'
+                  : '🟢 Нова заявка';
+
+            const detailText =
+              `📋 <b>КАРТКА ЗАЯВКИ КЛІЄНТА #${lead.bookingCode || idx + 1}</b>\n\n` +
+              `📊 <b>Статус:</b> ${statusLabel}\n` +
+              `👤 <b>Ім'я клієнта:</b> <b>${lead.userName}</b>\n` +
+              `🔗 <b>Telegram:</b> ${lead.userHandle}\n` +
+              (lead.phone ? `📱 <b>Телефон:</b> <code>${lead.phone}</code>\n` : '') +
+              (lead.tripTitle ? `🗺 <b>Напрямок:</b> ${lead.tripTitle}\n` : '') +
+              (lead.seatType ? `💺 <b>Обране місце:</b> <code>${lead.seatType}</code>\n` : '') +
+              (lead.totalCost !== undefined ? `💶 <b>Сума:</b> <code>${lead.totalCost}€</code>\n` : '') +
+              (lead.meetingPoint ? `📍 <b>Точка збору:</b> ${lead.meetingPoint}\n` : '') +
+              (lead.text ? `📝 <b>Повідомлення:</b> <i>${lead.text}</i>\n` : '') +
+              `🕒 <b>Час подачі:</b> ${lead.timestamp}`;
+
+            await smartEditMessage(chatId, msgId, hasPhoto, detailText, {
+              inline_keyboard: [
+                [{ text: `💬 Написати клієнту (${lead.userName})`, url: contactUrl }],
+                [
+                  { text: '✅ Позначити: Підтверджено', callback_data: `cb_adm_lead_st_${idx}_confirmed` },
+                  { text: '🗄 В архів', callback_data: `cb_adm_lead_st_${idx}_archived` },
+                ],
+                [
+                  { text: '📋 До списку всіх заявок', callback_data: 'cb_adm_leads' },
+                  { text: '👑 В Адмін-панель', callback_data: 'cb_admin_panel' },
+                ],
+              ],
+            });
+          } else if (cbData.startsWith('cb_adm_lead_st_')) {
+            if (!isAdmin) continue;
+            const parts = cbData.replace('cb_adm_lead_st_', '').split('_');
+            const idx = parseInt(parts[0], 10) || 0;
+            const newSt = (parts[1] as PersistedLeadItem['status']) || 'confirmed';
+            if (savedLeads[idx]) {
+              savedLeads[idx].status = newSt;
+              saveTargetsToDisk();
+            }
+            const view = getAdminLeadsListView(Math.floor(idx / 6));
+            await smartEditMessage(chatId, msgId, hasPhoto, view.text, view.markup);
+          } else if (cbData === 'cb_adm_preview_client') {
+            adminClientPreviewMode[userId] = true;
+            adminClientPreviewMode[chatId] = true;
+            chatSessions[chatId] = { mode: null };
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `👁 <b>Увімкнено режим перегляду очима клієнта!</b>\n` +
+                `<i>Зараз усі адмін-кнопки приховані (саме так бота бачать звичайні клієнти). Щоб повернутися в режим Адміна, надішліть команду <code>/admin</code> або <code>/start</code>.</i>\n\n` +
+                WELCOME_HTML,
+              getMainMenuMarkup(userId, usernameRaw, chatId),
+            );
           } else if (cbData === 'cb_trips') {
             chatSessions[chatId] = { mode: null };
             const headerText =
@@ -1822,7 +2434,7 @@ async function startLiveTelegramBotPolling() {
             await smartEditMessage(chatId, msgId, hasPhoto, headerText, getTripsCatalogMarkup('trip_'));
           } else if (cbData.startsWith('trip_')) {
             const tripId = cbData.replace('trip_', '');
-            await sendTourCardToChat(chatId, msgId, hasPhoto, tripId, userId);
+            await sendTourCardToChat(chatId, msgId, hasPhoto, tripId, userId, usernameRaw);
           } else if (cbData === 'cb_book') {
             const bookText =
               `💺 <b>Крок 1 із 3: Спочатку оберіть тур для бронювання місця</b> 🗺✨\n\n` +
@@ -1983,20 +2595,6 @@ async function startLiveTelegramBotPolling() {
             const firstName = cb.from?.first_name || 'Мандрівник';
             const username = cb.from?.username ? `@${cb.from.username}` : firstName;
 
-            await notifyAllAdmins(
-              {
-                parse_mode: 'HTML',
-                text:
-                  `🔥 <b>НОВА БРОНЬ У 2 КЛІКИ #${bookingCode}!</b>\n\n` +
-                  `🗺 <b>Напрямок:</b> ${flag} ${tripTitle} | ${dateStr}\n` +
-                  `💺 <b>Обране місце:</b> <code>${selectedSeat.label}</code>\n` +
-                  `💶 <b>Сума:</b> <code>${totalCost}€</code>\n` +
-                  `👤 <b>Клієнт:</b> ${firstName} (${username})`,
-              },
-              undefined,
-              chatId,
-            );
-
             const doneText =
               `🎉 <b>ЗАЯВКУ #${bookingCode} ПРИЙНЯТО!</b>\n\n` +
               `Дякуємо, <b>${firstName}</b>! Ваше бронювання в клубі <b>SVOI</b> зафіксовано в 2 кліки.\n\n` +
@@ -2006,20 +2604,38 @@ async function startLiveTelegramBotPolling() {
               `• 💶 <b>До оплати:</b> <code>${totalCost}€</code>\n\n` +
               `<blockquote>🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Менеджер клубу зв'яжеться з вами для уточнення адреси виїзду.</blockquote>`;
 
+            // First clean up client's old messages (including the temporary contact keyboard message)
             await smartEditMessage(chatId, msgId, hasPhoto, doneText, {
               inline_keyboard: [
                 [{ text: '🗺 Інші напрямки та дати', callback_data: 'cb_trips' }],
                 [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
               ],
             });
+
+            // Then record the lead permanently AND send permanent non-deletable message to Admin!
+            await recordAndNotifyLead({
+              bookingCode,
+              type: 'booking',
+              tripTitle: `${flag} ${tripTitle} | ${dateStr}`,
+              duration: trip?.duration || '1 день',
+              seatType: selectedSeat.label,
+              basePrice: price,
+              seatFee: selectedSeat.fee,
+              totalCost,
+              meetingPoint: 'За адресою (Саарланд / Трір / Люксембург)',
+              userName: firstName,
+              userHandle: username,
+              userId,
+            });
           } else if (cbData.startsWith('adm_seats_')) {
+            if (!isAdmin) continue;
             const tripId = cbData.replace('adm_seats_', '');
             const trip = TRIPS_LIST.find((t) => t.id === tripId);
             const cur = getLiveFreeSeats(tripId);
             const minusVal = Math.max(0, cur - 1);
             const plusVal = Math.min(8, cur + 1);
             const seatsText =
-              `⚙️ <b>Керування місцями: ${trip?.shortTitle || tripId}</b>\n\n` +
+              `⚙️ <b>Керування місцями [Адмін]: ${trip?.shortTitle || tripId}</b>\n\n` +
               `Поточна кількість вільних місць: <code>${cur} з 8</code>\n\n` +
               `<blockquote>Оберіть нове значення (від 0 до 8) або натисніть +1 / -1:</blockquote>`;
             const seatsMarkup = {
@@ -2045,13 +2661,16 @@ async function startLiveTelegramBotPolling() {
             };
             await smartEditMessage(chatId, msgId, hasPhoto, seatsText, seatsMarkup);
           } else if (cbData.startsWith('set_seats_')) {
+            if (!isAdmin) continue;
             const rest = cbData.replace('set_seats_', '');
             const lastIdx = rest.lastIndexOf('_');
             const tripId = rest.substring(0, lastIdx);
             const count = parseInt(rest.substring(lastIdx + 1), 10);
             liveSeatsOverride[tripId] = count;
-            await sendTourCardToChat(chatId, msgId, hasPhoto, tripId, userId);
+            saveTargetsToDisk();
+            await sendTourCardToChat(chatId, msgId, hasPhoto, tripId, userId, usernameRaw);
           } else if (cbData.startsWith('adm_date_')) {
+            if (!isAdmin) continue;
             const tripId = cbData.replace('adm_date_', '');
             const trip = TRIPS_LIST.find((t) => t.id === tripId);
             const curDate = getLiveTripDate(tripId, trip?.departureDates);
@@ -2070,6 +2689,7 @@ async function startLiveTelegramBotPolling() {
               ],
             });
           } else if (cbData.startsWith('adm_poster_')) {
+            if (!isAdmin) continue;
             const tripId = cbData.replace('adm_poster_', '');
             const trip = TRIPS_LIST.find((t) => t.id === tripId);
             chatSessions[chatId] = { mode: 'waiting_admin_poster', tripId };
@@ -2085,30 +2705,34 @@ async function startLiveTelegramBotPolling() {
                 ],
               ],
             });
-          } else if (cbData === 'cb_adm_channel_menu') {
+          } else if (cbData === 'cb_admin_panel' || cbData === 'cb_adm_channel_menu') {
+            if (!isAdmin) continue;
             chatSessions[chatId] = { mode: null };
             const grpStatus = currentGroupTarget
               ? `<code>${currentGroupTarget}</code> (${currentGroupTitle}) ✅`
-              : `<i>ще не прив'язана (натисніть «⚙️ Прив’язати ГРУПУ» нижче)</i>`;
+              : `<i>ще не прив'язана (натисніть «⚙️ Обрати ГРУПУ» нижче)</i>`;
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `👑 <b>Адмін-панель: Розіграші, Група та Канал SVOI Travel</b>\n\n` +
+              `👑 <b>Адмін-панель SVOI Travel (Заявки / Розіграш / Фото авто)</b>\n\n` +
+                `📋 <b>Усього заявок клієнтів у базі:</b> <b>${savedLeads.length}</b>\n` +
                 `👥 <b>Цільова ГРУПА:</b> ${grpStatus}\n` +
                 `📢 <b>Цільовий КАНАЛ:</b> <code>${currentChannelTarget}</code>\n` +
                 `🎁 <b>Поточний розіграш:</b> <b>${activeGiveaway.prize}</b>\n` +
+                `📅 <b>Дата розіграшу:</b> <code>${activeGiveaway.drawDate}</code>\n` +
                 `🙋‍♂️ <b>Учасників:</b> <b>${activeGiveaway.participants.length}</b>\n` +
                 (activeGiveaway.winner
                   ? `🏆 <b>Обраний переможець:</b> <b>${activeGiveaway.winner.first_name} (${activeGiveaway.winner.username})</b>\n\n`
                   : `\n`) +
-                `<blockquote>💡 <b>Як це працює:</b>\n` +
-                `1️⃣ Спочатку бот створює та показує картку розіграшу <b>тут у вашій адмінці</b>.\n` +
-                `2️⃣ Натисніть <b>«👥 Поділитися в ГРУПІ»</b> — і бот опублікує розіграш напряму у вашій групі.\n` +
-                `3️⃣ Коли всі учасники візьмуть участь, натисніть <b>«🏆 Вибрати переможця розіграшу»</b> і кнопкою <b>«👥 Поділитися переможцем у ГРУПІ»</b> опублікуйте результат розіграшу в групі напряму!</blockquote>`,
+                `<blockquote>💡 <b>Можливості Адміністратора:</b>\n` +
+                `• <b>Список заявок клієнтів:</b> усі броні зберігаються назавжди, а повідомлення про нові заявки не видаляються з вашого чату.\n` +
+                `• <b>Розіграш:</b> публікувати пост розіграшу та результати в групу можете тільки ви (клієнти лише переглядають дати й переможця).\n` +
+                `• <b>Фото авто:</b> завантажувати та змінювати фото Opel Vivaro можете тільки ви.</blockquote>`,
               getChannelAdminMarkup(),
             );
           } else if (cbData === 'cb_adm_gw_card') {
+            if (!isAdmin) continue;
             chatSessions[chatId] = { mode: null };
             activeGiveaway.admin_chat_id = chatId;
             activeGiveaway.admin_msg_id = msgId;
@@ -2120,6 +2744,7 @@ async function startLiveTelegramBotPolling() {
               getAdminGiveawayCardMarkup(),
             );
           } else if (cbData === 'cb_adm_gw_new') {
+            if (!isAdmin) continue;
             chatSessions[chatId] = { mode: 'waiting_gw_prize' };
             await smartEditMessage(
               chatId,
@@ -2132,13 +2757,44 @@ async function startLiveTelegramBotPolling() {
               {
                 inline_keyboard: [
                   [{ text: '👑 Відкрити вже готовий розіграш в адмінці', callback_data: 'cb_adm_gw_card' }],
-                  [{ text: '🔙 Назад в адмін-меню', callback_data: 'cb_adm_channel_menu' }],
+                  [{ text: '🔙 Назад в адмін-меню', callback_data: 'cb_admin_panel' }],
                 ],
               },
             );
+          } else if (cbData === 'cb_adm_gw_date') {
+            if (!isAdmin) continue;
+            chatSessions[chatId] = { mode: 'waiting_gw_date' };
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `📅 <b>Зміна дати проведення розіграшу [Адмін]</b>\n\n` +
+                `Поточна дата (яку бачать клієнти): <code>${activeGiveaway.drawDate}</code>\n\n` +
+                `<blockquote>Напишіть у відповідь нову дату та час розіграшу (наприклад: <code>Неділя, 8 листопада о 20:00</code>):</blockquote>`,
+              {
+                inline_keyboard: [
+                  [{ text: '🔙 Назад до картки розіграшу', callback_data: 'cb_adm_gw_card' }],
+                ],
+              },
+            );
+          } else if (cbData === 'cb_adm_gw_restart') {
+            if (!isAdmin) continue;
+            activeGiveaway.is_active = true;
+            activeGiveaway.winner = null;
+            saveTargetsToDisk();
+            await smartEditMessage(
+              chatId,
+              msgId,
+              hasPhoto,
+              `🔄 <b>Розіграш знову активовано! Переможця скинуто, набір учасників відкритий.</b>\n\n` +
+                getAdminGiveawayCardText(),
+              getAdminGiveawayCardMarkup(),
+            );
           } else if (cbData === 'cb_adm_gw_share_group' || cbData === 'cb_adm_gw_share_channel') {
+            if (!isAdmin) continue;
             const isGroup = cbData === 'cb_adm_gw_share_group';
             activeGiveaway.is_active = true;
+            saveTargetsToDisk();
             const count = activeGiveaway.participants.length;
             const publicText = getPublicGiveawayText(activeGiveaway.prize, count);
             const publicMarkup = getPublicGiveawayMarkup(count);
@@ -2195,6 +2851,7 @@ async function startLiveTelegramBotPolling() {
                 activeGiveaway.group_chat_id = pubRes.result.chat.id;
                 activeGiveaway.group_msg_id = pubRes.result.message_id;
               }
+              saveTargetsToDisk();
               await smartEditMessage(
                 chatId,
                 msgId,
@@ -2227,8 +2884,9 @@ async function startLiveTelegramBotPolling() {
           ) {
             chatSessions[chatId] = { mode: null };
             const slot = cbData.startsWith('cb_car_photo_') ? cbData.replace('cb_car_photo_', '') : '1';
-            await sendCarCardToChat(chatId, msgId, hasPhoto, slot);
+            await sendCarCardToChat(chatId, msgId, hasPhoto, slot, '', isAdmin);
           } else if (cbData.startsWith('cb_adm_car_upload_')) {
+            if (!isAdmin) continue;
             const slot = cbData.replace('cb_adm_car_upload_', '') || '1';
             const slotMeta = DEFAULT_CAR_PHOTOS[slot] || DEFAULT_CAR_PHOTOS['1'];
             chatSessions[chatId] = { mode: 'waiting_car_photo', carPhotoSlot: slot };
@@ -2236,10 +2894,10 @@ async function startLiveTelegramBotPolling() {
               chatId,
               msgId,
               hasPhoto,
-              `📥 <b>Завантаження реального фото авто — Слот №${slot} (${slotMeta.shortLabel})</b>\n\n` +
+              `📥 <b>[Адмін] Завантаження реального фото авто — Слот №${slot} (${slotMeta.shortLabel})</b>\n\n` +
                 `👉 <b>Просто надішліть у цей чат реальне фото вашого Opel Vivaro</b> з галереї телефону або комп'ютера (як звичайну фотографію в Telegram)!\n\n` +
                 `<i>Також можна надіслати пряме посилання на фото (https://...).</i>\n\n` +
-                `Бот автоматично збереже ваше фото і одразу покаже його в розділі «🚐 Фото авто»!`,
+                `Бот автоматично збереже ваше фото і одразу покаже його клієнтам у розділі «🚐 Фото авто»!`,
               {
                 inline_keyboard: [
                   [{ text: '🔙 Назад до Фото авто', callback_data: `cb_car_photo_${slot}` }],
@@ -2247,6 +2905,7 @@ async function startLiveTelegramBotPolling() {
               },
             );
           } else if (cbData.startsWith('cb_adm_car_reset_')) {
+            if (!isAdmin) continue;
             const slot = cbData.replace('cb_adm_car_reset_', '') || '1';
             delete liveCarPhotos[slot];
             saveTargetsToDisk();
@@ -2257,8 +2916,10 @@ async function startLiveTelegramBotPolling() {
               hasPhoto,
               slot,
               `🔄 <b>Фото №${slot} повернуто до стандартного зображення.</b>`,
+              isAdmin,
             );
           } else if (cbData.startsWith('cb_set_pending_car_')) {
+            if (!isAdmin) continue;
             const slot = cbData.replace('cb_set_pending_car_', '') || '1';
             const pendingId = chatSessions[chatId]?.pendingPhotoFileId;
             if (pendingId) {
@@ -2271,13 +2932,15 @@ async function startLiveTelegramBotPolling() {
                 hasPhoto,
                 slot,
                 `✅ <b>Реальне фото авто успішно встановлено у Слот №${slot}!</b> 🎉`,
+                isAdmin,
               );
             } else {
-              await sendCarCardToChat(chatId, msgId, hasPhoto, slot);
+              await sendCarCardToChat(chatId, msgId, hasPhoto, slot, '', isAdmin);
             }
-          } else if (cbData === 'cb_meeting') {
+          } else if (cbData === 'cb_meeting' || cbData === 'cb_faq_pickup') {
+            // "Точки збору (Door-to-Door)" inside "❓ Часті питання (FAQ)"
             const meetingText =
-              `📍 <b>Точки збору та адресний виїзд (Door-to-Door)</b> 🚐🏠\n\n` +
+              `📍 <b>Часті питання: Точки збору та адресний виїзд (Door-to-Door)</b> 🚐🏠\n\n` +
               `Головна перевага клубу <b>SVOI</b> — вам не потрібно добиратися вночі на вокзал! Ми працюємо у форматі <b>«від під'їзду до під'їзду»</b>:\n\n` +
               `🟢 <b>Основний регіон адресного збору (Door-to-Door):</b>\n` +
               `• 🇩🇪 <b>Саарланд (Saarland):</b> Саарбрюккен, Фьольклінген, Саарлуї, Мерциг, Санкт-Вендель, Нойнкірхен, Гомбург\n` +
@@ -2285,20 +2948,9 @@ async function startLiveTelegramBotPolling() {
               `• 🇱🇺 <b>Люксембург (Luxembourg):</b> столиця та міста вздовж маршруту\n\n` +
               `🟡 <b>Додаткова підсадка (для компаній від 4-х осіб за маршрутом):</b>\n` +
               `• Кайзерслаутерн, Мангейм, Карлсруе, Страсбург, Франкфурт (узгоджується індивідуально)\n\n` +
-              `<blockquote>⏰ За день до виїзду водій створює спільний чат групи в Telegram, надсилає геолокацію авто та точний час подачі до вашого дому!</blockquote>`;
-            await smartEditMessage(chatId, msgId, hasPhoto, meetingText, {
-              inline_keyboard: [
-                [
-                  { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
-                  { text: '💺 Забронювати місце', callback_data: 'cb_book' },
-                ],
-                [
-                  { text: '🚐 Фото авто (Opel Vivaro)', callback_data: 'cb_car' },
-                  { text: '❓ Часті питання (FAQ)', callback_data: 'cb_faq' },
-                ],
-                [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
-              ],
-            });
+              `<blockquote>⏰ За день до виїзду водій створює спільний чат групи в Telegram, надсилає геолокацію авто та точний час подачі до вашого дому!</blockquote>\n\n` +
+              `👇 <b>Інші теми у розділі Часті питання (FAQ):</b>`;
+            await smartEditMessage(chatId, msgId, hasPhoto, meetingText, getFaqMarkup());
           } else if (cbData === 'cb_reviews') {
             const reviewsText =
               `⭐ <b>Відгуки туристів клубу SVOI Travel</b> 💬✨\n\n` +
@@ -2320,25 +2972,14 @@ async function startLiveTelegramBotPolling() {
             });
           } else if (cbData === 'cb_faq') {
             const faqText =
-              `❓ <b>Часті питання про поїздки клубу SVOI (FAQ) — Оберіть розділ</b> 💡\n\n` +
+              `❓ <b>Часті питання про поїздки клубу SVOI (FAQ) та Точки збору</b> 💡\n\n` +
               `Ми зібрали детальні відповіді на всі питання про наші поїздки. Натисніть на будь-яку плашку нижче, щоб відкрити подробиці:\n\n` +
-              `• 📍 <b>Звідки виїзд (Door-to-Door):</b> забираємо за адресою по Саарланду, Тріру та Люксембургу\n` +
+              `• 📍 <b>Точки збору (Door-to-Door):</b> забираємо за адресою по Саарланду, Тріру та Люксембургу (плюс підсадка за маршрутом)\n` +
               `• 💳 <b>Оплата:</b> <code>0% передоплати</code> на всі одноденні тури (готель включено у 2–3 денні)\n` +
-              `• 🚐 <b>Автомобіль:</b> 8-місний <b>Opel Vivaro</b> з клімат-контролем та USB (з реальними фото авто!)\n` +
+              `• 🚐 <b>Автомобіль:</b> 8-місний <b>Opel Vivaro</b> з клімат-контролем та USB\n` +
               `• 💺 <b>Схема місць 1–8</b>, таймінг виїзду, багаж, поїздки з дітьми та скасування броні\n\n` +
               `👇 <b>Натисніть на потрібну тему нижче:</b>`;
             await smartEditMessage(chatId, msgId, hasPhoto, faqText, getFaqMarkup());
-          } else if (cbData === 'cb_faq_pickup') {
-            await smartEditMessage(
-              chatId,
-              msgId,
-              hasPhoto,
-              `📍 <b>Звідки виїзд? Адресний збір (Door-to-Door)</b> 🚐🏠\n\n` +
-                `• Ми забираємо та розвозимо пасажирів <b>прямо за домашньою адресою</b> у містах <b>Саарланду (Saarbrücken, Saarlouis, Völklingen, Merzig, St. Wendel, Homburg), Тріра (Trier) та Люксембургу</b>!\n` +
-                `• Для компаній <b>від 4-х осіб</b> можливий виїзд із Кайзерслаутерна, Мангейма, Карлсруе, Страсбурга або Франкфурта.\n` +
-                `• За день до поїздки водій надсилає точний час прибуття до вашого під'їзду.`,
-              getFaqMarkup(),
-            );
           } else if (cbData === 'cb_faq_payment') {
             await smartEditMessage(
               chatId,
@@ -2444,15 +3085,17 @@ async function startLiveTelegramBotPolling() {
               getFaqMarkup(),
             );
           } else if (cbData === 'cb_feedback') {
+            chatSessions[chatId] = { mode: 'waiting_feedback' };
             await smartEditMessage(
               chatId,
               msgId,
               hasPhoto,
-              `✍️ <b>Залишити відгук про поїздку з клубом SVOI</b> ⭐\n\n` +
-                `Ми цінуємо кожне ваше враження та фото з подорожей! Натисніть кнопку нижче, щоб надіслати свій відгук організатору або поділитися враженнями в нашій групі:`,
+              `✍️ <b>Залишити відгук або поставити питання</b> ⭐\n\n` +
+                `Напишіть ваш відгук або питання <b>прямо у відповідь у цей чат</b> — бот миттєво передасть його адміністратору!\n\n` +
+                `<i>Або натисніть кнопку нижче, щоб написати організатору напряму:</i>`,
               {
                 inline_keyboard: [
-                  [{ text: '💬 Надіслати відгук організатору (@SVOI_travel_admin)', url: 'https://t.me/SVOI_travel_admin' }],
+                  [{ text: '💬 Написати організатору (@SVOI_travel_admin)', url: 'https://t.me/SVOI_travel_admin' }],
                   [
                     { text: '⭐ Читати відгуки туристів', callback_data: 'cb_reviews' },
                     { text: '❓ Назад до FAQ', callback_data: 'cb_faq' },
@@ -2495,19 +3138,10 @@ async function startLiveTelegramBotPolling() {
             const trip = findTripById(tripId);
             const firstName = cb.from?.first_name || 'Мандрівник';
             const username = cb.from?.username ? `@${cb.from.username}` : firstName;
-            await notifyAllAdmins(
-              {
-                parse_mode: 'HTML',
-                text:
-                  `📋 <b>Новий запис у Лист очікування!</b>\n` +
-                  `🗺 <b>Тур:</b> ${trip?.shortTitle || tripId}\n` +
-                  `👤 <b>Клієнт:</b> ${firstName} (${username})`,
-              },
-              undefined,
-              chatId,
-            );
+            const wlCode = `WL-${Math.floor(1000 + Math.random() * 9000)}`;
+
             const wlText =
-              `✅ <b>Вас додано до листа очікування!</b> 📋✨\n\n` +
+              `✅ <b>Вас додано до листа очікування (#${wlCode})!</b> 📋✨\n\n` +
               `Напрямок: <b>${trip?.title || tripId}</b>\n` +
               `Як тільки звільниться місце або буде призначено додатковий виїзд — менеджер одразу повідомить вас!`;
             await smartEditMessage(chatId, msgId, hasPhoto, wlText, {
@@ -2516,29 +3150,36 @@ async function startLiveTelegramBotPolling() {
                 [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
               ],
             });
-          } else if (cbData === 'cb_adm_waitlist') {
-            const wlAdminText =
-              `📋 <b>Лист очікування пасажирів (SVOI Waitlist)</b>\n\n` +
-              `• <b>#1 | Париж</b> — Олександр Т. (@alex_traveler) • 2 місця\n` +
-              `• <b>#2 | Озеро Комо + Мілан</b> — Катерина М. (@kate_munich) • 3 місця\n\n` +
-              `<i>Нові заявки з листа очікування автоматично надходять у цей чат адміністратора.</i>`;
-            await smartEditMessage(chatId, msgId, hasPhoto, wlAdminText, {
-              inline_keyboard: [[{ text: '🔙 Назад в меню', callback_data: 'cb_back' }]],
+
+            await recordAndNotifyLead({
+              bookingCode: wlCode,
+              type: 'waitlist',
+              tripTitle: trip?.title || tripId,
+              userName: firstName,
+              userHandle: username,
+              userId,
             });
+          } else if (cbData === 'cb_adm_waitlist') {
+            if (!isAdmin) continue;
+            const view = getAdminLeadsListView(0);
+            await smartEditMessage(chatId, msgId, hasPhoto, view.text, view.markup);
           } else if (cbData === 'cb_adm_gw_pick') {
+            if (!isAdmin) continue;
             const pool =
               activeGiveaway.participants.length > 0 ? activeGiveaway.participants : DEFAULT_DEMO_PARTICIPANTS;
             const winner = pool[Math.floor(Math.random() * pool.length)];
             activeGiveaway.winner = winner;
             activeGiveaway.is_active = false;
+            saveTargetsToDisk();
 
             const previewCard =
               `👑 <b>ПЕРЕМОЖЦЯ РОЗІГРАШУ ОБРАНО!</b> 🏆🎉\n\n` +
               `🎁 <b>Приз:</b> ${activeGiveaway.prize}\n` +
+              `📅 <b>Дата розіграшу:</b> ${activeGiveaway.drawDate}\n` +
               `👥 <b>Усього брало участь:</b> ${pool.length} учасників\n\n` +
               `✨ <b>Переможцем стає:</b>\n` +
               `🥳 <b>${winner.first_name} (${winner.username})</b>! 🎉🎉🎉\n\n` +
-              `<blockquote>👇 Натисніть кнопку <b>«👥 Опублікувати результат розіграшу в ГРУПІ напряму»</b> нижче, щоб бот миттєво опублікував офіційний пост із переможцем прямо у вашій групі!</blockquote>`;
+              `<blockquote>👇 Натисніть кнопку <b>«👥 Опублікувати результат розіграшу в ГРУПІ напряму»</b> нижче, щоб бот миттєво опублікував офіційний пост із переможцем прямо у вашій групі! (Також клієнти вже бачать переможця в розділі «🎁 Розіграш»).</blockquote>`;
 
             await smartEditMessage(chatId, msgId, hasPhoto, previewCard, {
               inline_keyboard: [
@@ -2570,10 +3211,13 @@ async function startLiveTelegramBotPolling() {
             cbData === 'cb_adm_pub_winner_channel' ||
             cbData === 'cb_adm_pub_winner_both'
           ) {
+            if (!isAdmin) continue;
             const pool =
               activeGiveaway.participants.length > 0 ? activeGiveaway.participants : DEFAULT_DEMO_PARTICIPANTS;
             const winner = activeGiveaway.winner || pool[Math.floor(Math.random() * pool.length)];
             activeGiveaway.winner = winner;
+            activeGiveaway.is_active = false;
+            saveTargetsToDisk();
 
             if (cbData === 'cb_adm_pub_winner_group' && !currentGroupTarget) {
               chatSessions[chatId] = { mode: null, pendingGroupAction: 'publish_winner' };
@@ -2670,6 +3314,7 @@ async function startLiveTelegramBotPolling() {
               getAdminGiveawayCardMarkup(),
             );
           } else if (cbData === 'cb_adm_send_quiz') {
+            if (!isAdmin) continue;
             const targetQuizChat = currentGroupTarget || currentChannelTarget;
             const pollRes: any = await tgApi('sendPoll', {
               chat_id: targetQuizChat,
@@ -2685,6 +3330,7 @@ async function startLiveTelegramBotPolling() {
               : `⚠️ Не вдалося опублікувати квіз у <code>${targetQuizChat}</code>: <code>${pollRes.description || 'перевірте права бота'}</code>`;
             await smartEditMessage(chatId, msgId, hasPhoto, statusMsg, getChannelAdminMarkup());
           } else if (cbData === 'cb_adm_set_group') {
+            if (!isAdmin) continue;
             chatSessions[chatId] = { mode: 'waiting_group_id', pendingGroupAction: 'publish_giveaway' };
             await smartEditMessage(
               chatId,
@@ -2720,6 +3366,7 @@ async function startLiveTelegramBotPolling() {
               saveTargetsToDisk();
             }
           } else if (cbData === 'cb_adm_set_channel') {
+            if (!isAdmin) continue;
             chatSessions[chatId] = { mode: 'waiting_channel_id' };
             await smartEditMessage(
               chatId,

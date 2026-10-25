@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header, AppTab } from './components/Header';
 import { TelegramSimulator } from './components/TelegramSimulator';
 import { CodeStudio } from './components/CodeStudio';
@@ -105,14 +105,50 @@ export default function App() {
     }
   ]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const fetchServerLeads = async () => {
+      try {
+        const res = await fetch('/api/leads');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isMounted && data?.ok && Array.isArray(data.leads) && data.leads.length > 0) {
+          setLeads((prev) => {
+            const serverIds = new Set(data.leads.map((l: LeadItem) => l.id));
+            const remainingLocal = prev.filter((l) => !serverIds.has(l.id));
+            return [...data.leads, ...remainingLocal];
+          });
+        }
+      } catch {
+        // ignore network errors
+      }
+    };
+    fetchServerLeads();
+    const interval = setInterval(fetchServerLeads, 6000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   const handleNewLead = (newLead: LeadItem) => {
-    setLeads((prev) => [newLead, ...prev]);
+    setLeads((prev) => [newLead, ...prev.filter((l) => l.id !== newLead.id)]);
+    fetch('/api/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newLead)
+    }).catch(() => {});
   };
 
   const handleUpdateLeadStatus = (id: string, status: LeadItem['status']) => {
     setLeads((prev) =>
       prev.map((lead) => (lead.id === id ? { ...lead, status } : lead))
     );
+    fetch(`/api/leads/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    }).catch(() => {});
   };
 
   // If opened directly as a Telegram Mini App inside Telegram, render clean full-screen view
