@@ -17,9 +17,29 @@ export const AdminLeadsDesk: React.FC<AdminLeadsDeskProps> = ({
   onUpdateStatus,
   onClearArchived
 }) => {
-  const [filterType, setFilterType] = useState<'all' | 'booking' | 'feedback'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'booking' | 'waitlist' | 'feedback'>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [waitlistToast, setWaitlistToast] = useState<string | null>(null);
+
+  const handleBroadcastWaitlist = async () => {
+    try {
+      const res = await fetch('/api/leads/notify-waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tripId: 'all' }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setWaitlistToast(`📣 Сповіщено в Telegram: ${data.sent} з ${data.total} у листі очікування!`);
+      } else {
+        setWaitlistToast('⚠️ Помилка розсилки по листу очікування');
+      }
+    } catch {
+      setWaitlistToast('⚠️ Не вдалося виконати розсилку');
+    }
+    setTimeout(() => setWaitlistToast(null), 4000);
+  };
 
   const filteredLeads = leads.filter((lead) => {
     if (filterType !== 'all' && lead.type !== filterType) return false;
@@ -40,57 +60,32 @@ export const AdminLeadsDesk: React.FC<AdminLeadsDeskProps> = ({
       case 'new':
         return (
           <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-            Нова заявка
+            ⏳ Очікує підтвердження
           </span>
         );
       case 'processing':
         return (
           <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-            В обробці
+            🔄 В обробці
           </span>
         );
       case 'confirmed':
         return (
           <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-            Підтверджена
+            ✅ Підтверджена (Місце списано)
           </span>
         );
       case 'archived':
         return (
           <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-400">
-            В архіві
+            🗄 В архіві
           </span>
         );
     }
   };
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'Код броні', 'Тип', 'Тур', 'Категорія місця', 'Базовий тариф', 'Доплата за місце', 'Підсумкова вартість', 'Ім\'я туриста', 'Юзернейм', 'User ID', 'Текст/Нотатки', 'Дата', 'Статус'];
-    const rows = filteredLeads.map((l) => [
-      l.id,
-      `"${l.bookingCode || '-'}"`,
-      l.type === 'booking' ? 'Бронювання' : 'Відгук/Побажання',
-      `"${l.tripTitle || '-'}"`,
-      `"${l.seatType || '-'}"`,
-      l.basePrice ? `${l.basePrice}€` : '-',
-      l.seatFee !== undefined ? `+${l.seatFee}€` : '-',
-      l.totalCost ? `${l.totalCost}€` : '-',
-      `"${l.userName}"`,
-      l.userHandle,
-      l.userId,
-      `"${(l.text || '').replace(/"/g, '""')}"`,
-      l.timestamp,
-      l.status
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `svoi_travel_leads_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    window.location.href = '/api/leads/export.csv';
   };
 
   return (
@@ -105,13 +100,21 @@ export const AdminLeadsDesk: React.FC<AdminLeadsDeskProps> = ({
             <div>
               <h2 className="text-xl font-bold text-white tracking-wide">Панель заявок & CRM</h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Вхідні заявки на бронювання турів та відгуки клієнтів з Telegram-бота
+                Вхідні заявки на бронювання турів, лист очікування та відгуки клієнтів з Telegram-бота
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleBroadcastWaitlist}
+            className="px-3 py-2 rounded-xl text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition-all flex items-center gap-1.5"
+            title="Розіслати сповіщення в Telegram всім, хто записався в лист очікування"
+          >
+            <span>📣 Розсилка по Листу очікування</span>
+          </button>
+
           {onClearArchived && (
             <button
               onClick={onClearArchived}
@@ -128,10 +131,16 @@ export const AdminLeadsDesk: React.FC<AdminLeadsDeskProps> = ({
             className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 transition-all flex items-center gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
-            Експорт у CSV
+            📥 Вивантажити базу (CSV)
           </button>
         </div>
       </div>
+
+      {waitlistToast && (
+        <div className="px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs font-semibold">
+          {waitlistToast}
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
@@ -141,7 +150,7 @@ export const AdminLeadsDesk: React.FC<AdminLeadsDeskProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Пошук за туристом, туром, текстом повідомлення..."
+            placeholder="Пошук за туристом, туром, телефоном, кодом броні..."
             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3.5 py-2 text-xs text-white placeholder:text-slate-500 outline-none focus:border-blue-500"
           />
         </div>
@@ -153,8 +162,9 @@ export const AdminLeadsDesk: React.FC<AdminLeadsDeskProps> = ({
             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 outline-none focus:border-blue-500"
           >
             <option value="all">Усі типи звернень</option>
-            <option value="booking">Тільки Бронювання</option>
-            <option value="feedback">Тільки Відгуки / Побажання</option>
+            <option value="booking">💺 Бронювання місць</option>
+            <option value="waitlist">📋 Лист очікування</option>
+            <option value="feedback">✍️ Відгуки / Побажання</option>
           </select>
         </div>
 

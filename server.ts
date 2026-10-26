@@ -229,7 +229,29 @@ async function startServer() {
     res.json({
       ok: true,
       leads: savedLeads,
+      liveSeatsOverride,
+      bookedSeatNumbersOverride,
     });
+  });
+
+  // API endpoint to download all leads as a UTF-8 BOM CSV file (Excel / Google Sheets ready)
+  app.get('/api/leads/export.csv', (_req, res) => {
+    const csvBuf = generateLeadsCsvBuffer();
+    const dateTag = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="svoi_travel_clients_${dateTag}.csv"`);
+    res.send(csvBuf);
+  });
+
+  // API endpoint to broadcast availability notification to Waitlist clients
+  app.post('/api/leads/notify-waitlist', async (req, res) => {
+    try {
+      const { tripId } = req.body || {};
+      const result = await broadcastToWaitlist(tripId || 'ALL');
+      res.json({ ok: true, ...result, leads: savedLeads });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
 
   // API endpoint to record a new client lead from Mini App or Simulator and send permanent non-deletable Telegram notification to Admin
@@ -240,9 +262,12 @@ async function startServer() {
         id: body.id || `lead-${Date.now()}`,
         bookingCode: body.bookingCode || `SVOI-${Math.floor(1000 + Math.random() * 9000)}`,
         type: body.type || 'booking',
+        tripId: body.tripId,
         tripTitle: body.tripTitle || 'Обраний тур SVOI',
         duration: body.duration || '1 день',
         seatType: body.seatType || 'Вільна посадка (0€)',
+        paxCount: body.paxCount ? Number(body.paxCount) : undefined,
+        seatNumbers: Array.isArray(body.seatNumbers) ? body.seatNumbers.map(Number) : undefined,
         basePrice: body.basePrice,
         seatFee: body.seatFee,
         totalCost: body.totalCost,
@@ -261,16 +286,27 @@ async function startServer() {
     }
   });
 
-  // API endpoint to update lead status in Admin CRM
-  app.patch('/api/leads/:id', (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body || {};
-    const found = savedLeads.find((l) => l.id === id || l.bookingCode === id);
-    if (found && status) {
-      found.status = status;
-      saveTargetsToDisk();
+  // API endpoint to update lead status in Admin CRM (automatically deducts/restores seats & notifies client on Telegram!)
+  app.patch('/api/leads/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body || {};
+      if (status) {
+        const result = await updateLeadStatusAndNotify(id, status);
+        return res.json({
+          ok: true,
+          lead: result.lead,
+          seatDelta: result.seatDelta,
+          clientNotified: result.clientNotified,
+          leads: savedLeads,
+          liveSeatsOverride,
+          bookedSeatNumbersOverride,
+        });
+      }
+      res.json({ ok: true, leads: savedLeads });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
     }
-    res.json({ ok: true, leads: savedLeads });
   });
 
   // Bind port 3000 immediately so readiness probes succeed without waiting for Vite cold-start
@@ -320,9 +356,13 @@ export interface PersistedLeadItem {
   id: string;
   type: 'booking' | 'feedback' | 'waitlist';
   bookingCode?: string;
+  tripId?: string;
   tripTitle?: string;
   duration?: string;
   seatType?: string;
+  paxCount?: number;
+  seatNumbers?: number[];
+  seatsDeducted?: boolean;
   basePrice?: number;
   seatFee?: number;
   totalCost?: number;
@@ -341,9 +381,13 @@ let savedLeads: PersistedLeadItem[] = [
     id: 'lead-1',
     type: 'booking',
     bookingCode: 'SVOI-7842',
+    tripId: 'paris',
     tripTitle: 'Париж (Версаль + яхта + Ейфелева вежа) • 25.10.2026',
     duration: '1 день',
     seatType: '💺 Місце 2 (1-й ряд, Вікно +5€)',
+    paxCount: 1,
+    seatNumbers: [2],
+    seatsDeducted: false,
     basePrice: 120,
     seatFee: 5,
     totalCost: 125,
@@ -359,9 +403,13 @@ let savedLeads: PersistedLeadItem[] = [
     id: 'lead-2',
     type: 'booking',
     bookingCode: 'SVOI-5193',
+    tripId: 'cote_dazur',
     tripTitle: 'Лазурове узбережжя (3 дні: Ніцца, Монако, Канни)',
     duration: '3 дні',
     seatType: '💺 Місце 3 (2-й ряд, Ліве вікно +5€)',
+    paxCount: 1,
+    seatNumbers: [3],
+    seatsDeducted: true,
     basePrice: 440,
     seatFee: 5,
     totalCost: 445,
@@ -372,6 +420,20 @@ let savedLeads: PersistedLeadItem[] = [
     userId: 781923401,
     timestamp: '16.10.2026, 12:45',
     status: 'confirmed',
+  },
+  {
+    id: 'lead-3',
+    type: 'waitlist',
+    bookingCode: 'WL-3094',
+    tripId: 'neuschwanstein',
+    tripTitle: 'Замок Нойшванштайн + ущелина Партнахкламм',
+    duration: '1 день',
+    userName: 'Ірина М.',
+    userHandle: '@iryna_saar',
+    phone: '+49 152 0948123',
+    userId: 619283745,
+    timestamp: '16.10.2026, 15:20',
+    status: 'new',
   },
 ];
 
@@ -428,6 +490,9 @@ const liveSeatsOverride: Record<string, number> = {
 const liveDateOverride: Record<string, string> = {};
 const livePosterOverride: Record<string, string> = {};
 const liveCarPhotos: Record<string, string> = {};
+const bookedSeatNumbersOverride: Record<string, number[]> = {
+  cote_dazur: [3],
+};
 
 const DEFAULT_CAR_PHOTOS: Record<string, { url: string; shortLabel: string; subtitle: string }> = {
   '1': {
@@ -489,6 +554,9 @@ try {
     if (saved.liveSeatsOverride && typeof saved.liveSeatsOverride === 'object') {
       Object.assign(liveSeatsOverride, saved.liveSeatsOverride);
     }
+    if (saved.bookedSeatNumbersOverride && typeof saved.bookedSeatNumbersOverride === 'object') {
+      Object.assign(bookedSeatNumbersOverride, saved.bookedSeatNumbersOverride);
+    }
   }
 } catch (_e) {
   // ignore
@@ -512,6 +580,7 @@ function saveTargetsToDisk() {
           livePosterOverride,
           liveDateOverride,
           liveSeatsOverride,
+          bookedSeatNumbersOverride,
         },
         null,
         2,
@@ -579,6 +648,692 @@ async function notifyAllAdmins(
   }
 }
 
+// Infer tripId from lead if not explicitly stored
+function resolveLeadTripId(lead: PersistedLeadItem): string | undefined {
+  if (lead.tripId) {
+    const t = findTripById(lead.tripId);
+    return t ? t.id : lead.tripId;
+  }
+  const titleLower = (lead.tripTitle || '').toLowerCase();
+  if (!titleLower) return undefined;
+  const matched = TRIPS_LIST.find(
+    (t) =>
+      titleLower.includes(t.shortTitle.toLowerCase()) ||
+      titleLower.includes(t.title.toLowerCase()) ||
+      titleLower.includes(t.id.toLowerCase()),
+  );
+  return matched?.id;
+}
+
+// Infer seat numbers (1..8) and passenger count from lead
+function resolveLeadSeatsAndPax(lead: PersistedLeadItem): { paxCount: number; seatNumbers: number[] } {
+  let seatNumbers: number[] = Array.isArray(lead.seatNumbers) ? [...lead.seatNumbers] : [];
+  if (seatNumbers.length === 0 && lead.seatType) {
+    // Only extract seat numbers explicitly marked with №1..№8 or "Місце 1..8" (never match "1-й ряд" or "+5€")
+    const numMatches = Array.from(lead.seatType.matchAll(/№\s*([1-8])/g), (m) => Number(m[1]));
+    if (numMatches.length > 0) {
+      seatNumbers = Array.from(new Set(numMatches));
+    } else {
+      const singleMatch = lead.seatType.match(/Місце\s*№?\s*([1-8])/i);
+      if (singleMatch) {
+        seatNumbers = [Number(singleMatch[1])];
+      }
+    }
+  }
+  let paxCount = lead.paxCount || seatNumbers.length || 1;
+  if (!lead.paxCount && seatNumbers.length === 0 && lead.seatType) {
+    const paxMatch = lead.seatType.match(/(\d+)\s*(?:місц|ос)/i);
+    if (paxMatch) {
+      paxCount = Math.max(1, Math.min(8, Number(paxMatch[1])));
+    }
+  }
+  return { paxCount, seatNumbers };
+}
+
+// Get occupied seat numbers (1..8) for a trip based on confirmed bookings + overrides
+function getOccupiedSeatsForTrip(tripId: string): number[] {
+  const normId = findTripById(tripId)?.id || tripId;
+  const set = new Set<number>(bookedSeatNumbersOverride[normId] || []);
+  for (const lead of savedLeads) {
+    if (lead.type === 'booking' && lead.status === 'confirmed') {
+      const lTripId = resolveLeadTripId(lead);
+      if (lTripId === normId) {
+        const { seatNumbers } = resolveLeadSeatsAndPax(lead);
+        for (const n of seatNumbers) {
+          if (n >= 1 && n <= 8) set.add(n);
+        }
+      }
+    }
+  }
+  return Array.from(set).sort((a, b) => a - b);
+}
+
+// Central helper: Confirm / Archive a lead, automatically deduct/restore seats, and notify the client on Telegram!
+async function updateLeadStatusAndNotify(
+  leadIdOrIdx: string | number,
+  newStatus: PersistedLeadItem['status'],
+): Promise<{ lead: PersistedLeadItem | null; seatDelta: number; clientNotified: boolean }> {
+  let lead: PersistedLeadItem | undefined;
+  if (typeof leadIdOrIdx === 'number') {
+    lead = savedLeads[leadIdOrIdx];
+  } else {
+    lead = savedLeads.find((l) => l.id === leadIdOrIdx || l.bookingCode === leadIdOrIdx);
+  }
+  if (!lead) {
+    return { lead: null, seatDelta: 0, clientNotified: false };
+  }
+
+  const prevStatus = lead.status;
+  lead.status = newStatus;
+  let seatDelta = 0;
+  let clientNotified = false;
+
+  const tripId = resolveLeadTripId(lead);
+  const { paxCount, seatNumbers } = resolveLeadSeatsAndPax(lead);
+  lead.paxCount = paxCount;
+  if (seatNumbers.length > 0) lead.seatNumbers = seatNumbers;
+  if (tripId) lead.tripId = tripId;
+
+  if (lead.type === 'booking' && tripId) {
+    if (newStatus === 'confirmed' && !lead.seatsDeducted) {
+      const curFree = getLiveFreeSeats(tripId);
+      liveSeatsOverride[tripId] = Math.max(0, curFree - paxCount);
+      seatDelta = -paxCount;
+      lead.seatsDeducted = true;
+      if (seatNumbers.length > 0) {
+        const curBooked = new Set(bookedSeatNumbersOverride[tripId] || []);
+        seatNumbers.forEach((n) => curBooked.add(n));
+        bookedSeatNumbersOverride[tripId] = Array.from(curBooked);
+      }
+    } else if (newStatus === 'archived' && lead.seatsDeducted) {
+      const curFree = getLiveFreeSeats(tripId);
+      liveSeatsOverride[tripId] = Math.min(8, curFree + paxCount);
+      seatDelta = paxCount;
+      lead.seatsDeducted = false;
+      if (seatNumbers.length > 0 && bookedSeatNumbersOverride[tripId]) {
+        bookedSeatNumbersOverride[tripId] = bookedSeatNumbersOverride[tripId].filter(
+          (n) => !seatNumbers.includes(n),
+        );
+      }
+    }
+  }
+
+  saveTargetsToDisk();
+
+  // Send automatic confirmation message to the client in Telegram when booking is confirmed!
+  if (lead.type === 'booking' && newStatus === 'confirmed' && prevStatus !== 'confirmed' && lead.userId > 0) {
+    try {
+      const codeStr = lead.bookingCode || 'SVOI';
+      const clientMsg =
+        `🎉 <b>ВАШУ БРОНЬ #${codeStr} ОФІЦІЙНО ПІДТВЕРДЖЕНО ОРГАНІЗАТОРОМ!</b> ✅🚐\n\n` +
+        `Вітаємо, <b>${lead.userName}</b>! Менеджер клубу <b>SVOI Travel</b> перевірив та закріпив за вами місця в салоні Opel Vivaro:\n\n` +
+        `🗺 <b>Напрямок та дата:</b> ${lead.tripTitle || 'Обраний тур'}\n` +
+        `💺 <b>Ваші місця:</b> <code>${lead.seatType || 'Вільна посадка'}</code> (${paxCount} ос.)\n` +
+        (lead.totalCost !== undefined ? `💶 <b>Сума до оплати:</b> <code>${lead.totalCost}€</code>\n` : '') +
+        `📍 <b>Точка збору:</b> ${lead.meetingPoint || 'Адресний виїзд (Door-to-Door)'}\n\n` +
+        `<blockquote>⏰ За день до виїзду ми додамо вас у спільний чат групи та надішлемо геолокацію авто й точний час подачі до вашого дому. Чекаємо вас у подорожі! 💛💙</blockquote>`;
+
+      const sentRes: any = await tgApi('sendMessage', {
+        chat_id: lead.userId,
+        parse_mode: 'HTML',
+        text: clientMsg,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🎟 Переглянути «Мої бронювання»', callback_data: 'cb_ticket_my_bookings' }],
+            [{ text: '💬 Написати організатору (@SVOI_travel_admin)', url: 'https://t.me/SVOI_travel_admin' }],
+          ],
+        },
+      });
+      if (sentRes && sentRes.ok) {
+        clientNotified = true;
+      }
+    } catch (_e) {
+      // ignore if user blocked bot or demo userId
+    }
+  }
+
+  return { lead, seatDelta, clientNotified };
+}
+
+// Real Telegram subscription check via getChatMember for Giveaway participation
+async function verifyGiveawaySubscription(
+  userId: number,
+  username?: string,
+  chatId?: number,
+): Promise<{ ok: boolean; missingTitle?: string }> {
+  if (!userId || isAdminUser(userId, username, chatId)) {
+    return { ok: true };
+  }
+  const targetsToVerify: Array<{ id: string; label: string }> = [];
+  if (currentGroupTarget) {
+    targetsToVerify.push({ id: currentGroupTarget, label: currentGroupTitle || 'Група SVOI Travel' });
+  }
+  if (currentChannelTarget && (currentChannelTarget.startsWith('-100') || currentChannelTarget.startsWith('@'))) {
+    targetsToVerify.push({ id: currentChannelTarget, label: 'Канал SVOI Travel' });
+  }
+
+  for (const target of targetsToVerify) {
+    try {
+      const res: any = await tgApi('getChatMember', {
+        chat_id: target.id,
+        user_id: userId,
+      });
+      // Only enforce if the bot has access to query getChatMember on that chat
+      if (res && res.ok && res.result) {
+        const st = res.result.status;
+        const isNotMember =
+          st === 'left' ||
+          st === 'kicked' ||
+          (st === 'restricted' && res.result.is_member === false);
+        if (isNotMember) {
+          return { ok: false, missingTitle: target.label };
+        }
+        // If user is a confirmed member in at least one bound community, allow participation
+        return { ok: true };
+      }
+    } catch (_e) {
+      // ignore if bot lacks admin rights on unbound target
+    }
+  }
+  return { ok: true };
+}
+
+// Generate UTF-8 BOM CSV buffer of all client leads (opens cleanly in Excel & Google Sheets)
+function generateLeadsCsvBuffer(): Buffer {
+  const headers = [
+    'Код броні',
+    'Статус',
+    'Тип заявки',
+    "Ім'я клієнта",
+    'Telegram (@username)',
+    'Телефон',
+    'Telegram ID',
+    'Напрямок та дата',
+    'Обрані місця',
+    'Кількість місць',
+    'Сума (€)',
+    'Точка збору',
+    'Коментар / Відгук',
+    'Дата та час подачі',
+  ];
+
+  const escapeCsvCell = (val: unknown): string => {
+    const str = String(val ?? '').replace(/\r?\n/g, ' ').trim();
+    return `"${str.replace(/"/g, '""')}"`;
+  };
+
+  const statusMap: Record<string, string> = {
+    new: 'Нова (Очікує)',
+    processing: 'В обробці',
+    confirmed: 'Підтверджено',
+    archived: 'В архіві / Скасовано',
+  };
+
+  const typeMap: Record<string, string> = {
+    booking: 'Бронювання туру',
+    waitlist: 'Лист очікування',
+    feedback: 'Відгук / Питання',
+  };
+
+  const rows = savedLeads.map((l) => {
+    const { paxCount } = resolveLeadSeatsAndPax(l);
+    return [
+      escapeCsvCell(l.bookingCode || l.id),
+      escapeCsvCell(statusMap[l.status] || l.status),
+      escapeCsvCell(typeMap[l.type] || l.type),
+      escapeCsvCell(l.userName),
+      escapeCsvCell(l.userHandle),
+      escapeCsvCell(l.phone || '—'),
+      escapeCsvCell(l.userId),
+      escapeCsvCell(l.tripTitle || '—'),
+      escapeCsvCell(l.seatType || '—'),
+      escapeCsvCell(l.type === 'booking' ? paxCount : '—'),
+      escapeCsvCell(l.totalCost !== undefined ? `${l.totalCost}€` : '—'),
+      escapeCsvCell(l.meetingPoint || '—'),
+      escapeCsvCell(l.text || '—'),
+      escapeCsvCell(l.timestamp),
+    ].join(',');
+  });
+
+  const csvString = '\uFEFF' + [headers.map(escapeCsvCell).join(','), ...rows].join('\r\n');
+  return Buffer.from(csvString, 'utf-8');
+}
+
+// Send CSV file directly to Admin chat in Telegram via sendDocument
+async function sendCsvDocumentToTelegramChat(chatId: number): Promise<boolean> {
+  try {
+    const csvBuf = generateLeadsCsvBuffer();
+    const dateTag = new Date().toISOString().slice(0, 10);
+    const fileName = `SVOI_Travel_Clients_${dateTag}.csv`;
+
+    const totalBookings = savedLeads.filter((l) => l.type === 'booking').length;
+    const confirmedBookings = savedLeads.filter((l) => l.type === 'booking' && l.status === 'confirmed').length;
+    const waitlistCount = savedLeads.filter((l) => l.type === 'waitlist').length;
+    const totalRevenue = savedLeads
+      .filter((l) => l.type === 'booking' && l.status !== 'archived')
+      .reduce((acc, l) => acc + (Number(l.totalCost) || 0), 0);
+
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append(
+      'caption',
+      `📊 <b> Вивантаження бази клієнтів SVOI Travel (${dateTag})</b>\n\n` +
+        `• 📋 <b>Усього записів у базі:</b> <b>${savedLeads.length}</b>\n` +
+        `• 💺 <b>Бронювань турів:</b> <b>${totalBookings}</b> (з них підтверджено: <b>${confirmedBookings}</b>)\n` +
+        `• ⏳ <b>У листі очікування:</b> <b>${waitlistCount}</b>\n` +
+        `• 💶 <b>Загальна сума активних бронювань:</b> <code>${totalRevenue}€</code>\n\n` +
+        `<i>Файл готовий до відкриття в Microsoft Excel, Google Таблицях або Numbers (кодування UTF-8).</i>`,
+    );
+    form.append('parse_mode', 'HTML');
+    const blob = new Blob([csvBuf], { type: 'text/csv;charset=utf-8' });
+    form.append('document', blob, fileName);
+
+    const resp = await fetch(`https://api.telegram.org/bot${DEFAULT_BOT_TOKEN}/sendDocument`, {
+      method: 'POST',
+      body: form,
+    });
+    const data: any = await resp.json();
+    return Boolean(data && data.ok);
+  } catch (_e) {
+    return false;
+  }
+}
+
+// Broadcast availability notification to Waitlist clients (for a specific tripId or 'ALL')
+async function broadcastToWaitlist(tripIdOrAll: string): Promise<{
+  matchedCount: number;
+  sentTelegramCount: number;
+  tripLabel: string;
+}> {
+  const isAll = !tripIdOrAll || tripIdOrAll === 'ALL';
+  const targetTrip = !isAll ? findTripById(tripIdOrAll) : undefined;
+  const normId = targetTrip?.id || tripIdOrAll;
+
+  const matchingLeads = savedLeads.filter((l) => {
+    if (l.type !== 'waitlist' || l.status === 'archived') return false;
+    if (isAll) return true;
+    const lTripId = resolveLeadTripId(l);
+    return (
+      lTripId === normId ||
+      (l.tripTitle && targetTrip && l.tripTitle.toLowerCase().includes(targetTrip.shortTitle.toLowerCase()))
+    );
+  });
+
+  let sentTelegramCount = 0;
+  const notifiedUserIds = new Set<number>();
+
+  for (const wl of matchingLeads) {
+    const lTripId = resolveLeadTripId(wl) || ( !isAll ? normId : 'paris' );
+    const tripObj = findTripById(lTripId);
+    const freeSeats = getLiveFreeSeats(lTripId);
+    const dateStr = getLiveTripDate(lTripId, tripObj?.departureDates);
+    const titleDisplay = tripObj ? `${getCountryFlag(tripObj.country)} ${tripObj.title} | ${dateStr}` : wl.tripTitle || 'Тур SVOI';
+
+    wl.status = 'confirmed';
+
+    if (wl.userId > 0 && !notifiedUserIds.has(wl.userId)) {
+      notifiedUserIds.add(wl.userId);
+      try {
+        const res: any = await tgApi('sendMessage', {
+          chat_id: wl.userId,
+          parse_mode: 'HTML',
+          text:
+            `🔥 <b>ЧУДОВА НОВИНА З ЛИСТА ОЧІКУВАННЯ SVOI TRAVEL!</b> 🚐✨\n\n` +
+            `Вітаємо, <b>${wl.userName}</b>! Ви залишали заявку в <b>Листі очікування (#${wl.bookingCode || 'WL'})</b> на напрямок:\n` +
+            `🗺 <b>${titleDisplay}</b>\n\n` +
+            `🎉 <b>Щойно з'явилися вільні місця в салоні Opel Vivaro (зараз вільно: ${Math.max(freeSeats, 1)} з 8)!</b>\n\n` +
+            `<blockquote>Натисніть кнопку нижче, щоб першими обрати своє місце в салоні в 1 клік без передоплати:</blockquote>`,
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: `💺 Обрати місце та забронювати зараз`, callback_data: `book_trip_${lTripId}` }],
+              [{ text: '🗺 Усі напрямки та дати', callback_data: 'cb_trips' }],
+            ],
+          },
+        });
+        if (res && res.ok) {
+          sentTelegramCount++;
+        }
+      } catch (_e) {
+        // ignore if demo user ID
+      }
+    }
+  }
+
+  saveTargetsToDisk();
+  return {
+    matchedCount: matchingLeads.length,
+    sentTelegramCount,
+    tripLabel: isAll ? 'Усі напрямки' : targetTrip?.shortTitle || tripIdOrAll,
+  };
+}
+
+// Build Admin Waitlist Hub view inside the bot
+function getAdminWaitlistHubView() {
+  const activeWaitlist = savedLeads.filter((l) => l.type === 'waitlist' && l.status !== 'archived');
+
+  const byTrip: Record<string, { title: string; count: number; users: string[] }> = {};
+  for (const wl of activeWaitlist) {
+    const tId = resolveLeadTripId(wl) || 'other';
+    const tripObj = findTripById(tId);
+    const label = tripObj ? `${getCountryFlag(tripObj.country)} ${tripObj.shortTitle}` : wl.tripTitle || 'Інший тур';
+    if (!byTrip[tId]) {
+      byTrip[tId] = { title: label, count: 0, users: [] };
+    }
+    byTrip[tId].count++;
+    byTrip[tId].users.push(`${wl.userName} (${wl.userHandle})`);
+  }
+
+  const tripEntries = Object.entries(byTrip);
+  const listHtml =
+    tripEntries.length === 0
+      ? `<i>Наразі активних записів у листі очікування немає.</i>`
+      : tripEntries
+          .map(
+            ([tId, info], idx) =>
+              `<b>${idx + 1}. ${info.title}</b> — очікують: <b>${info.count} ос.</b> (вільно місць: <code>${getLiveFreeSeats(tId)}/8</code>)\n` +
+              `   👥 <i>${info.users.join(', ')}</i>`,
+          )
+          .join('\n\n');
+
+  const text =
+    `📣 <b>АДМІН-ПАНЕЛЬ: ЛИСТ ОЧІКУВАННЯ ТА МИТТЄВА РОЗСИЛКА (${activeWaitlist.length})</b> 📋✨\n\n` +
+    `Коли на тур звільнилося 1–2 місця або ви відкрили нову дату виїзду, натисніть кнопку потрібного напрямку нижче — і бот <b>миттєво розішле особисте повідомлення в Telegram</b> усім клієнтам із листа очікування з кнопкою швидкого бронювання!\n\n` +
+    `${listHtml}`;
+
+  const rows: any[][] = [];
+  for (const [tId, info] of tripEntries) {
+    rows.push([
+      {
+        text: `📣 Сповістити: ${info.title} (${info.count} клієнтів)`,
+        callback_data: `cb_adm_notify_wl_${tId}`,
+      },
+    ]);
+  }
+  if (activeWaitlist.length > 0) {
+    rows.push([
+      {
+        text: `🔥 Розсилка ВСІМ у листі очікування (${activeWaitlist.length} клієнтів)`,
+        callback_data: 'cb_adm_notify_wl_ALL',
+      },
+    ]);
+  }
+  rows.push([
+    { text: '📋 До списку всіх заявок', callback_data: 'cb_adm_leads' },
+    { text: '👑 В Адмін-панель', callback_data: 'cb_admin_panel' },
+  ]);
+  rows.push([{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }]);
+
+  return { text, markup: { inline_keyboard: rows } };
+}
+
+// Build Client's "🎟 Мої бронювання" view in the bot
+function getClientBookingsView(userId: number, usernameRaw?: string) {
+  const cleanUser = usernameRaw ? `@${usernameRaw.replace(/^@/, '').toLowerCase()}` : '';
+  const myLeads = savedLeads.filter((l) => {
+    if (l.type !== 'booking' && l.type !== 'waitlist') return false;
+    const matchId = userId > 0 && l.userId === userId;
+    const matchHandle = cleanUser && l.userHandle.toLowerCase() === cleanUser;
+    return matchId || matchHandle;
+  });
+
+  if (myLeads.length === 0) {
+    const emptyText =
+      `🎟 <b>Мої бронювання та заявки в клубі SVOI Travel</b> 🚐✨\n\n` +
+      `У вас поки що немає активних бронювань з цього Telegram-акаунта.\n\n` +
+      `<blockquote>💡 <b>Переваги бронювання в SVOI:</b>\n` +
+      `• Обирайте від <b>1 до 4+ місць</b> на інтерактивній схемі салону Opel Vivaro\n` +
+      `• <b>0% передоплати</b> на всі одноденні поїздки\n` +
+      `• Адресний збір <b>від вашого під'їзду</b> (Саарланд, Трір, Люксембург)</blockquote>\n\n` +
+      `👇 <b>Натисніть кнопку нижче, щоб обрати напрямок та місце в салоні:</b>`;
+
+    return {
+      text: emptyText,
+      markup: {
+        inline_keyboard: [
+          [{ text: '💺 Обрати місце та забронювати тур', callback_data: 'cb_book' }],
+          [{ text: '🗺 Переглянути всі напрямки та дати', callback_data: 'cb_trips' }],
+          [{ text: '💬 Написати організатору (@SVOI_travel_admin)', url: 'https://t.me/SVOI_travel_admin' }],
+          [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+        ],
+      },
+    };
+  }
+
+  const cardsHtml = myLeads
+    .slice(0, 6)
+    .map((l, idx) => {
+      const statusBadge =
+        l.status === 'confirmed'
+          ? '✅ <b>ПІДТВЕРДЖЕНО ОРГАНІЗАТОРОМ</b>'
+          : l.status === 'archived'
+            ? '🗄 <i>Скасовано / В архіві</i>'
+            : '⏳ <b>Очікує підтвердження менеджера</b>';
+
+      const typeLabel = l.type === 'waitlist' ? '📋 Лист очікування' : '💺 Бронювання туру';
+      return (
+        `<b>${idx + 1}. [${typeLabel}] #${l.bookingCode || l.id.slice(-4)}</b>\n` +
+        `• 📊 <b>Статус:</b> ${statusBadge}\n` +
+        `• 🗺 <b>Тур:</b> ${l.tripTitle || 'Обраний тур'}\n` +
+        (l.seatType && l.type === 'booking' ? `• 💺 <b>Місця:</b> <code>${l.seatType}</code>\n` : '') +
+        (l.totalCost !== undefined && l.type === 'booking'
+          ? `• 💶 <b>До оплати:</b> <code>${l.totalCost}€</code> (оплата при посадці)\n`
+          : '') +
+        (l.meetingPoint && l.type === 'booking' ? `• 📍 <b>Збір:</b> ${l.meetingPoint}\n` : '') +
+        `• 🕒 <b>Подано:</b> ${l.timestamp}`
+      );
+    })
+    .join('\n\n────────────────────\n\n');
+
+  const text =
+    `🎟 <b>МОЇ БРОНЮВАННЯ В КЛУБІ SVOI TRAVEL (${myLeads.length})</b> 🚐✨\n\n` +
+    `${cardsHtml}\n\n` +
+    `<blockquote>💡 Як тільки організатор натискає «Підтвердити» по вашій заявці, статус тут змінюється на <b>✅ ПІДТВЕРДЖЕНО</b>, а ви отримуєте персональне сповіщення. Якщо ваші плани змінилися, ви можете скасувати бронь або написати менеджеру в 1 клік нижче:</blockquote>`;
+
+  const rows: any[][] = [];
+  for (const l of myLeads.slice(0, 4)) {
+    if (l.status !== 'archived') {
+      rows.push([
+        {
+          text: `❌ Скасувати заявку #${l.bookingCode || l.id.slice(-4)} (${(l.tripTitle || 'Тур').slice(0, 18)})`,
+          callback_data: `cb_client_cancel_${l.id}`,
+        },
+      ]);
+    }
+  }
+  rows.push([
+    { text: '💬 Поставити питання по моїй поїздці', callback_data: 'cb_feedback' },
+  ]);
+  rows.push([
+    { text: '💺 Забронювати ще місця', callback_data: 'cb_book' },
+    { text: '🗺 Усі напрямки', callback_data: 'cb_trips' },
+  ]);
+  rows.push([{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }]);
+
+  return { text, markup: { inline_keyboard: rows } };
+}
+
+// Multi-Seat Selection metadata and calculator for Opel Vivaro (seats 1..8 + free seating for 1..4 passengers)
+const OPEL_VIVARO_SEATS: Record<
+  string,
+  { seatNum?: number; shortBtn: string; fullLabel: string; fee: number; pax: number }
+> = {
+  seat1: { seatNum: 1, shortBtn: '1: Панорамне (+5€)', fullLabel: 'Місце №1 (1-й ряд, Панорамне +5€)', fee: 5, pax: 1 },
+  seat2: { seatNum: 2, shortBtn: '2: Вікно (+5€)', fullLabel: 'Місце №2 (1-й ряд, Вікно +5€)', fee: 5, pax: 1 },
+  seat3: { seatNum: 3, shortBtn: '3: Ліве (+5€)', fullLabel: 'Місце №3 (2-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
+  seat4: { seatNum: 4, shortBtn: '4: Центр (+5€)', fullLabel: 'Місце №4 (2-й ряд, Центр +5€)', fee: 5, pax: 1 },
+  seat5: { seatNum: 5, shortBtn: '5: Праве (+5€)', fullLabel: 'Місце №5 (2-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
+  seat6: { seatNum: 6, shortBtn: '6: Ліве (+5€)', fullLabel: 'Місце №6 (3-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
+  seat7: { seatNum: 7, shortBtn: '7: Центр (0€)', fullLabel: 'Місце №7 (3-й ряд, Центр 0€)', fee: 0, pax: 1 },
+  seat8: { seatNum: 8, shortBtn: '8: Праве (+5€)', fullLabel: 'Місце №8 (3-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
+  '1': { shortBtn: '🎲 1 ос. (0€)', fullLabel: '🎲 Вільна посадка (1 особа, 0€)', fee: 0, pax: 1 },
+  '2': { shortBtn: '👥 2 місця (0€)', fullLabel: '👥 2 місця поруч (Вільна посадка, 0€)', fee: 0, pax: 2 },
+  '3': { shortBtn: '👨‍👩‍👧 3 місця (0€)', fullLabel: '👨‍👩‍👧 3 місця (Вільна посадка, 0€)', fee: 0, pax: 3 },
+  '4': { shortBtn: '👨‍👩‍👧‍👦 4 місця (0€)', fullLabel: '👨‍👩‍👧‍👦 4 місця (Вільна посадка, 0€)', fee: 0, pax: 4 },
+};
+
+function resolveBookingSelection(
+  tripId: string,
+  tokensOrCode: string[] | string,
+): { label: string; fee: number; pax: number; seatNumbers: number[]; encodedTokens: string } {
+  let rawTokens: string[] = [];
+  if (Array.isArray(tokensOrCode)) {
+    rawTokens = tokensOrCode;
+  } else if (/^s[1-8]+$/.test(tokensOrCode.trim())) {
+    // Compact callback_data token like "s125" -> ['seat1', 'seat2', 'seat5']
+    rawTokens = tokensOrCode
+      .trim()
+      .slice(1)
+      .split('')
+      .map((d) => `seat${d}`);
+  } else {
+    rawTokens = tokensOrCode
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  const tokens = rawTokens.length > 0 ? rawTokens : ['1'];
+  const specificSeats = tokens.filter((t) => t.startsWith('seat') && OPEL_VIVARO_SEATS[t]);
+
+  if (specificSeats.length > 0) {
+    const sorted = Array.from(new Set(specificSeats)).sort(
+      (a, b) => (OPEL_VIVARO_SEATS[a].seatNum || 0) - (OPEL_VIVARO_SEATS[b].seatNum || 0),
+    );
+    const seatNumbers = sorted.map((t) => OPEL_VIVARO_SEATS[t].seatNum!).filter(Boolean);
+    const fee = sorted.reduce((sum, t) => sum + OPEL_VIVARO_SEATS[t].fee, 0);
+    const pax = sorted.length;
+    const compactCode = `s${seatNumbers.join('')}`;
+    if (pax === 1) {
+      const single = OPEL_VIVARO_SEATS[sorted[0]];
+      return {
+        label: `💺 ${single.fullLabel}`,
+        fee,
+        pax: 1,
+        seatNumbers,
+        encodedTokens: compactCode,
+      };
+    }
+    const numsStr = seatNumbers.map((n) => `№${n}`).join(', ');
+    return {
+      label: `💺 Місця ${numsStr} (${pax} ос., доплата +${fee}€)`,
+      fee,
+      pax,
+      seatNumbers,
+      encodedTokens: compactCode,
+    };
+  }
+
+  // Otherwise free seating token ('1', '2', '3', '4')
+  const freeToken = tokens[0] && OPEL_VIVARO_SEATS[tokens[0]] ? tokens[0] : '1';
+  const info = OPEL_VIVARO_SEATS[freeToken];
+  return {
+    label: info.fullLabel,
+    fee: info.fee,
+    pax: info.pax,
+    seatNumbers: [],
+    encodedTokens: freeToken,
+  };
+}
+
+function buildMultiSeatPickerView(tripId: string, selectedTokens: string[]) {
+  const trip = findTripById(tripId);
+  const normId = trip ? trip.id : tripId;
+  const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
+  const title = trip ? trip.shortTitle : 'Обраний тур';
+  const dateStr = getLiveTripDate(normId, trip?.departureDates);
+  const price = trip ? trip.price : 120;
+  const freeSeats = getLiveFreeSeats(normId);
+  const occupied = getOccupiedSeatsForTrip(normId);
+
+  const hasSelection = selectedTokens.length > 0;
+  const resolved = hasSelection
+    ? resolveBookingSelection(normId, selectedTokens)
+    : { label: 'Ще не обрано (натисніть на 1, 2, 3 або 4+ місць нижче)', fee: 0, pax: 0, seatNumbers: [] as number[], encodedTokens: '' };
+
+  const totalCost = hasSelection ? price * resolved.pax + resolved.fee : price;
+
+  const seatBtn = (seatKey: string) => {
+    const meta = OPEL_VIVARO_SEATS[seatKey];
+    const sNum = meta.seatNum || 0;
+    if (occupied.includes(sNum)) {
+      return {
+        text: `🔴 Місце ${sNum} (Зайнято)`,
+        callback_data: `seat_occ_${normId}_${sNum}`,
+      };
+    }
+    const isSel = selectedTokens.includes(seatKey);
+    return {
+      text: `${isSel ? '✅ ' : '💺 '}${meta.shortBtn}`,
+      callback_data: `toggle_seat_${normId}_${seatKey}`,
+    };
+  };
+
+  const freeBtn = (freeKey: string, defaultLabel: string) => {
+    const isSel = selectedTokens.includes(freeKey);
+    return {
+      text: `${isSel ? '✅ ' : ''}${defaultLabel}`,
+      callback_data: `toggle_seat_${normId}_${freeKey}`,
+    };
+  };
+
+  const selectionSummaryBlock = hasSelection
+    ? `✅ <b>Ваш поточний вибір (${resolved.pax} місц.):</b>\n` +
+      `• 💺 <b>Місця:</b> <code>${resolved.label}</code>\n` +
+      `• 💶 <b>Автоматичний розрахунок:</b> ${resolved.pax} × ${price}€${resolved.fee > 0 ? ` + ${resolved.fee}€ (вибір місць)` : ''} = <b><code>${totalCost}€</code></b>\n\n` +
+      `<blockquote>👇 Ви можете відмітити <b>ще місця галочками ✅</b> (на 2–4+ осіб в одну заявку) або натиснути зелену кнопку <b>«➡️ Оформити бронь (${resolved.pax} місц. • ${totalCost}€)»</b>!</blockquote>`
+    : `<blockquote>💡 <b>Мультивибір місць (на 1–4+ осіб в одну заявку):</b>\n` +
+      `Натискайте на будь-які вільні крісла 1–8 у схемі нижче — вони відмічаються галочками <b>✅</b>, а бот автоматично рахує загальну суму! Або оберіть вільну посадку (0€).</blockquote>`;
+
+  const text =
+    `💺 <b>Крок 2 із 3: Схема салону Opel Vivaro (Мультивибір місць ✅)</b>\n\n` +
+    `${flag} <b>${title} | ${dateStr}</b>\n` +
+    `💶 <b>Тариф туру: ${price}€ / ос.</b> | 🔥 <b>Вільно місць: ${freeSeats} з 8</b>\n` +
+    (occupied.length > 0 ? `🔴 <b>Вже зайняті місця:</b> №${occupied.join(', №')}\n` : '') +
+    `\n🚐 <b>Інтерактивна схема 8-місного салону (2+3+3):</b>\n` +
+    `• <b>1-й ряд (біля водія):</b> Місце 1 (Панорамне <code>+5€</code>), Місце 2 (Вікно <code>+5€</code>)\n` +
+    `• <b>2-й ряд:</b> Місце 3 (Ліве), Місце 4 (Центр), Місце 5 (Праве) — <code>+5€</code>\n` +
+    `• <b>3-й ряд:</b> Місце 6 (Ліве <code>+5€</code>), Місце 7 (Центр <code>0€</code>), Місце 8 (Праве <code>+5€</code>)\n\n` +
+    selectionSummaryBlock;
+
+  const rows: any[][] = [
+    [seatBtn('seat1'), seatBtn('seat2')],
+    [seatBtn('seat3'), seatBtn('seat4'), seatBtn('seat5')],
+    [seatBtn('seat6'), seatBtn('seat7'), seatBtn('seat8')],
+    [freeBtn('1', '🎲 Вільна посадка: 1 особа (0€)')],
+    [
+      freeBtn('2', '👥 2 місця (0€)'),
+      freeBtn('3', '👨‍👩‍👧 3 місця (0€)'),
+      freeBtn('4', '👨‍👩‍👧‍👦 4 місця (0€)'),
+    ],
+  ];
+
+  if (hasSelection) {
+    rows.push([
+      {
+        text: `➡️ Оформити бронь (Обрано: ${resolved.pax} • Сума: ${totalCost}€)`,
+        callback_data: `book_proceed_${normId}`,
+      },
+    ]);
+    rows.push([
+      { text: '🔄 Скинути обрані місця', callback_data: `book_clear_${normId}` },
+    ]);
+  } else {
+    rows.push([
+      {
+        text: `➡️ Продовжити з вільною посадкою (1 ос. • ${price}€)`,
+        callback_data: `book_pax_${normId}_1`,
+      },
+    ]);
+  }
+
+  rows.push([
+    { text: '🗺 Змінити тур', callback_data: 'cb_book' },
+    { text: '🔙 Назад в меню', callback_data: 'cb_back' },
+  ]);
+
+  return { text, markup: { inline_keyboard: rows } };
+}
+
 // Record a new client application/lead to persistent storage AND send a PERMANENT (non-deletable) message to all Admins!
 async function recordAndNotifyLead(leadInput: Partial<PersistedLeadItem> & { userName: string; userHandle: string }): Promise<PersistedLeadItem> {
   const bookingCode = leadInput.bookingCode || `SVOI-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -587,9 +1342,13 @@ async function recordAndNotifyLead(leadInput: Partial<PersistedLeadItem> & { use
     id: leadInput.id || `lead-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     type: leadInput.type || 'booking',
     bookingCode,
+    tripId: leadInput.tripId,
     tripTitle: leadInput.tripTitle || 'Обраний тур SVOI',
     duration: leadInput.duration || '1 день',
     seatType: leadInput.seatType || '🎲 Вільна посадка (0€)',
+    paxCount: leadInput.paxCount,
+    seatNumbers: leadInput.seatNumbers,
+    seatsDeducted: Boolean(leadInput.seatsDeducted),
     basePrice: leadInput.basePrice,
     seatFee: leadInput.seatFee,
     totalCost: leadInput.totalCost,
@@ -602,6 +1361,11 @@ async function recordAndNotifyLead(leadInput: Partial<PersistedLeadItem> & { use
     timestamp: nowStr,
     status: leadInput.status || 'new',
   };
+
+  const { paxCount, seatNumbers } = resolveLeadSeatsAndPax(newLead);
+  newLead.paxCount = paxCount;
+  if (seatNumbers.length > 0) newLead.seatNumbers = seatNumbers;
+  if (!newLead.tripId) newLead.tripId = resolveLeadTripId(newLead);
 
   savedLeads = [newLead, ...savedLeads];
   saveTargetsToDisk();
@@ -620,7 +1384,7 @@ async function recordAndNotifyLead(leadInput: Partial<PersistedLeadItem> & { use
       `🔔🔥 <b>НОВА ЗАЯВКА НА БРОНЮВАННЯ #${bookingCode}!</b> 📌\n` +
       `<i>(Це повідомлення закріплено в історії та НЕ видаляється)</i>\n\n` +
       `🗺 <b>Напрямок:</b> ${newLead.tripTitle}\n` +
-      `💺 <b>Обране місце:</b> <code>${newLead.seatType}</code>\n` +
+      `💺 <b>Обрані місця (${paxCount} ос.):</b> <code>${newLead.seatType}</code>\n` +
       (newLead.totalCost !== undefined ? `💶 <b>Сума до оплати:</b> <code>${newLead.totalCost}€</code>\n` : '') +
       `👤 <b>Клієнт:</b> <b>${newLead.userName}</b> (${newLead.userHandle})\n` +
       (newLead.phone ? `📱 <b>Телефон:</b> <code>${newLead.phone}</code>\n` : '') +
@@ -645,11 +1409,20 @@ async function recordAndNotifyLead(leadInput: Partial<PersistedLeadItem> & { use
       `🕒 <b>Дата:</b> ${newLead.timestamp}`;
   }
 
+  const notifRows: any[][] = [];
+  if (newLead.type === 'booking') {
+    notifRows.push([
+      {
+        text: `✅ Підтвердити бронь #${bookingCode} (спише ${paxCount} місц. + сповістить клієнта)`,
+        callback_data: `cb_notif_confirm_${newLead.id}`,
+      },
+    ]);
+  }
+  notifRows.push([{ text: `💬 Написати клієнту (${newLead.userName})`, url: contactUrl }]);
+  notifRows.push([{ text: `📋 Відкрити список усіх заявок (${savedLeads.length})`, callback_data: 'cb_notif_open_leads' }]);
+
   const notifMarkup = {
-    inline_keyboard: [
-      [{ text: `💬 Написати клієнту (${newLead.userName})`, url: contactUrl }],
-      [{ text: `📋 Відкрити список усіх заявок (${savedLeads.length})`, callback_data: 'cb_notif_open_leads' }],
-    ],
+    inline_keyboard: notifRows,
   };
 
   // Send to ALL known Admin chats and NEVER add this message_id to activeBotMessages so it is NEVER deleted!
@@ -701,7 +1474,7 @@ function getLiveFreeSeats(tripId: string): number {
   return liveSeatsOverride[tripId] ?? 4;
 }
 
-// Track per-chat state for admin & 1-2 click booking
+// Track per-chat state for admin & multi-seat 1-2 click booking
 interface ChatSessionState {
   mode:
     | 'waiting_gw_prize'
@@ -718,6 +1491,7 @@ interface ChatSessionState {
   carPhotoSlot?: string;
   pendingPhotoFileId?: string;
   paxCount?: string;
+  selectedSeats?: string[];
   pendingGroupAction?: 'publish_giveaway' | 'publish_winner' | null;
 }
 const chatSessions: Record<number, ChatSessionState> = {};
@@ -740,8 +1514,9 @@ function findTripById(tripId: string) {
 }
 
 // Main Menu Markup:
-// - "Точки збору (Door-to-Door)" is moved inside "❓ Часті питання (FAQ)" as requested!
-// - Clients see "🎁 Розіграш та призи" (cb_giveaway — read-only dates & winner + participate button).
+// - Includes "🎟 Мої бронювання" so clients can view booking status, date, seats & cancel/ask in 1 click!
+// - "Точки збору (Door-to-Door)" is inside "❓ Часті питання (FAQ)"
+// - Clients see "🎁 Розіграш (Дати та Переможець)"
 // - Only Admin sees the Admin Panel & Client Leads List buttons!
 function getMainMenuMarkup(userId?: number, username?: string, chatId?: number) {
   const isAdmin = isAdminUser(userId, username, chatId);
@@ -750,7 +1525,10 @@ function getMainMenuMarkup(userId?: number, username?: string, chatId?: number) 
       { text: '🗺 Напрямки та дати', callback_data: 'cb_trips' },
       { text: '⭐ Відгуки туристів', callback_data: 'cb_reviews' },
     ],
-    [{ text: '💺 ЗАБРОНЮВАТИ МІСЦЕ', callback_data: 'cb_book' }],
+    [
+      { text: '💺 ЗАБРОНЮВАТИ МІСЦЕ', callback_data: 'cb_book' },
+      { text: '🎟 Мої бронювання', callback_data: 'cb_my_bookings' },
+    ],
     [
       { text: '🚐 Фото авто (Opel Vivaro)', callback_data: 'cb_car' },
       { text: '❓ Часті питання та Точки збору', callback_data: 'cb_faq' },
@@ -769,7 +1547,7 @@ function getMainMenuMarkup(userId?: number, username?: string, chatId?: number) 
   if (isAdmin) {
     rows.push([
       { text: `📋 Заявки клієнтів (${savedLeads.length})`, callback_data: 'cb_adm_leads' },
-      { text: '👑 Адмін-панель (Розіграш / Авто)', callback_data: 'cb_admin_panel' },
+      { text: '👑 Адмін-панель (Керування)', callback_data: 'cb_admin_panel' },
     ]);
   }
 
@@ -790,7 +1568,10 @@ function getTripsCatalogMarkup(prefix = 'trip_') {
     ];
   });
   if (prefix === 'trip_') {
-    rows.push([{ text: '💺 ЗАБРОНЮВАТИ МІСЦЕ', callback_data: 'cb_book' }]);
+    rows.push([
+      { text: '💺 ЗАБРОНЮВАТИ МІСЦЕ', callback_data: 'cb_book' },
+      { text: '🎟 Мої бронювання', callback_data: 'cb_my_bookings' },
+    ]);
   }
   rows.push([{ text: '🔙 Назад в меню', callback_data: 'cb_back' }]);
   return { inline_keyboard: rows };
@@ -816,7 +1597,7 @@ function getPublicGiveawayText(prize: string, count: number) {
     `<b>Умови участі максимально прості:</b>\n` +
     `1️⃣ Бути учасником нашої групи та підписаним на канал SVOI\n` +
     `2️⃣ Натиснути кнопку <b>«🎉 Брати участь! (${count})»</b> нижче!\n\n` +
-    `<i>Бот автоматично реєструє кожного учасника та оновлює лічильник. Усім удачі! 🚐✨</i>`
+    `<i>Бот автоматично перевіряє підписку на спільноту, реєструє кожного учасника та оновлює лічильник. Усім удачі! 🚐✨</i>`
   );
 }
 
@@ -825,7 +1606,7 @@ function getClientGiveawayText() {
   const count = activeGiveaway.participants.length;
   const drawDateStr = activeGiveaway.drawDate || 'Неділя, 1 листопада о 20:00';
   const statusBadge = activeGiveaway.is_active
-    ? `🟢 <b>Триває прийом учасників!</b>`
+    ? `🟢 <b>Триває прийом учасників! (Перевірка підписки активна)</b>`
     : `🏁 <b>Розіграш завершено — переможця визначено!</b>`;
 
   const winnerBlock = activeGiveaway.winner
@@ -845,7 +1626,7 @@ function getClientGiveawayText() {
     `👥 <b>Зареєстровано учасників:</b> <b>${count}</b>\n\n` +
     `${winnerBlock}\n\n` +
     `💡 <b>Як взяти участь:</b>\n` +
-    `Натисніть кнопку <b>«🎉 Брати участь у розіграші!»</b> нижче або у закріпленому пості нашої групи SVOI!`
+    `Підпишіться на нашу групу/канал та натисніть кнопку <b>«🎉 Брати участь у розіграші!»</b> нижче (бот автоматично перевіряє членство в спільноті)!`
   );
 }
 
@@ -887,7 +1668,7 @@ function getAdminGiveawayCardText() {
     `👑 <b>АДМІН-ПАНЕЛЬ: КЕРУВАННЯ РОЗІГРАШЕМ ТА ПУБЛІКАЦІЄЮ В ГРУПІ</b> 🎁\n\n` +
     `🎁 <b>Приз:</b> <b>${activeGiveaway.prize}</b>\n` +
     `📅 <b>Дата розіграшу (бачать клієнти):</b> <code>${drawDateStr}</code>\n` +
-    `📊 <b>Статус:</b> ${activeGiveaway.is_active ? '🟢 Активний' : '🏁 Завершено'}\n` +
+    `📊 <b>Статус:</b> ${activeGiveaway.is_active ? '🟢 Активний (перевірка getChatMember увімкнена)' : '🏁 Завершено'}\n` +
     `• 👥 <b>Учасників зареєстровано:</b> <b>${count}</b>\n` +
     (activeGiveaway.winner
       ? `• 🏆 <b>Обраний переможець:</b> <b>${activeGiveaway.winner.first_name} (${activeGiveaway.winner.username})</b>\n`
@@ -897,7 +1678,7 @@ function getAdminGiveawayCardText() {
     `👥 <b>Список учасників:</b>\n${partList}\n\n` +
     `<blockquote>👇 <b>Керування для Адміністратора:</b>\n` +
     `• Публікувати розіграш і результати в групу може <b>тільки Адмін</b>.\n` +
-    `• Клієнти в меню бачать лише дату проведення, поточний приз та ім'я переможця.</blockquote>`
+    `• Під час натискання «Брати участь» бот автоматично перевіряє підписку через <code>getChatMember</code>.</blockquote>`
   );
 }
 
@@ -950,10 +1731,17 @@ function getAdminGiveawayCardMarkup() {
 }
 
 function getChannelAdminMarkup() {
+  const wlCount = savedLeads.filter((l) => l.type === 'waitlist' && l.status !== 'archived').length;
   return {
     inline_keyboard: [
       [
         { text: `📋 Список заявок клієнтів (${savedLeads.length})`, callback_data: 'cb_adm_leads' },
+      ],
+      [
+        { text: '📥 Вивантажити базу клієнтів (CSV / Таблиця)', callback_data: 'cb_adm_export_csv' },
+      ],
+      [
+        { text: `📣 Розсилка по Листу очікування (${wlCount})`, callback_data: 'cb_adm_waitlist_hub' },
       ],
       [
         { text: '👑 Картка РОЗІГРАШУ (Публікація в Групу + Результат)', callback_data: 'cb_adm_gw_card' },
@@ -1009,12 +1797,13 @@ function getAdminLeadsListView(page = 0) {
                 : lead.type === 'waitlist'
                   ? '📋 Лист очікування'
                   : '💬 Відгук/Питання';
+            const { paxCount } = resolveLeadSeatsAndPax(lead);
             return (
               `<b>${num}. ${statusIcon} [${typeBadge}] #${lead.bookingCode || lead.id.slice(-4)}</b> (${lead.timestamp})\n` +
               `   👤 <b>Клієнт:</b> ${lead.userName} (${lead.userHandle})${lead.phone ? ` • 📱 <code>${lead.phone}</code>` : ''}\n` +
               (lead.tripTitle ? `   🗺 <b>Тур:</b> ${lead.tripTitle}\n` : '') +
               (lead.seatType && lead.type === 'booking'
-                ? `   💺 <b>Місце:</b> ${lead.seatType}${lead.totalCost ? ` • 💶 <b>${lead.totalCost}€</b>` : ''}\n`
+                ? `   💺 <b>Місця (${paxCount} ос.):</b> ${lead.seatType}${lead.totalCost ? ` • 💶 <b>${lead.totalCost}€</b>` : ''}\n`
                 : '') +
               (lead.meetingPoint && lead.type === 'booking' ? `   📍 <b>Збір:</b> ${lead.meetingPoint}\n` : '') +
               (lead.text ? `   📝 <i>${lead.text}</i>\n` : '')
@@ -1024,9 +1813,9 @@ function getAdminLeadsListView(page = 0) {
 
   const text =
     `📋 <b>АДМІН-ПАНЕЛЬ: СПИСОК ЗАЯВОК КЛІЄНТІВ (${total})</b> 👑\n` +
-    `<i>Сторінка ${safePage + 1} з ${totalPages} • Усі заявки надійно зберігаються в базі та не видаляються!</i>\n\n` +
+    `<i>Сторінка ${safePage + 1} з ${totalPages} • При натисканні «✅ Підтвердити» на заявці місця списуються з туру автоматично, а клієнт отримує повідомлення в Telegram!</i>\n\n` +
     `${itemsHtml}\n\n` +
-    `<blockquote>💡 <b>Підказка:</b> Натисніть на кнопку з ім'ям клієнта нижче, щоб відкрити картку заявки, написати клієнту в 1 клік або підтвердити бронь!</blockquote>`;
+    `<blockquote>💡 <b>Підказка:</b> Натисніть на заявку нижче для швидкого підтвердження в 1 клік, вивантажте базу в Excel/CSV або запустіть розсилку по листу очікування:</blockquote>`;
 
   const rows: any[][] = [];
 
@@ -1034,7 +1823,7 @@ function getAdminLeadsListView(page = 0) {
   for (let i = 0; i < slice.length; i++) {
     const lead = slice[i];
     const absIdx = safePage * pageSize + i;
-    const statusIcon = lead.status === 'confirmed' ? '✅' : '🟢';
+    const statusIcon = lead.status === 'confirmed' ? '✅' : lead.status === 'archived' ? '🗄' : '🟢';
     rows.push([
       {
         text: `${statusIcon} #${lead.bookingCode || absIdx + 1}: ${lead.userName} (${lead.userHandle}) — ${lead.tripTitle?.slice(0, 22) || 'Заявка'}`,
@@ -1055,6 +1844,11 @@ function getAdminLeadsListView(page = 0) {
     }
     rows.push(navRow);
   }
+
+  rows.push([
+    { text: '📥 Вивантажити базу (CSV / Excel)', callback_data: 'cb_adm_export_csv' },
+    { text: '📣 Лист очікування', callback_data: 'cb_adm_waitlist_hub' },
+  ]);
 
   rows.push([
     { text: '🔄 Оновити список заявок', callback_data: `cb_adm_leads_p_${safePage}` },
@@ -1461,12 +2255,15 @@ async function sendTourCardToChat(
     { text: '📋 Лист очікування', callback_data: `waitlist_add_${trip.id}` },
   ]);
 
-  // ONLY Admin sees tour seat / date / poster edit buttons!
+  // ONLY Admin sees tour seat / date / poster / waitlist broadcast edit buttons!
   if (isAdmin) {
     rows.push([
       { text: `⚙️ [Адмін] Місця (${freeSeats}/8)`, callback_data: `adm_seats_${trip.id}` },
       { text: `📅 Дата`, callback_data: `adm_date_${trip.id}` },
       { text: `🖼 Постер`, callback_data: `adm_poster_${trip.id}` },
+    ]);
+    rows.push([
+      { text: `📣 [Адмін] Розсилка по листу очікування цього туру`, callback_data: `cb_adm_notify_wl_${trip.id}` },
     ]);
   }
 
@@ -1518,6 +2315,19 @@ async function startLiveTelegramBotPolling() {
         text: '🚀 SVOI Mini App',
         web_app: { url: currentMiniAppUrl },
       },
+    });
+    // Register official Telegram `/` command menu for clients and admins
+    await tgApi('setMyCommands', {
+      commands: [
+        { command: 'start', description: '🏠 Головне меню клубу SVOI Travel' },
+        { command: 'mybooking', description: '🎟 Мої бронювання та статус заявки' },
+        { command: 'trips', description: '🗺 Напрямки та дати поїздок' },
+        { command: 'book', description: '💺 Обрати місця в авто та забронювати' },
+        { command: 'car', description: '🚐 Наше авто (Opel Vivaro 8 місць)' },
+        { command: 'giveaway', description: '🎁 Розіграш призу та переможець' },
+        { command: 'faq', description: '❓ Часті питання та Точки збору' },
+        { command: 'admin', description: '👑 Адмін-панель (для організатора)' },
+      ],
     });
   } catch (_e) {
     // ignore
@@ -1668,34 +2478,25 @@ async function startLiveTelegramBotPolling() {
             }
           }
 
-          // Handle shared contact (request_contact=True) OR typed phone number in Step 3 of booking
+          // Handle shared contact (request_contact=True) OR typed phone number in Step 3 of booking (supports Multi-Seat!)
           if (msg.contact || (session.mode === 'waiting_booking_contact' && text && !text.startsWith('/'))) {
             const phone = msg.contact?.phone_number || text;
             const firstName = msg.from?.first_name || 'Мандрівник';
             const username = msg.from?.username ? `@${msg.from.username}` : firstName;
             const tripId = session.tripId || 'paris';
-            const paxCount = session.paxCount || '1';
+            const rawSelection =
+              session.selectedSeats && session.selectedSeats.length > 0
+                ? session.selectedSeats
+                : session.paxCount || '1';
             chatSessions[chatId] = { mode: null };
 
-            const SEAT_INFO: Record<string, { label: string; fee: number; pax: number }> = {
-              seat1: { label: '💺 Місце 1 (1-й ряд, Панорамне +5€)', fee: 5, pax: 1 },
-              seat2: { label: '💺 Місце 2 (1-й ряд, Вікно +5€)', fee: 5, pax: 1 },
-              seat3: { label: '💺 Місце 3 (2-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
-              seat4: { label: '💺 Місце 4 (2-й ряд, Центр +5€)', fee: 5, pax: 1 },
-              seat5: { label: '💺 Місце 5 (2-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
-              seat6: { label: '💺 Місце 6 (3-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
-              seat7: { label: '💺 Місце 7 (3-й ряд, Центр 0€)', fee: 0, pax: 1 },
-              seat8: { label: '💺 Місце 8 (3-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
-              '1': { label: '🎲 Вільна посадка (1 особа, 0€)', fee: 0, pax: 1 },
-              '2': { label: '👥 2 місця поруч', fee: 0, pax: 2 },
-              '3': { label: '👨‍👩‍👧 3+ місць (компанія)', fee: 0, pax: 3 },
-            };
-            const selectedSeat = SEAT_INFO[paxCount] || SEAT_INFO['1'];
+            const selectedSeat = resolveBookingSelection(tripId, rawSelection);
 
             const trip = findTripById(tripId);
+            const normTripId = trip ? trip.id : tripId;
             const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
             const tripTitle = trip ? trip.shortTitle : 'Обраний тур';
-            const dateStr = getLiveTripDate(tripId, trip?.departureDates);
+            const dateStr = getLiveTripDate(normTripId, trip?.departureDates);
             const price = trip ? trip.price : 120;
             const totalCost = price * selectedSeat.pax + selectedSeat.fee;
             const bookingCode = `SVOI-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -1711,19 +2512,19 @@ async function startLiveTelegramBotPolling() {
             }
 
             // Clean up client's previous bot messages BEFORE sending permanent admin notification
-            // (so if Admin is testing from their own account, the new lead notification stays on screen!)
             await sendCleanBotMessage(chatId, {
               parse_mode: 'HTML',
               text:
                 `🎉 <b>ЗАЯВКУ #${bookingCode} ПРИЙНЯТО!</b>\n\n` +
                 `Дякуємо, <b>${firstName}</b>! Ваше бронювання в клубі <b>SVOI</b> зафіксовано.\n\n` +
                 `${flag} <b>${tripTitle} | ${dateStr}</b>\n` +
-                `• 💺 <b>Обране місце:</b> <code>${selectedSeat.label}</code>\n` +
+                `• 💺 <b>Обрані місця (${selectedSeat.pax} ос.):</b> <code>${selectedSeat.label}</code>\n` +
                 `• 📱 <b>Контакт:</b> <code>${phone} (${username})</code>\n` +
                 `• 💶 <b>До оплати:</b> <code>${totalCost}€</code>\n\n` +
-                `<blockquote>🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Менеджер зв'яжеться з вами для уточнення адреси виїзду.</blockquote>`,
+                `<blockquote>🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Як тільки організатор підтвердить вашу заявку, ви отримаєте автоматичне сповіщення в цей чат, або можете перевірити статус у розділі «🎟 Мої бронювання».</blockquote>`,
               reply_markup: {
                 inline_keyboard: [
+                  [{ text: '🎟 Переглянути «Мої бронювання»', callback_data: 'cb_my_bookings' }],
                   [{ text: '🗺 Інші напрямки та дати', callback_data: 'cb_trips' }],
                   [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
                 ],
@@ -1734,9 +2535,12 @@ async function startLiveTelegramBotPolling() {
             await recordAndNotifyLead({
               bookingCode,
               type: 'booking',
+              tripId: normTripId,
               tripTitle: `${flag} ${tripTitle} | ${dateStr}`,
               duration: trip?.duration || '1 день',
               seatType: selectedSeat.label,
+              paxCount: selectedSeat.pax,
+              seatNumbers: selectedSeat.seatNumbers,
               basePrice: price,
               seatFee: selectedSeat.fee,
               totalCost,
@@ -1762,6 +2566,7 @@ async function startLiveTelegramBotPolling() {
                 `Ваш відгук / запитання передано організатору клубу <b>SVOI Travel</b>.`,
               reply_markup: {
                 inline_keyboard: [
+                  [{ text: '🎟 Мої бронювання', callback_data: 'cb_my_bookings' }],
                   [{ text: '❓ Назад до Частих питань', callback_data: 'cb_faq' }],
                   [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
                 ],
@@ -2113,6 +2918,68 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
+          // Official `/` Commands for Clients & Admins (/mybooking, /trips, /book, /car, /faq, /giveaway)
+          if (text.startsWith('/mybooking')) {
+            chatSessions[chatId] = { mode: null };
+            const view = getClientBookingsView(userId, usernameRaw);
+            await sendCleanBotMessage(chatId, {
+              parse_mode: 'HTML',
+              text: view.text,
+              reply_markup: view.markup,
+            });
+            continue;
+          }
+
+          if (text.startsWith('/trips')) {
+            chatSessions[chatId] = { mode: null };
+            await sendCleanBotMessage(chatId, {
+              text: `🗺 <b>Оберіть напрямок та дату поїздки з клубом SVOI:</b>`,
+              parse_mode: 'HTML',
+              reply_markup: getTripsCatalogMarkup('trip_'),
+            });
+            continue;
+          }
+
+          if (text.startsWith('/book')) {
+            chatSessions[chatId] = { mode: null };
+            await sendCleanBotMessage(chatId, {
+              text:
+                `💺 <b>Крок 1 із 3: Оберіть тур для бронювання місць у салоні Opel Vivaro:</b>\n\n` +
+                `<i>Ви зможете обрати одразу 1, 2, 3 або 4+ місць на схемі авто з автоматичним підрахунком суми!</i>`,
+              parse_mode: 'HTML',
+              reply_markup: getTripsCatalogMarkup('book_trip_'),
+            });
+            continue;
+          }
+
+          if (text.startsWith('/car')) {
+            chatSessions[chatId] = { mode: null };
+            await sendCarCardToChat(chatId, null, false, '1', '', isAdmin);
+            continue;
+          }
+
+          if (text.startsWith('/faq') || text.startsWith('/help')) {
+            chatSessions[chatId] = { mode: null };
+            await sendCleanBotMessage(chatId, {
+              parse_mode: 'HTML',
+              text:
+                `❓ <b>Часті питання про поїздки клубу SVOI (FAQ) та Точки збору</b> 💡\n\n` +
+                `Натисніть на потрібну тему нижче:`,
+              reply_markup: getFaqMarkup(),
+            });
+            continue;
+          }
+
+          if (text.startsWith('/giveaway') && !isAdmin) {
+            chatSessions[chatId] = { mode: null };
+            await sendCleanBotMessage(chatId, {
+              parse_mode: 'HTML',
+              text: getClientGiveawayText(),
+              reply_markup: getClientGiveawayMarkup(false),
+            });
+            continue;
+          }
+
           if (text.startsWith('/start') || text.startsWith('/menu')) {
             delete adminClientPreviewMode[userId];
             delete adminClientPreviewMode[chatId];
@@ -2235,6 +3102,18 @@ async function startLiveTelegramBotPolling() {
               });
               continue;
             }
+            // Real getChatMember subscription verification before allowing giveaway registration!
+            const subCheck = await verifyGiveawaySubscription(userId, usernameRaw, chatId);
+            if (!subCheck.ok) {
+              await tgApi('answerCallbackQuery', {
+                callback_query_id: cb.id,
+                text:
+                  `⚠️ Для участі в розіграші необхідно підписатися на нашу спільноту «${subCheck.missingTitle || 'SVOI Travel'}»!\n\n` +
+                  `Вступіть у групу/канал та натисніть «🎉 Брати участь!» ще раз.`,
+                show_alert: true,
+              });
+              continue;
+            }
             const exists = activeGiveaway.participants.some((p) => p.user_id === userId);
             if (!exists) {
               activeGiveaway.participants.push({
@@ -2248,8 +3127,8 @@ async function startLiveTelegramBotPolling() {
             await tgApi('answerCallbackQuery', {
               callback_query_id: cb.id,
               text: exists
-                ? `✅ Ви вже зареєстровані у розіграші! Усього учасників: ${count}`
-                : `🎉 Вітаємо, ${cb.from?.first_name || 'Мандрівник'}! Ви успішно зареєстровані в розіграші! Ваш номер: #${count}`,
+                ? `✅ Ви вже зареєстровані у розіграші! Підписку перевірено. Усього учасників: ${count}`
+                : `🎉 Вітаємо, ${cb.from?.first_name || 'Мандрівник'}! Підписку підтверджено — ви у розіграші! Ваш номер: #${count}`,
               show_alert: true,
             });
             // Update the counter on the client giveaway screen OR public Group/Channel message
@@ -2287,12 +3166,134 @@ async function startLiveTelegramBotPolling() {
             continue;
           }
 
+          // Alert if client clicks an already occupied seat in the Opel Vivaro seat map
+          if (cbData.startsWith('seat_occ_')) {
+            await tgApi('answerCallbackQuery', {
+              callback_query_id: cb.id,
+              text: '🔴 Це місце вже заброньоване іншим пасажиром! Будь ласка, оберіть інше вільне місце на схемі.',
+              show_alert: true,
+            });
+            continue;
+          }
+
+          // 1-click confirmation directly on the PERMANENT Admin Lead Notification card!
+          if (cbData.startsWith('cb_notif_confirm_')) {
+            if (!isAdmin) {
+              await tgApi('answerCallbackQuery', { callback_query_id: cb.id });
+              continue;
+            }
+            const leadId = cbData.replace('cb_notif_confirm_', '');
+            const res = await updateLeadStatusAndNotify(leadId, 'confirmed');
+            const lead = res.lead;
+            await tgApi('answerCallbackQuery', {
+              callback_query_id: cb.id,
+              text: lead
+                ? `✅ Бронь #${lead.bookingCode} підтверджено! Вільні місця оновлено, клієнта сповіщено в Telegram.`
+                : '✅ Заявку підтверджено!',
+              show_alert: true,
+            });
+            if (chatId && msgId && lead) {
+              const cleanHandle = lead.userHandle.startsWith('@') ? lead.userHandle.slice(1) : '';
+              const contactUrl = cleanHandle
+                ? `https://t.me/${cleanHandle}`
+                : lead.userId > 0
+                  ? `tg://user?id=${lead.userId}`
+                  : 'https://t.me/SVOI_travel_admin';
+              const { paxCount } = resolveLeadSeatsAndPax(lead);
+              const updatedNotifText =
+                `✅🔥 <b>ЗАЯВКУ #${lead.bookingCode} ОФІЦІЙНО ПІДТВЕРДЖЕНО!</b> 📌\n` +
+                `<i>(Місця автоматично списано з туру • Клієнту надіслано підтвердження)</i>\n\n` +
+                `🗺 <b>Напрямок:</b> ${lead.tripTitle}\n` +
+                `💺 <b>Закріплені місця (${paxCount} ос.):</b> <code>${lead.seatType}</code>\n` +
+                (lead.totalCost !== undefined ? `💶 <b>Сума:</b> <code>${lead.totalCost}€</code>\n` : '') +
+                `👤 <b>Клієнт:</b> <b>${lead.userName}</b> (${lead.userHandle})\n` +
+                (lead.phone ? `📱 <b>Телефон:</b> <code>${lead.phone}</code>\n` : '') +
+                `🕒 <b>Час заявки:</b> ${lead.timestamp}`;
+              await tgApi('editMessageText', {
+                chat_id: chatId,
+                message_id: msgId,
+                parse_mode: 'HTML',
+                text: updatedNotifText,
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: `💬 Написати клієнту (${lead.userName})`, url: contactUrl }],
+                    [{ text: `📋 Відкрити список усіх заявок (${savedLeads.length})`, callback_data: 'cb_notif_open_leads' }],
+                  ],
+                },
+              }).catch(() => {});
+            }
+            continue;
+          }
+
           await tgApi('answerCallbackQuery', { callback_query_id: cb.id });
           if (!chatId || !msgId) continue;
+
+          // If user was on Step 3 (waiting_booking_contact with ReplyKeyboard) and clicked ANY inline button, dismiss the ReplyKeyboard cleanly
+          if (chatSessions[chatId]?.mode === 'waiting_booking_contact' && !cbData.startsWith('book_proceed_')) {
+            tgApi('sendMessage', {
+              chat_id: chatId,
+              text: '⏳...',
+              reply_markup: { remove_keyboard: true },
+            })
+              .then((rm: any) => {
+                if (rm && rm.ok && rm.result?.message_id) {
+                  tgApi('deleteMessage', { chat_id: chatId, message_id: rm.result.message_id }).catch(() => {});
+                }
+              })
+              .catch(() => {});
+          }
 
           if (cbData === 'cb_back') {
             chatSessions[chatId] = { mode: null };
             await smartEditMessage(chatId, msgId, hasPhoto, WELCOME_HTML, getMainMenuMarkup(userId, usernameRaw, chatId));
+          } else if (cbData === 'cb_ticket_my_bookings') {
+            // Clicked on a permanent confirmation ticket: keep the confirmation receipt intact and open My Bookings in a clean window
+            chatSessions[chatId] = { mode: null };
+            const view = getClientBookingsView(userId, usernameRaw);
+            await sendCleanBotMessage(chatId, {
+              parse_mode: 'HTML',
+              text: view.text,
+              reply_markup: view.markup,
+            });
+          } else if (cbData === 'cb_my_bookings') {
+            chatSessions[chatId] = { mode: null };
+            const view = getClientBookingsView(userId, usernameRaw);
+            await smartEditMessage(chatId, msgId, hasPhoto, view.text, view.markup);
+          } else if (cbData.startsWith('cb_client_cancel_')) {
+            const leadId = cbData.replace('cb_client_cancel_', '');
+            const res = await updateLeadStatusAndNotify(leadId, 'archived');
+            const cancelledLead = res.lead;
+            if (cancelledLead) {
+              // Notify all Admins permanently that the client cancelled their booking
+              const targetAdmins = Array.from(new Set([...OWNER_ADMIN_IDS, ...knownAdminChatIds]));
+              for (const admId of targetAdmins) {
+                if (admId <= 0) continue;
+                tgApi('sendMessage', {
+                  chat_id: admId,
+                  parse_mode: 'HTML',
+                  text:
+                    `⚠️🔄 <b>КЛІЄНТ СКАСУВАВ ЗАЯВКУ #${cancelledLead.bookingCode || cancelledLead.id.slice(-4)}</b>\n\n` +
+                    `👤 <b>Клієнт:</b> ${cancelledLead.userName} (${cancelledLead.userHandle})\n` +
+                    `🗺 <b>Тур:</b> ${cancelledLead.tripTitle || '—'}\n` +
+                    `💺 <b>Місця:</b> <code>${cancelledLead.seatType || '—'}</code>\n` +
+                    (res.seatDelta > 0
+                      ? `✅ <b>Автоматично повернуто у вільний продаж: +${res.seatDelta} місц.!</b>`
+                      : `ℹ️ <i>Статус заявки переведено в архів.</i>`),
+                  reply_markup: {
+                    inline_keyboard: [
+                      [{ text: '📣 Сповістити Лист очікування про вільні місця', callback_data: 'cb_adm_waitlist_hub' }],
+                      [{ text: '📋 Відкрити список заявок', callback_data: 'cb_notif_open_leads' }],
+                    ],
+                  },
+                }).catch(() => {});
+              }
+            }
+            const view = getClientBookingsView(userId, usernameRaw);
+            const prefixBanner = cancelledLead
+              ? `✅ <b>Вашу заявку #${cancelledLead.bookingCode || ''} успішно скасовано.</b>\n` +
+                `<i>Ви завжди можете оформити нове бронювання на будь-яку зручну дату!</i>\n\n`
+              : '';
+            await smartEditMessage(chatId, msgId, hasPhoto, prefixBanner + view.text, view.markup);
           } else if (cbData === 'cb_giveaway') {
             // Client-facing Giveaway Screen: view draw dates, prize, winner, and participate!
             chatSessions[chatId] = { mode: null };
@@ -2313,6 +3314,37 @@ async function startLiveTelegramBotPolling() {
               text: view.text,
               reply_markup: view.markup,
             });
+          } else if (cbData === 'cb_adm_export_csv') {
+            if (!isAdmin) continue;
+            const sentOk = await sendCsvDocumentToTelegramChat(chatId);
+            const statusText = sentOk
+              ? `✅ <b>Готовий CSV-файл бази клієнтів SVOI Travel надіслано у ваш чат вище!</b> 📥📊\n\n` +
+                `Ви можете відкрити його в один клік у <b>Microsoft Excel</b>, <b>Google Таблицях</b> або <b>Apple Numbers</b> — усі телефони, ніки, тури, обрані місця та суми відформатовані.`
+              : `⚠️ <b>Не вдалося надіслати файл у чат.</b> Спробуйте ще раз або завантажте CSV у веб-адмінці.`;
+            await smartEditMessage(chatId, msgId, hasPhoto, statusText, {
+              inline_keyboard: [
+                [{ text: '📋 До списку заявок клієнтів', callback_data: 'cb_adm_leads' }],
+                [{ text: '👑 В Адмін-панель', callback_data: 'cb_admin_panel' }],
+                [{ text: '🔙 Назад в головне меню', callback_data: 'cb_back' }],
+              ],
+            });
+          } else if (cbData === 'cb_adm_waitlist_hub' || cbData === 'cb_adm_waitlist') {
+            if (!isAdmin) continue;
+            chatSessions[chatId] = { mode: null };
+            const view = getAdminWaitlistHubView();
+            await smartEditMessage(chatId, msgId, hasPhoto, view.text, view.markup);
+          } else if (cbData.startsWith('cb_adm_notify_wl_')) {
+            if (!isAdmin) continue;
+            const tripIdOrAll = cbData.replace('cb_adm_notify_wl_', '') || 'ALL';
+            const bcRes = await broadcastToWaitlist(tripIdOrAll);
+            const reportHtml =
+              `📣✅ <b>РОЗСИЛКУ ПО ЛИСТУ ОЧІКУВАННЯ ВИКОНАНО!</b> 🎉\n\n` +
+              `• 🗺 <b>Напрямок:</b> <b>${bcRes.tripLabel}</b>\n` +
+              `• 📋 <b>Оброблено записів у листі очікування:</b> <b>${bcRes.matchedCount}</b>\n` +
+              `• 📲 <b>Надіслано особистих повідомлень у Telegram:</b> <b>${bcRes.sentTelegramCount}</b>\n\n` +
+              `<blockquote>Кожен клієнт із листа очікування отримав повідомлення про вільні місця з прямою кнопкою <b>«💺 Обрати місце та забронювати зараз»</b>!</blockquote>`;
+            const hubView = getAdminWaitlistHubView();
+            await smartEditMessage(chatId, msgId, hasPhoto, `${reportHtml}\n\n${hubView.text}`, hubView.markup);
           } else if (cbData === 'cb_adm_leads' || cbData.startsWith('cb_adm_leads_p_')) {
             if (!isAdmin) continue;
             chatSessions[chatId] = { mode: null };
@@ -2337,10 +3369,12 @@ async function startLiveTelegramBotPolling() {
 
             const statusLabel =
               lead.status === 'confirmed'
-                ? '✅ Підтверджена'
+                ? '✅ Підтверджена (місця списано, клієнта сповіщено)'
                 : lead.status === 'archived'
-                  ? '🗄 В архіві'
-                  : '🟢 Нова заявка';
+                  ? '🗄 В архіві / Скасована'
+                  : '🟢 Нова заявка (очікує підтвердження)';
+
+            const { paxCount } = resolveLeadSeatsAndPax(lead);
 
             const detailText =
               `📋 <b>КАРТКА ЗАЯВКИ КЛІЄНТА #${lead.bookingCode || idx + 1}</b>\n\n` +
@@ -2349,18 +3383,21 @@ async function startLiveTelegramBotPolling() {
               `🔗 <b>Telegram:</b> ${lead.userHandle}\n` +
               (lead.phone ? `📱 <b>Телефон:</b> <code>${lead.phone}</code>\n` : '') +
               (lead.tripTitle ? `🗺 <b>Напрямок:</b> ${lead.tripTitle}\n` : '') +
-              (lead.seatType ? `💺 <b>Обране місце:</b> <code>${lead.seatType}</code>\n` : '') +
+              (lead.seatType ? `💺 <b>Обрані місця (${paxCount} ос.):</b> <code>${lead.seatType}</code>\n` : '') +
               (lead.totalCost !== undefined ? `💶 <b>Сума:</b> <code>${lead.totalCost}€</code>\n` : '') +
               (lead.meetingPoint ? `📍 <b>Точка збору:</b> ${lead.meetingPoint}\n` : '') +
               (lead.text ? `📝 <b>Повідомлення:</b> <i>${lead.text}</i>\n` : '') +
-              `🕒 <b>Час подачі:</b> ${lead.timestamp}`;
+              `🕒 <b>Час подачі:</b> ${lead.timestamp}\n\n` +
+              `<blockquote>💡 Натисніть <b>«✅ Підтвердити бронь»</b> нижче — бот автоматично спише <b>${paxCount} місц.</b> із туру та надішле клієнту офіційне підтвердження в Telegram!</blockquote>`;
 
             await smartEditMessage(chatId, msgId, hasPhoto, detailText, {
               inline_keyboard: [
                 [{ text: `💬 Написати клієнту (${lead.userName})`, url: contactUrl }],
                 [
-                  { text: '✅ Позначити: Підтверджено', callback_data: `cb_adm_lead_st_${idx}_confirmed` },
-                  { text: '🗄 В архів', callback_data: `cb_adm_lead_st_${idx}_archived` },
+                  { text: `✅ Підтвердити бронь (-${paxCount} місц. + сповістити)`, callback_data: `cb_adm_lead_st_${idx}_confirmed` },
+                ],
+                [
+                  { text: '🗄 Перенести в архів / Скасувати', callback_data: `cb_adm_lead_st_${idx}_archived` },
                 ],
                 [
                   { text: '📋 До списку всіх заявок', callback_data: 'cb_adm_leads' },
@@ -2373,12 +3410,20 @@ async function startLiveTelegramBotPolling() {
             const parts = cbData.replace('cb_adm_lead_st_', '').split('_');
             const idx = parseInt(parts[0], 10) || 0;
             const newSt = (parts[1] as PersistedLeadItem['status']) || 'confirmed';
-            if (savedLeads[idx]) {
-              savedLeads[idx].status = newSt;
-              saveTargetsToDisk();
-            }
+            const res = await updateLeadStatusAndNotify(idx, newSt);
             const view = getAdminLeadsListView(Math.floor(idx / 6));
-            await smartEditMessage(chatId, msgId, hasPhoto, view.text, view.markup);
+            let banner = '';
+            if (res.lead && newSt === 'confirmed') {
+              const tripId = resolveLeadTripId(res.lead);
+              const remSeats = tripId ? getLiveFreeSeats(tripId) : 4;
+              banner =
+                `✅ <b>Бронь #${res.lead.bookingCode || ''} офіційно підтверджено!</b>\n` +
+                `• 💺 Вільних місць у турі тепер: <code>${remSeats} з 8</code>\n` +
+                `• 📲 Клієнту <b>${res.lead.userName}</b> автоматично надіслано підтвердження в Telegram!\n\n`;
+            } else if (res.lead && newSt === 'archived') {
+              banner = `🗄 <b>Заявку #${res.lead.bookingCode || ''} перенесено в архів${res.seatDelta > 0 ? ` (+${res.seatDelta} місц. повернуто у вільний продаж)` : ''}.</b>\n\n`;
+            }
+            await smartEditMessage(chatId, msgId, hasPhoto, banner + view.text, view.markup);
           } else if (cbData === 'cb_adm_preview_client') {
             adminClientPreviewMode[userId] = true;
             adminClientPreviewMode[chatId] = true;
@@ -2437,112 +3482,108 @@ async function startLiveTelegramBotPolling() {
             await sendTourCardToChat(chatId, msgId, hasPhoto, tripId, userId, usernameRaw);
           } else if (cbData === 'cb_book') {
             const bookText =
-              `💺 <b>Крок 1 із 3: Спочатку оберіть тур для бронювання місця</b> 🗺✨\n\n` +
+              `💺 <b>Крок 1 із 3: Спочатку оберіть тур для бронювання місць</b> 🗺✨\n\n` +
               `<blockquote>🔥 <b>Порядок бронювання в клубі SVOI:</b>\n` +
               `1️⃣ <b>Спочатку оберіть напрямок та дату</b> зі списку нижче\n` +
-              `2️⃣ <b>Потім оберіть місце в салоні</b> Opel Vivaro (1–8 або вільна посадка)\n` +
+              `2️⃣ <b>Відмітьте 1, 2, 3 або 4+ місць галочками ✅</b> на схемі салону Opel Vivaro (або вільну посадку)\n` +
               `3️⃣ <b>Підтвердіть заявку в 1 клік!</b> (<code>0% передоплати</code> на одноденні поїздки)</blockquote>\n\n` +
-              `👇 <b>Натисніть на бажаний тур, щоб перейти до вибору місця:</b>`;
+              `👇 <b>Натисніть на бажаний тур, щоб перейти до схеми місць:</b>`;
             await smartEditMessage(chatId, msgId, hasPhoto, bookText, getTripsCatalogMarkup('book_trip_'));
-          } else if (cbData.startsWith('book_trip_')) {
-            const tripId = cbData.replace('book_trip_', '');
-            const trip = TRIPS_LIST.find((t) => t.id === tripId);
-            const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
-            const title = trip ? trip.shortTitle : 'Обраний тур';
-            const dateStr = getLiveTripDate(tripId, trip?.departureDates);
-            const price = trip ? trip.price : 120;
-            const freeSeats = getLiveFreeSeats(tripId);
-
-            const step2Text =
-              `💺 <b>Крок 2 із 3: Оберіть місце в салоні Opel Vivaro</b>\n\n` +
-              `${flag} <b>${title} | ${dateStr}</b>\n` +
-              `💶 <b>Базовий тариф: ${price}€</b> | 🔥 <b>Вільно: ${freeSeats} з 8</b>\n\n` +
-              `🚐 <b>Схема 8-місного салону (2+3+3):</b>\n` +
-              `• <b>1-й ряд (біля водія):</b> Місце 1 — <code>+5€ (Панорамне)</code>, Місце 2 — <code>+5€ (Вікно)</code>\n` +
-              `• <b>2-й ряд:</b> Місце 3 (ліве), Місце 4 (центр), Місце 5 (праве) — <code>+5€</code>\n` +
-              `• <b>3-й ряд:</b> Місце 6 (ліве <code>+5€</code>), Місце 7 (центр <code>0€</code>), Місце 8 (праве <code>+5€</code>)\n` +
-              `• <b>🎲 Вільна посадка:</b> без фіксації місця — <code>0€</code>\n\n` +
-              `<blockquote>👇 <b>Натисніть на потрібне місце в салоні нижче:</b></blockquote>`;
-
-            const paxMarkup = {
-              inline_keyboard: [
-                [
-                  { text: '💺 1: Панорамне (+5€)', callback_data: `book_pax_${tripId}_seat1` },
-                  { text: '💺 2: Вікно (+5€)', callback_data: `book_pax_${tripId}_seat2` },
-                ],
-                [
-                  { text: '💺 3: Ліве (+5€)', callback_data: `book_pax_${tripId}_seat3` },
-                  { text: '💺 4: Центр (+5€)', callback_data: `book_pax_${tripId}_seat4` },
-                  { text: '💺 5: Праве (+5€)', callback_data: `book_pax_${tripId}_seat5` },
-                ],
-                [
-                  { text: '💺 6: Ліве (+5€)', callback_data: `book_pax_${tripId}_seat6` },
-                  { text: '💺 7: Центр (0€)', callback_data: `book_pax_${tripId}_seat7` },
-                  { text: '💺 8: Праве (+5€)', callback_data: `book_pax_${tripId}_seat8` },
-                ],
-                [
-                  { text: '🎲 Без вибору місця (вільна посадка) — 0€', callback_data: `book_pax_${tripId}_1` },
-                ],
-                [
-                  { text: '[ 👥 2 місця поруч ]', callback_data: `book_pax_${tripId}_2` },
-                  { text: '[ 👨‍👩‍👧 3+ місць ]', callback_data: `book_pax_${tripId}_3` },
-                ],
-                [
-                  { text: '🗺 Змінити тур', callback_data: 'cb_book' },
-                  { text: '🔙 Назад в меню', callback_data: 'cb_back' },
-                ],
-              ],
-            };
-            await smartEditMessage(chatId, msgId, hasPhoto, step2Text, paxMarkup);
-          } else if (cbData.startsWith('book_pax_')) {
-            const rest = cbData.replace('book_pax_', '');
+          } else if (cbData.startsWith('book_trip_') || cbData.startsWith('book_clear_')) {
+            const tripId = cbData.startsWith('book_clear_')
+              ? cbData.replace('book_clear_', '')
+              : cbData.replace('book_trip_', '');
+            chatSessions[chatId] = { mode: null, tripId, selectedSeats: [] };
+            const picker = buildMultiSeatPickerView(tripId, []);
+            await smartEditMessage(chatId, msgId, hasPhoto, picker.text, picker.markup);
+          } else if (cbData.startsWith('toggle_seat_')) {
+            const rest = cbData.replace('toggle_seat_', '');
             const lastIdx = rest.lastIndexOf('_');
             const tripId = rest.substring(0, lastIdx);
-            const paxCount = rest.substring(lastIdx + 1);
-            chatSessions[chatId] = { mode: 'waiting_booking_contact', tripId, paxCount };
+            const seatToken = rest.substring(lastIdx + 1);
+            const curSession = chatSessions[chatId] || { mode: null };
+            let currentSeats =
+              curSession.tripId === tripId && Array.isArray(curSession.selectedSeats)
+                ? [...curSession.selectedSeats]
+                : [];
 
-            const SEAT_INFO: Record<string, { label: string; fee: number; pax: number }> = {
-              seat1: { label: '💺 Місце 1 (1-й ряд, Панорамне +5€)', fee: 5, pax: 1 },
-              seat2: { label: '💺 Місце 2 (1-й ряд, Вікно +5€)', fee: 5, pax: 1 },
-              seat3: { label: '💺 Місце 3 (2-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
-              seat4: { label: '💺 Місце 4 (2-й ряд, Центр +5€)', fee: 5, pax: 1 },
-              seat5: { label: '💺 Місце 5 (2-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
-              seat6: { label: '💺 Місце 6 (3-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
-              seat7: { label: '💺 Місце 7 (3-й ряд, Центр 0€)', fee: 0, pax: 1 },
-              seat8: { label: '💺 Місце 8 (3-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
-              '1': { label: '🎲 Вільна посадка (1 особа, 0€)', fee: 0, pax: 1 },
-              '2': { label: '👥 2 місця поруч', fee: 0, pax: 2 },
-              '3': { label: '👨‍👩‍👧 3+ місць (компанія)', fee: 0, pax: 3 },
+            if (seatToken.startsWith('seat')) {
+              // Remove any free seating tokens ('1', '2', '3', '4') when selecting specific seats 1..8
+              currentSeats = currentSeats.filter((t) => t.startsWith('seat'));
+              if (currentSeats.includes(seatToken)) {
+                currentSeats = currentSeats.filter((t) => t !== seatToken);
+              } else {
+                const maxAvail = Math.max(1, getLiveFreeSeats(tripId));
+                if (currentSeats.length < maxAvail) {
+                  currentSeats.push(seatToken);
+                }
+              }
+            } else {
+              // Free seating token ('1', '2', '3', '4')
+              if (currentSeats.length === 1 && currentSeats[0] === seatToken) {
+                currentSeats = [];
+              } else {
+                currentSeats = [seatToken];
+              }
+            }
+
+            chatSessions[chatId] = { mode: null, tripId, selectedSeats: currentSeats };
+            const picker = buildMultiSeatPickerView(tripId, currentSeats);
+            await smartEditMessage(chatId, msgId, hasPhoto, picker.text, picker.markup);
+          } else if (cbData.startsWith('book_proceed_') || cbData.startsWith('book_pax_')) {
+            let tripId = '';
+            let selectedTokens: string[] = [];
+            if (cbData.startsWith('book_proceed_')) {
+              tripId = cbData.replace('book_proceed_', '');
+              const curSession = chatSessions[chatId];
+              selectedTokens =
+                curSession?.tripId === tripId && curSession?.selectedSeats && curSession.selectedSeats.length > 0
+                  ? curSession.selectedSeats
+                  : ['1'];
+            } else {
+              const rest = cbData.replace('book_pax_', '');
+              const lastIdx = rest.lastIndexOf('_');
+              tripId = rest.substring(0, lastIdx);
+              const paxToken = rest.substring(lastIdx + 1);
+              selectedTokens = paxToken.split(',').filter(Boolean);
+            }
+
+            const selectedSeat = resolveBookingSelection(tripId, selectedTokens);
+            chatSessions[chatId] = {
+              mode: 'waiting_booking_contact',
+              tripId,
+              paxCount: selectedSeat.encodedTokens,
+              selectedSeats: selectedTokens,
             };
-            const selectedSeat = SEAT_INFO[paxCount] || SEAT_INFO['1'];
 
-            const trip = TRIPS_LIST.find((t) => t.id === tripId);
+            const trip = findTripById(tripId);
+            const normId = trip ? trip.id : tripId;
             const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
             const title = trip ? trip.shortTitle : 'Обраний тур';
-            const dateStr = getLiveTripDate(tripId, trip?.departureDates);
+            const dateStr = getLiveTripDate(normId, trip?.departureDates);
             const price = trip ? trip.price : 120;
             const totalCost = price * selectedSeat.pax + selectedSeat.fee;
             const usernameDisplay = cb.from?.username ? `@${cb.from.username}` : 'не вказано';
 
             const step3Text =
-              `📱 <b>Крок 3 із 3: Підтвердження в 1 клік</b>\n\n` +
+              `📱 <b>Крок 3 із 3: Підтвердження бронювання в 1 клік</b>\n\n` +
               `${flag} <b>${title} | ${dateStr}</b>\n` +
-              `💺 <b>Обране місце:</b> <code>${selectedSeat.label}</code>\n` +
-              `💶 <b>Разом до оплати:</b> <code>${totalCost}€</code>\n` +
-              `👤 <b>Ваш профіль:</b> ${usernameDisplay}\n\n` +
-              `<blockquote>Натисніть кнопку <b>«✅ Підтвердити заявку (${usernameDisplay})»</b> або поділіться номером кнопкою <b>«📱 Поділитися номером»</b> унизу екрана — жодного ручного вводу цифр!</blockquote>`;
+              `• 💺 <b>Обрані місця (${selectedSeat.pax} ос.):</b> <code>${selectedSeat.label}</code>\n` +
+              `• 💶 <b>Автоматичний підрахунок:</b> ${selectedSeat.pax} × ${price}€${selectedSeat.fee > 0 ? ` + ${selectedSeat.fee}€` : ''} = <b><code>${totalCost}€</code></b>\n` +
+              `• 👤 <b>Ваш профіль:</b> ${usernameDisplay}\n\n` +
+              `<blockquote>Натисніть кнопку <b>«✅ Підтвердити заявку (${usernameDisplay})»</b> або поділіться номером кнопкою <b>«📱 Поділитися номером»</b> унизу екрана — або просто напишіть телефон у чат!</blockquote>`;
 
             const step3Inline: any[][] = [];
             if (cb.from?.username) {
               step3Inline.push([
                 {
-                  text: `✅ Підтвердити заявку (@${cb.from.username})`,
-                  callback_data: `book_fast_${tripId}_${paxCount}`,
+                  text: `✅ Підтвердити бронь (${selectedSeat.pax} місц. • ${totalCost}€)`,
+                  callback_data: `book_fast_${normId}_${selectedSeat.encodedTokens}`,
                 },
               ]);
             }
             step3Inline.push([
-              { text: '🔙 Змінити місце', callback_data: `book_trip_${tripId}` },
+              { text: '🔙 Змінити обрані місця', callback_data: `book_trip_${normId}` },
               { text: '🔙 Назад в меню', callback_data: 'cb_back' },
             ]);
 
@@ -2567,28 +3608,16 @@ async function startLiveTelegramBotPolling() {
             const rest = cbData.replace('book_fast_', '');
             const lastIdx = rest.lastIndexOf('_');
             const tripId = rest.substring(0, lastIdx);
-            const paxCount = rest.substring(lastIdx + 1);
+            const paxTokenStr = rest.substring(lastIdx + 1);
             chatSessions[chatId] = { mode: null };
 
-            const SEAT_INFO: Record<string, { label: string; fee: number; pax: number }> = {
-              seat1: { label: '💺 Місце 1 (1-й ряд, Панорамне +5€)', fee: 5, pax: 1 },
-              seat2: { label: '💺 Місце 2 (1-й ряд, Вікно +5€)', fee: 5, pax: 1 },
-              seat3: { label: '💺 Місце 3 (2-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
-              seat4: { label: '💺 Місце 4 (2-й ряд, Центр +5€)', fee: 5, pax: 1 },
-              seat5: { label: '💺 Місце 5 (2-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
-              seat6: { label: '💺 Місце 6 (3-й ряд, Ліве вікно +5€)', fee: 5, pax: 1 },
-              seat7: { label: '💺 Місце 7 (3-й ряд, Центр 0€)', fee: 0, pax: 1 },
-              seat8: { label: '💺 Місце 8 (3-й ряд, Праве вікно +5€)', fee: 5, pax: 1 },
-              '1': { label: '🎲 Вільна посадка (1 особа, 0€)', fee: 0, pax: 1 },
-              '2': { label: '👥 2 місця поруч', fee: 0, pax: 2 },
-              '3': { label: '👨‍👩‍👧 3+ місць (компанія)', fee: 0, pax: 3 },
-            };
-            const selectedSeat = SEAT_INFO[paxCount] || SEAT_INFO['1'];
+            const selectedSeat = resolveBookingSelection(tripId, paxTokenStr);
 
             const trip = findTripById(tripId);
+            const normTripId = trip ? trip.id : tripId;
             const flag = trip ? getCountryFlag(trip.country) : '🇪🇺';
             const tripTitle = trip ? trip.shortTitle : 'Обраний тур';
-            const dateStr = getLiveTripDate(tripId, trip?.departureDates);
+            const dateStr = getLiveTripDate(normTripId, trip?.departureDates);
             const price = trip ? trip.price : 120;
             const totalCost = price * selectedSeat.pax + selectedSeat.fee;
             const bookingCode = `SVOI-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -2597,16 +3626,17 @@ async function startLiveTelegramBotPolling() {
 
             const doneText =
               `🎉 <b>ЗАЯВКУ #${bookingCode} ПРИЙНЯТО!</b>\n\n` +
-              `Дякуємо, <b>${firstName}</b>! Ваше бронювання в клубі <b>SVOI</b> зафіксовано в 2 кліки.\n\n` +
+              `Дякуємо, <b>${firstName}</b>! Ваше бронювання в клубі <b>SVOI</b> зафіксовано.\n\n` +
               `${flag} <b>${tripTitle} | ${dateStr}</b>\n` +
-              `• 💺 <b>Обране місце:</b> <code>${selectedSeat.label}</code>\n` +
+              `• 💺 <b>Обрані місця (${selectedSeat.pax} ос.):</b> <code>${selectedSeat.label}</code>\n` +
               `• 👤 <b>Контакт:</b> <code>${username}</code>\n` +
               `• 💶 <b>До оплати:</b> <code>${totalCost}€</code>\n\n` +
-              `<blockquote>🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Менеджер клубу зв'яжеться з вами для уточнення адреси виїзду.</blockquote>`;
+              `<blockquote>🔥 <b>Бронь БЕЗ ПЕРЕДОПЛАТИ!</b> Як тільки організатор підтвердить вашу заявку, вам прийде автоматичне повідомлення в Telegram, а статус оновиться в «🎟 Мої бронювання».</blockquote>`;
 
             // First clean up client's old messages (including the temporary contact keyboard message)
             await smartEditMessage(chatId, msgId, hasPhoto, doneText, {
               inline_keyboard: [
+                [{ text: '🎟 Переглянути «Мої бронювання»', callback_data: 'cb_my_bookings' }],
                 [{ text: '🗺 Інші напрямки та дати', callback_data: 'cb_trips' }],
                 [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
               ],
@@ -2616,9 +3646,12 @@ async function startLiveTelegramBotPolling() {
             await recordAndNotifyLead({
               bookingCode,
               type: 'booking',
+              tripId: normTripId,
               tripTitle: `${flag} ${tripTitle} | ${dateStr}`,
               duration: trip?.duration || '1 день',
               seatType: selectedSeat.label,
+              paxCount: selectedSeat.pax,
+              seatNumbers: selectedSeat.seatNumbers,
               basePrice: price,
               seatFee: selectedSeat.fee,
               totalCost,
@@ -2637,7 +3670,7 @@ async function startLiveTelegramBotPolling() {
             const seatsText =
               `⚙️ <b>Керування місцями [Адмін]: ${trip?.shortTitle || tripId}</b>\n\n` +
               `Поточна кількість вільних місць: <code>${cur} з 8</code>\n\n` +
-              `<blockquote>Оберіть нове значення (від 0 до 8) або натисніть +1 / -1:</blockquote>`;
+              `<blockquote>Оберіть нове значення (від 0 до 8) або натисніть «📣 Сповістити лист очікування», якщо звільнилося місце:</blockquote>`;
             const seatsMarkup = {
               inline_keyboard: [
                 [
@@ -2654,6 +3687,9 @@ async function startLiveTelegramBotPolling() {
                   callback_data: `set_seats_${tripId}_${n}`,
                 })),
                 [
+                  { text: '📣 Сповістити Лист очікування цього туру', callback_data: `cb_adm_notify_wl_${tripId}` },
+                ],
+                [
                   { text: '🔙 До туру', callback_data: `trip_${tripId}` },
                   { text: '🔙 Назад в меню', callback_data: 'cb_back' },
                 ],
@@ -2667,6 +3703,9 @@ async function startLiveTelegramBotPolling() {
             const tripId = rest.substring(0, lastIdx);
             const count = parseInt(rest.substring(lastIdx + 1), 10);
             liveSeatsOverride[tripId] = count;
+            if (count === 8) {
+              bookedSeatNumbersOverride[tripId] = [];
+            }
             saveTargetsToDisk();
             await sendTourCardToChat(chatId, msgId, hasPhoto, tripId, userId, usernameRaw);
           } else if (cbData.startsWith('adm_date_')) {
@@ -3143,9 +4182,10 @@ async function startLiveTelegramBotPolling() {
             const wlText =
               `✅ <b>Вас додано до листа очікування (#${wlCode})!</b> 📋✨\n\n` +
               `Напрямок: <b>${trip?.title || tripId}</b>\n` +
-              `Як тільки звільниться місце або буде призначено додатковий виїзд — менеджер одразу повідомить вас!`;
+              `Як тільки звільниться місце або буде призначено додатковий виїзд — вам одразу прийде повідомлення в Telegram!`;
             await smartEditMessage(chatId, msgId, hasPhoto, wlText, {
               inline_keyboard: [
+                [{ text: '🎟 Переглянути «Мої бронювання»', callback_data: 'cb_my_bookings' }],
                 [{ text: '🗺 Інші напрямки та дати', callback_data: 'cb_trips' }],
                 [{ text: '🔙 Назад в меню', callback_data: 'cb_back' }],
               ],
@@ -3154,6 +4194,7 @@ async function startLiveTelegramBotPolling() {
             await recordAndNotifyLead({
               bookingCode: wlCode,
               type: 'waitlist',
+              tripId: trip?.id || tripId,
               tripTitle: trip?.title || tripId,
               userName: firstName,
               userHandle: username,
