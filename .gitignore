@@ -11,3 +11,6 @@ coverage/
 !**/.env.example
 **/__pycache__/
 *.pyc
+.bot_targets.json
+.bot_secret.json
+

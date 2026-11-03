@@ -8,6 +8,40 @@ import { TRIPS_LIST } from './src/data/tripsData';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TARGETS_FILE = path.join(__dirname, '.bot_targets.json');
+const SECRET_TOKEN_FILE = path.join(__dirname, '.bot_secret.json');
+
+function loadSecretTokenFromDisk(): string {
+  try {
+    if (fs.existsSync(SECRET_TOKEN_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(SECRET_TOKEN_FILE, 'utf-8'));
+      if (parsed && typeof parsed.botToken === 'string' && parsed.botToken.trim()) {
+        return parsed.botToken.trim();
+      }
+    }
+  } catch (_e) {
+    // ignore
+  }
+  return '';
+}
+
+function saveSecretTokenToDisk(token: string) {
+  try {
+    fs.writeFileSync(
+      SECRET_TOKEN_FILE,
+      JSON.stringify({ botToken: token.trim(), updatedAt: new Date().toISOString() }, null, 2),
+      { encoding: 'utf-8', mode: 0o600 },
+    );
+  } catch (_e) {
+    // ignore
+  }
+}
+
+function maskBotToken(token: string): string {
+  if (!token || token.length < 15) return 'Не задано (очікує новий токен)';
+  const [botId, secretPart] = token.split(':');
+  if (!secretPart) return 'Захищено на сервері (***)';
+  return `${botId}:${secretPart.slice(0, 3)}••••••••••••••••••••••••${secretPart.slice(-3)} (Захищено на сервері)`;
+}
 
 async function startServer() {
   const app = express();
@@ -25,12 +59,98 @@ async function startServer() {
     next();
   });
 
+  // Get safe masked server token status (NEVER returns raw token!)
+  app.get('/api/telegram/status', async (_req, res) => {
+    const activeToken = getActiveBotToken();
+    if (!activeToken) {
+      return res.json({
+        ok: true,
+        hasToken: false,
+        maskedToken: 'Токен не встановлено — вставте новий ключ із @BotFather нижче',
+        source: 'none',
+      });
+    }
+    const source =
+      process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
+        ? 'env'
+        : 'server_vault';
+    try {
+      const [meResp, whResp] = await Promise.all([
+        fetch(`https://api.telegram.org/bot${activeToken}/getMe`).then((r) => r.json()),
+        fetch(`https://api.telegram.org/bot${activeToken}/getWebhookInfo`).then((r) => r.json()),
+      ]);
+      res.json({
+        ok: true,
+        hasToken: true,
+        maskedToken: maskBotToken(activeToken),
+        source,
+        botInfo: meResp?.ok ? meResp.result : null,
+        webhookInfo: whResp?.ok ? whResp.result : null,
+        tokenValid: Boolean(meResp?.ok),
+        errorDescription: meResp?.ok ? null : meResp?.description || 'Токен відхилено Telegram (401 Unauthorized)',
+      });
+    } catch (e: any) {
+      res.json({
+        ok: true,
+        hasToken: true,
+        maskedToken: maskBotToken(activeToken),
+        source,
+        tokenValid: false,
+        errorDescription: e.message,
+      });
+    }
+  });
+
+  // Save a brand-new Telegram Bot token into the gitignored server vault and restart polling immediately
+  app.post('/api/telegram/set-token', async (req, res) => {
+    const rawToken = String(req.body?.token || '').trim();
+    if (!rawToken || !/^\d{7,12}:[A-Za-z0-9_-]{25,}$/.test(rawToken)) {
+      return res.status(400).json({
+        ok: false,
+        description: 'Невірний формат токена. Скопіюйте повний ключ із @BotFather (наприклад: 1234567890:AAH...).',
+      });
+    }
+    try {
+      const meResp = await fetch(`https://api.telegram.org/bot${rawToken}/getMe`);
+      const meData: any = await meResp.json();
+      if (!meData?.ok) {
+        return res.status(400).json({
+          ok: false,
+          description: meData?.description || 'Telegram відхилив цей токен (401 Unauthorized). Перевірте ключ у @BotFather.',
+        });
+      }
+
+      // Immediately delete any foreign webhook & drop pending updates so hijackers are disconnected
+      await fetch(`https://api.telegram.org/bot${rawToken}/deleteWebhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drop_pending_updates: true }),
+      }).catch(() => {});
+
+      DEFAULT_BOT_TOKEN = rawToken;
+      saveSecretTokenToDisk(rawToken);
+      startLiveTelegramBotPolling();
+
+      return res.json({
+        ok: true,
+        maskedToken: maskBotToken(rawToken),
+        result: meData.result,
+        message: 'Новий токен надійно збережено у захищеному серверному сховищі (поза кодом та GitHub). Бот перезапущено!',
+      });
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, description: e.message });
+    }
+  });
+
   // API endpoint to verify Telegram Bot token directly
   app.post('/api/telegram/verify', async (req, res) => {
     const { token } = req.body;
-    const botToken = !token || token.includes('*') ? DEFAULT_BOT_TOKEN : token.trim();
+    const botToken = !token || token.includes('*') || token.includes('•') ? getActiveBotToken() : token.trim();
     if (!botToken) {
-      return res.status(400).json({ ok: false, error: 'Token is required' });
+      return res.status(400).json({
+        ok: false,
+        description: 'Токен ще не встановлено. Згенеруйте новий ключ у @BotFather (/revoke) і збережіть його у вкладці Bot API або в Secrets (BOT_TOKEN).',
+      });
     }
     try {
       const resp = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
@@ -41,20 +161,28 @@ async function startServer() {
     }
   });
 
-  // API endpoint to send a real test message or notification to admin
+  // API endpoint to send a real test message ONLY to verified Admin Chat IDs (prevents external abuse)
   app.post('/api/telegram/send-message', async (req, res) => {
     const { token, chatId, text, parseMode } = req.body;
-    const botToken = !token || token.includes('*') ? DEFAULT_BOT_TOKEN : token.trim();
+    const botToken = !token || token.includes('*') || token.includes('•') ? getActiveBotToken() : token.trim();
     if (!botToken || !chatId || !text) {
       return res.status(400).json({ ok: false, error: 'token, chatId and text are required' });
+    }
+    const numericTarget = Number(chatId);
+    const allowedTargets = new Set([...OWNER_ADMIN_IDS, ...knownAdminChatIds, ...explicitAdminIds]);
+    if (!allowedTargets.has(numericTarget)) {
+      return res.status(403).json({
+        ok: false,
+        description: `З метою безпеки тестові повідомлення дозволені лише на верифікований ID адміністратора (${ADMIN_ID}).`,
+      });
     }
     try {
       const resp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chat_id: chatId,
-          text: text,
+          chat_id: numericTarget,
+          text: String(text).slice(0, 1500),
           parse_mode: parseMode || 'HTML',
         }),
       });
@@ -336,7 +464,25 @@ async function startServer() {
   }
 }
 
-const DEFAULT_BOT_TOKEN = process.env.BOT_TOKEN || '8969834514:AAGg--q9hqQQIQooZUkCbhenT9ykhuCc6D0';
+// Never hardcode any Telegram Bot Token in source code!
+// Reads strictly from Environment Variables (BOT_TOKEN / TELEGRAM_BOT_TOKEN) or gitignored .bot_secret.json
+let DEFAULT_BOT_TOKEN = (
+  process.env.BOT_TOKEN ||
+  process.env.TELEGRAM_BOT_TOKEN ||
+  loadSecretTokenFromDisk() ||
+  ''
+).trim();
+
+function getActiveBotToken(): string {
+  const envTok = (process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+  if (envTok) {
+    DEFAULT_BOT_TOKEN = envTok;
+    return envTok;
+  }
+  return DEFAULT_BOT_TOKEN;
+}
+
+let pollingGeneration = 0;
 const ADMIN_ID = Number(process.env.ADMIN_ID) || 8450153980;
 const OWNER_ADMIN_IDS = [ADMIN_ID, 1654337127];
 const ADMIN_USERNAMES = new Set(['svoi_travel_admin', 'arsenkirimli']);
@@ -1933,7 +2079,11 @@ const WELCOME_HTML =
   `👇 <b>Оберіть розділ нижче:</b>`;
 
 async function tgApi(method: string, body: Record<string, any>) {
-  const resp = await fetch(`https://api.telegram.org/bot${DEFAULT_BOT_TOKEN}/${method}`, {
+  const activeToken = getActiveBotToken();
+  if (!activeToken) {
+    return { ok: false, description: 'BOT_TOKEN is not configured yet' };
+  }
+  const resp = await fetch(`https://api.telegram.org/bot${activeToken}/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -2306,6 +2456,13 @@ async function sendTourCardToChat(
 }
 
 async function startLiveTelegramBotPolling() {
+  const myGen = ++pollingGeneration;
+  const initialToken = getActiveBotToken();
+  if (!initialToken) {
+    console.log('⚠️ Telegram BOT_TOKEN is not set yet. Waiting for token via BOT_TOKEN env var or /api/telegram/set-token...');
+    return;
+  }
+
   let offset = 0;
   try {
     await tgApi('deleteWebhook', { drop_pending_updates: false });
@@ -2338,14 +2495,26 @@ async function startLiveTelegramBotPolling() {
   );
 
   const poll = async () => {
+    if (myGen !== pollingGeneration) return;
+    const token = getActiveBotToken();
+    if (!token) return;
+
     try {
       const resp = await fetch(
-        `https://api.telegram.org/bot${DEFAULT_BOT_TOKEN}/getUpdates?offset=${offset}&timeout=15&allowed_updates=${allowedUpdatesParam}`,
+        `https://api.telegram.org/bot${token}/getUpdates?offset=${offset}&timeout=15&allowed_updates=${allowedUpdatesParam}`,
       );
       const data: any = await resp.json();
+      if (myGen !== pollingGeneration) return;
       if (!data.ok) {
         if (data.error_code === 409) {
-          setTimeout(poll, 30000);
+          // If an external service attempted to set a webhook, clear it and retry
+          await tgApi('deleteWebhook', { drop_pending_updates: false }).catch(() => {});
+          setTimeout(poll, 8000);
+          return;
+        }
+        if (data.error_code === 401) {
+          // Unauthorized (revoked token) — pause polling until admin sets the new token
+          console.warn('⚠️ Telegram Bot Token returned 401 Unauthorized (revoked). Waiting for new token.');
           return;
         }
         setTimeout(poll, 5000);
