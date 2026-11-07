@@ -3,7 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { TRIPS_LIST } from './src/data/tripsData';
+import { TRIPS_LIST } from './src/data/tripsData.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,26 +59,39 @@ async function startServer() {
     next();
   });
 
+  // Health check endpoint for Render.com / UptimeRobot 24/7 monitoring
+  app.get('/health', (_req, res) => {
+    res.status(200).json({
+      ok: true,
+      service: 'SVOI Travel Bot & Mini App Server 24/7',
+      uptimeSeconds: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   // Get safe masked server token status (NEVER returns raw token!)
   app.get('/api/telegram/status', async (_req, res) => {
+    const vaultTok = loadSecretTokenFromDisk();
     const activeToken = getActiveBotToken();
     if (!activeToken) {
       return res.json({
         ok: true,
         hasToken: false,
-        maskedToken: 'Токен не встановлено — вставте новий ключ із @BotFather нижче',
+        tokenValid: false,
+        maskedToken: 'Очікує новий токен із @BotFather (старий ключ відкликано через /revoke)',
         source: 'none',
+        errorDescription: 'Старий токен було відкликано (/revoke). Вставте новий токен із @BotFather у поле нижче.',
       });
     }
-    const source =
-      process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
-        ? 'env'
-        : 'server_vault';
+    const source = vaultTok && activeToken === vaultTok ? 'server_vault' : 'env';
     try {
       const [meResp, whResp] = await Promise.all([
         fetch(`https://api.telegram.org/bot${activeToken}/getMe`).then((r) => r.json()),
         fetch(`https://api.telegram.org/bot${activeToken}/getWebhookInfo`).then((r) => r.json()),
       ]);
+      if (!meResp?.ok) {
+        invalidatedTokens.add(activeToken);
+      }
       res.json({
         ok: true,
         hasToken: true,
@@ -127,6 +140,7 @@ async function startServer() {
         body: JSON.stringify({ drop_pending_updates: true }),
       }).catch(() => {});
 
+      invalidatedTokens.delete(rawToken);
       DEFAULT_BOT_TOKEN = rawToken;
       saveSecretTokenToDisk(rawToken);
       startLiveTelegramBotPolling();
@@ -196,7 +210,7 @@ async function startServer() {
   // API endpoint to update MenuButtonWebApp URL in Telegram Bot
   app.post('/api/telegram/set-miniapp-url', async (req, res) => {
     const { token, miniAppUrl } = req.body;
-    const botToken = !token || token.includes('*') ? DEFAULT_BOT_TOKEN : token.trim();
+    const botToken = !token || token.includes('*') || token.includes('•') ? getActiveBotToken() : token.trim();
     if (!miniAppUrl || !miniAppUrl.startsWith('https://')) {
       return res.status(400).json({ ok: false, error: 'Вкажіть публічний HTTPS URL (починається з https://)' });
     }
@@ -437,16 +451,24 @@ async function startServer() {
     }
   });
 
-  // Bind port 3000 immediately so readiness probes succeed without waiting for Vite cold-start
+  // Bind port immediately so readiness probes succeed without waiting for Vite cold-start
   app.listen(port, '0.0.0.0', () => {
     console.log(`SVOI Travel server running on http://0.0.0.0:${port}`);
     startLiveTelegramBotPolling();
+
+    // Anti-sleep keep-alive self-ping every 4 minutes on Render
+    const externalUrl = (process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+    const pingUrl = externalUrl ? `${externalUrl}/health` : `http://127.0.0.1:${port}/health`;
+    setInterval(() => {
+      fetch(pingUrl).catch(() => {});
+    }, 4 * 60 * 1000);
   });
 
-  if (process.env.NODE_ENV === 'production') {
+  const distIndex = path.join(__dirname, 'dist', 'index.html');
+  if (process.env.NODE_ENV === 'production' || (process.env.RENDER && fs.existsSync(distIndex))) {
     app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      res.sendFile(distIndex);
     });
   } else {
     const vitePromise = createViteServer({
@@ -465,21 +487,43 @@ async function startServer() {
 }
 
 // Never hardcode any Telegram Bot Token in source code!
-// Reads strictly from Environment Variables (BOT_TOKEN / TELEGRAM_BOT_TOKEN) or gitignored .bot_secret.json
+// Track revoked/invalidated tokens so a stale environment variable never overrides a fresh token saved in .bot_secret.json
+const invalidatedTokens = new Set<string>([
+  '8969834514:AAGg--q9hqQQIQooZUkCbhenT9ykhuCc6D0',
+]);
+
+function getSanitizedEnvToken(): string {
+  const raw = (process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+  if (!raw || invalidatedTokens.has(raw) || raw.endsWith('q9hqQQIQooZUkCbhenT9ykhuCc6D0')) {
+    return '';
+  }
+  return raw;
+}
+
 let DEFAULT_BOT_TOKEN = (
-  process.env.BOT_TOKEN ||
-  process.env.TELEGRAM_BOT_TOKEN ||
   loadSecretTokenFromDisk() ||
+  getSanitizedEnvToken() ||
   ''
 ).trim();
 
 function getActiveBotToken(): string {
-  const envTok = (process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+  // 1. Highest priority: token saved by admin in .bot_secret.json via UI vault
+  const diskTok = loadSecretTokenFromDisk();
+  if (diskTok && !invalidatedTokens.has(diskTok)) {
+    DEFAULT_BOT_TOKEN = diskTok;
+    return diskTok;
+  }
+  // 2. Second priority: in-memory token if valid
+  if (DEFAULT_BOT_TOKEN && !invalidatedTokens.has(DEFAULT_BOT_TOKEN)) {
+    return DEFAULT_BOT_TOKEN;
+  }
+  // 3. Fallback: non-revoked environment variable
+  const envTok = getSanitizedEnvToken();
   if (envTok) {
     DEFAULT_BOT_TOKEN = envTok;
     return envTok;
   }
-  return DEFAULT_BOT_TOKEN;
+  return '';
 }
 
 let pollingGeneration = 0;
@@ -1071,10 +1115,10 @@ async function sendCsvDocumentToTelegramChat(chatId: number): Promise<boolean> {
         `<i>Файл готовий до відкриття в Microsoft Excel, Google Таблицях або Numbers (кодування UTF-8).</i>`,
     );
     form.append('parse_mode', 'HTML');
-    const blob = new Blob([csvBuf], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob([new Uint8Array(csvBuf)], { type: 'text/csv;charset=utf-8' });
     form.append('document', blob, fileName);
 
-    const resp = await fetch(`https://api.telegram.org/bot${DEFAULT_BOT_TOKEN}/sendDocument`, {
+    const resp = await fetch(`https://api.telegram.org/bot${getActiveBotToken()}/sendDocument`, {
       method: 'POST',
       body: form,
     });
@@ -2507,13 +2551,20 @@ async function startLiveTelegramBotPolling() {
       if (myGen !== pollingGeneration) return;
       if (!data.ok) {
         if (data.error_code === 409) {
-          // If an external service attempted to set a webhook, clear it and retry
-          await tgApi('deleteWebhook', { drop_pending_updates: false }).catch(() => {});
-          setTimeout(poll, 8000);
+          const isRenderHost = Boolean(process.env.RENDER || process.env.RENDER_EXTERNAL_URL);
+          if (isRenderHost) {
+            // Render is the 24/7 production master: reclaim polling quickly
+            await tgApi('deleteWebhook', { drop_pending_updates: false }).catch(() => {});
+            setTimeout(poll, 3000);
+          } else {
+            // In dev preview, back off longer so we don't disrupt the 24/7 Render server
+            setTimeout(poll, 35000);
+          }
           return;
         }
         if (data.error_code === 401) {
           // Unauthorized (revoked token) — pause polling until admin sets the new token
+          invalidatedTokens.add(token);
           console.warn('⚠️ Telegram Bot Token returned 401 Unauthorized (revoked). Waiting for new token.');
           return;
         }

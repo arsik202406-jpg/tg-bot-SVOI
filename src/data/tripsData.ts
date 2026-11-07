@@ -1,4 +1,4 @@
-import { TripItem, ReviewItem } from '../types';
+import type { TripItem, ReviewItem } from '../types/index.ts';
 
 export const TRIPS_LIST: TripItem[] = [
   {

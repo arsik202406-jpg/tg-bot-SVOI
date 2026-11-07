@@ -11,6 +11,7 @@ for p in [str(CURRENT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+import aiohttp
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -34,14 +35,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("svoi_travel_bot")
 
-async def start_health_server():
+
+async def start_health_server() -> int:
     """Запуск легкого HTTP-сервера для прохождения проверок (Health Check) на Render/Koyeb"""
+    port = int(os.environ.get("PORT", 10000))
     try:
-        port = int(os.environ.get("PORT", 10000))
         app = web.Application()
 
         async def health_check(_request):
-            return web.Response(text="SVOI Travel Bot is active and running! 🌍", status=200)
+            return web.Response(text="SVOI Travel Bot 24/7 is active and running! 🌍", status=200)
 
         app.router.add_get("/", health_check)
         app.router.add_get("/health", health_check)
@@ -53,22 +55,25 @@ async def start_health_server():
         logger.info("🌐 Health Check сервер запущен на порту %d", port)
     except Exception as e:
         logger.warning("Не удалось запустить Health Check сервер (не критично): %s", e)
+    return port
 
-async def main():
-    logger.info("🚀 Запуск Telegram-бота SVOI Travel (@%s)...", settings.BOT_USERNAME)
-    
-    if not settings.BOT_TOKEN:
-        logger.critical("❌ Ошибка: BOT_TOKEN не задан! Укажите его в переменных окружения.")
-        return
 
-    # Запускаємо HTTP сервер здоров'я для сумісності з Render Web Service ОДРАЗУ
-    await start_health_server()
+async def keep_alive_self_ping(port: int):
+    """Фоновий анти-сон пінг кожні 4 хвилини, щоб сервер Render ніколи не засинав"""
+    external_url = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
+    target_url = f"{external_url}/health" if external_url else f"http://127.0.0.1:{port}/health"
+    while True:
+        await asyncio.sleep(240)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(target_url, timeout=10) as resp:
+                    logger.debug("Keep-alive ping %s -> %d", target_url, resp.status)
+        except Exception:
+            pass
 
-    # Ініціалізація диспетчера з пам'яттю станів FSM
+
+def build_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
-
-    # Підключення модульних роутерів:
-    # Спочатку FSM та спеціальні обробники, потім загальне меню
     dp.include_router(booking.router)
     dp.include_router(feedback.router)
     dp.include_router(channel.router)
@@ -76,79 +81,97 @@ async def main():
     dp.include_router(faq.router)
     dp.include_router(games.router)
     dp.include_router(menu.router)
+    return dp
 
-    try:
-        token = settings.BOT_TOKEN.strip() if settings.BOT_TOKEN else ""
+
+async def main():
+    logger.info("🚀 Запуск Telegram-бота SVOI Travel (@%s)...", settings.BOT_USERNAME)
+
+    # 1. Запускаємо HTTP сервер здоров'я ОДРАЗУ, щоб Render бачив відкритий порт
+    port = await start_health_server()
+    asyncio.create_task(keep_alive_self_ping(port))
+
+    # 2. Нескінченний цикл самовідновлення (Auto-Healing 24/7 Loop):
+    # Навіть якщо тимчасово виникне 409 Conflict (коли відкрито AI Studio) або обрив мережі,
+    # бот на Render НІКОЛИ не вимкнеться і автоматично відновить роботу за кілька секунд!
+    while True:
+        token = (
+            os.environ.get("BOT_TOKEN")
+            or os.environ.get("TELEGRAM_BOT_TOKEN")
+            or settings.BOT_TOKEN
+            or ""
+        ).strip()
+
         if not token:
-            logger.critical("❌ Помилка: BOT_TOKEN порожній! Перевірте налаштування в Render Environment Variables.")
-            return
+            logger.error(
+                "❌ BOT_TOKEN не задано в Render Environment Variables! "
+                "Додайте новий BOT_TOKEN у вкладці Environment на Render. Повторна перевірка через 15 сек..."
+            )
+            await asyncio.sleep(15)
+            continue
 
-        bot = Bot(
-            token=token,
-            default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-        )
+        bot = None
+        try:
+            bot = Bot(
+                token=token,
+                default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+            )
 
-        # Очищуємо старі вебхуки та чергу оновлень перед запуском
-        try:
-            await bot.delete_webhook(drop_pending_updates=True)
-        except Exception as e:
-            logger.warning("Попередження при видаленні вебхука: %s", e)
-        
-        # Отримуємо інформацію про бота для перевірки авторизації
-        bot_info = await bot.get_me()
-        logger.info("✅ Успішне підключення до Telegram API: %s (@%s)", bot_info.first_name, bot_info.username)
-        
-        # Налаштовуємо нативну кнопку Mini App внизу меню чату поруч із полем вводу
-        try:
-            from aiogram.types import MenuButtonWebApp, WebAppInfo
-            await bot.set_chat_menu_button(
-                menu_button=MenuButtonWebApp(
-                    text="🚀 SVOI Mini App",
-                    web_app=WebAppInfo(url=settings.MINI_APP_URL)
+            try:
+                await bot.delete_webhook(drop_pending_updates=False)
+            except Exception as e:
+                logger.warning("Попередження при видаленні вебхука: %s", e)
+
+            bot_info = await bot.get_me()
+            logger.info("✅ Успішне підключення 24/7 до Telegram API: %s (@%s)", bot_info.first_name, bot_info.username)
+
+            try:
+                from aiogram.types import MenuButtonWebApp, WebAppInfo
+                await bot.set_chat_menu_button(
+                    menu_button=MenuButtonWebApp(
+                        text="🚀 SVOI Mini App",
+                        web_app=WebAppInfo(url=settings.MINI_APP_URL)
+                    )
                 )
-            )
-            logger.info("📱 Нативну кнопку MenuButtonWebApp успішно зареєстровано в Telegram!")
-        except Exception as e:
-            logger.warning("Попередження при налаштуванні MenuButtonWebApp: %s", e)
+            except Exception as e:
+                logger.warning("Попередження при налаштуванні MenuButtonWebApp: %s", e)
 
-        # Автоматичне вітання та опис бота до натискання СТАРТ
-        try:
-            await bot.set_my_description(
-                description=(
-                    "🌟 Ласкаво просимо до туристичного клубу SVOI! 🇪🇺🚐\n\n"
-                    "Ми організовуємо душевні поїздки Європою з Саарланду, Люксембургу та Тріра на комфортабельному авто Opel Vivaro.\n"
-                    "• 14 авторських напрямків (Париж, Брюгге, Амстердам, Комо, Швейцарія)\n"
-                    "• 0% передоплати на одноденні поїздки\n"
-                    "• Збір за адресою пасажира (Door-to-Door)\n"
-                    "• Бронь будь-якого місця лише 5€ (або вільна посадка 0€)\n\n"
-                    "👇 Натисніть «СТАРТ» або відкрийте кнопку меню «🚀 SVOI Mini App» нижче!"
+            dp = build_dispatcher()
+            logger.info("📡 Бот 24/7 очікує на повідомлення у Telegram...")
+
+            await dp.start_polling(
+                bot,
+                allowed_updates=["message", "callback_query", "my_chat_member", "chat_member", "poll"],
+                close_bot_session=True,
+            )
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            err_str = str(e)
+            if "Conflict" in err_str:
+                logger.warning(
+                    "⚠️ Виявлено тимчасовий 409 Conflict (паралельний запуск у прев'ю). "
+                    "Чекаємо 10 секунд і автоматично перехоплюємо керування назад на Render..."
                 )
-            )
-            await bot.set_my_short_description(
-                short_description="🚐 SVOI Travel: тури Європою з Саарланду, Люксембургу та Тріра за адресою. Комфортабельне авто, 3D салон та бронь 0%."
-            )
-            logger.info("📝 Опис бота та пре-привітання успішно оновлено!")
-        except Exception as e:
-            logger.warning("Попередження при налаштуванні опису: %s", e)
+                await asyncio.sleep(10)
+            elif "Unauthorized" in err_str:
+                logger.critical(
+                    "❌ Токен бота недійсний (401 Unauthorized)! Оновіть BOT_TOKEN у Render -> Environment Variables. "
+                    "Повторна спроба через 20 секунд..."
+                )
+                await asyncio.sleep(20)
+            else:
+                logger.error("⚠️ Помилка з'єднання (%s). Автоматичний перезапуск через 5 секунд...", e)
+                await asyncio.sleep(5)
+        finally:
+            if bot is not None:
+                try:
+                    await bot.session.close()
+                except Exception:
+                    pass
 
-        logger.info("📡 Бот очікує на вхідні повідомлення та команди у Telegram...")
+        await asyncio.sleep(3)
 
-        # Запуск long polling із підтримкою my_chat_member для авто-прив'язки каналу
-        await dp.start_polling(
-            bot,
-            allowed_updates=["message", "callback_query", "my_chat_member", "chat_member", "poll"]
-        )
-    except Exception as e:
-        logger.critical("❌ Критична помилка під час роботи бота: %s", e, exc_info=True)
-        # Якщо сталася помилка конфлікту або авторизації, виводимо зрозумілу підказку
-        if "Conflict" in str(e):
-            logger.critical("⚠️ УВАГА! Інший екземпляр бота вже запущений з цим токеном (на комп'ютері або на іншому сервері). Зупиніть попередній запуск!")
-        elif "Unauthorized" in str(e):
-            logger.critical("⚠️ УВАГА! Токен бота недійсний. Перевірте BOT_TOKEN у BotFather!")
-    finally:
-        logger.info("🛑 Зупинка бота та закриття сесії...")
-        if 'bot' in locals():
-            await bot.session.close()
 
 if __name__ == "__main__":
     try:

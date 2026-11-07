@@ -151,6 +151,74 @@ export default function App() {
     }).catch(() => {});
   };
 
+  const [botServerStatus, setBotServerStatus] = useState<{
+    checked: boolean;
+    tokenValid: boolean;
+    maskedToken: string;
+    botUsername?: string;
+    errorDescription?: string | null;
+  }>({ checked: false, tokenValid: true, maskedToken: '' });
+  const [quickTokenInput, setQuickTokenInput] = useState('');
+  const [isSavingQuickToken, setIsSavingQuickToken] = useState(false);
+  const [quickTokenMsg, setQuickTokenMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const checkBotStatus = async () => {
+    try {
+      const res = await fetch('/api/telegram/status');
+      const data = await res.json();
+      if (data?.ok) {
+        setBotServerStatus({
+          checked: true,
+          tokenValid: Boolean(data.tokenValid),
+          maskedToken: data.maskedToken || '',
+          botUsername: data.botInfo?.username,
+          errorDescription: data.errorDescription || null,
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    checkBotStatus();
+  }, []);
+
+  const handleQuickSaveToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickTokenInput.trim()) return;
+    setIsSavingQuickToken(true);
+    setQuickTokenMsg(null);
+    try {
+      const res = await fetch('/api/telegram/set-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: quickTokenInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setQuickTokenInput('');
+        setQuickTokenMsg({
+          ok: true,
+          text: `✅ Новий токен успішно збережено! Бот @${data.result?.username || 'Svoi_TravelEU_bot'} запущено в Telegram, чужі вебхуки скинуто!`,
+        });
+        await checkBotStatus();
+      } else {
+        setQuickTokenMsg({
+          ok: false,
+          text: data.description || 'Помилка перевірки токена. Скопіюйте повний ключ із @BotFather.',
+        });
+      }
+    } catch (err: any) {
+      setQuickTokenMsg({
+        ok: false,
+        text: `Помилка з’єднання: ${err.message}`,
+      });
+    } finally {
+      setIsSavingQuickToken(false);
+    }
+  };
+
   // If opened directly as a Telegram Mini App inside Telegram, render clean full-screen view
   // starting immediately with the compact brand header and navigation tabs
   if (showFullWebAppOnly) {
@@ -174,6 +242,64 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Quick Token Setup Banner when old token was revoked in @BotFather */}
+        {botServerStatus.checked && !botServerStatus.tokenValid && (
+          <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-950/80 via-slate-900 to-slate-900 border border-amber-500/40 shadow-xl">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>
+                    Старий токен бота було відкликано (/revoke) — вставте новий ключ із @BotFather, щоб запустити бота:
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Оскільки старий ключ скасовано для захисту від злому, Telegram-бот чекає на ваш новий токен. Вставте новий ключ сюди — він збережеться у закритому серверному сховищі (поза GitHub і кодом) і миттєво запустить <b>@Svoi_TravelEU_bot</b>:
+                </p>
+              </div>
+              <form onSubmit={handleQuickSaveToken} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
+                <input
+                  type="password"
+                  value={quickTokenInput}
+                  onChange={(e) => setQuickTokenInput(e.target.value)}
+                  placeholder="Вставте новий токен (8969834514:AAH...)"
+                  className="w-full sm:w-72 bg-slate-950 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white outline-none focus:border-emerald-400"
+                />
+                <button
+                  type="submit"
+                  disabled={isSavingQuickToken || !quickTokenInput.trim()}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-lg shadow-emerald-600/25 disabled:opacity-40 whitespace-nowrap"
+                >
+                  {isSavingQuickToken ? 'Запуск бота...' : '🚀 Підключити і запустити бота'}
+                </button>
+              </form>
+            </div>
+            {quickTokenMsg && (
+              <div
+                className={`mt-3 p-3 rounded-xl text-xs font-medium border ${
+                  quickTokenMsg.ok
+                    ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+                    : 'bg-rose-950/60 border-rose-500/40 text-rose-200'
+                }`}
+              >
+                {quickTokenMsg.text}
+              </div>
+            )}
+          </div>
+        )}
+
+        {quickTokenMsg && botServerStatus.tokenValid && (
+          <div className="mb-6 p-3.5 rounded-2xl bg-emerald-950/50 border border-emerald-500/40 text-emerald-200 text-xs font-medium flex items-center justify-between">
+            <span>{quickTokenMsg.text}</span>
+            <button
+              onClick={() => setQuickTokenMsg(null)}
+              className="text-emerald-300 hover:text-white ml-3"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* SIMULATOR TAB */}
         {activeTab === 'simulator' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
