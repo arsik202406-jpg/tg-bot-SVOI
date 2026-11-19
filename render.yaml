@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: svoi-travel-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        value: "8450153980"
+      - key: DATABASE_URL
+        sync: false

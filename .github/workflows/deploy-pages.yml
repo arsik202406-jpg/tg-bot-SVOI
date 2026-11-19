@@ -27,9 +27,12 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: npm install
 
       - name: Build Vite Mini App
+        env:
+          # необов'язково: адреса сервера Render (Settings → Variables → API_URL)
+          VITE_API_URL: ${{ vars.API_URL }}
         run: |
           npm run build
           cp dist/index.html dist/404.html
