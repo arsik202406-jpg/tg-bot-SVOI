@@ -1,18 +1,30 @@
 import logging
 import random
-from aiogram import Router, F
+from html import escape
+
+from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
-try:
-    from bot_code.keyboards.inline import get_games_keyboard, get_back_keyboard
-    from bot_code.config import settings
-except ModuleNotFoundError:
-    from keyboards.inline import get_games_keyboard, get_back_keyboard
-    from config import settings
+from .. import keyboards as kb
+from ..db import GamePrize, Session
+from ..services import notify_admins
+
+TO_TRIPS = kb.StepCb(action="to_trips").pack()
+
+
+def get_games_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🕵️ Гео-Детектив", callback_data="cb_game_geo"),
+         InlineKeyboardButton(text="🧠 Правда чи ні", callback_data="cb_game_quiz")],
+        [InlineKeyboardButton(text="🍽 Смаки Європи", callback_data="cb_game_gastro"),
+         InlineKeyboardButton(text="💶 Цифри й рекорди", callback_data="cb_game_price")],
+        [InlineKeyboardButton(text="🎒 Підбір ідеального туру", callback_data="cb_game_match")],
+        [InlineKeyboardButton(text="🎰 Колесо Фортуни (1 раз)", callback_data="cb_game_wheel")],
+    ])
 
 logger = logging.getLogger(__name__)
-router = Router(name="games_router")
+router = Router(name="games")
 
 # 1. База локацій для гри «Гео-Детектив» (6 напрямків)
 GEO_QUESTS = [
@@ -218,24 +230,23 @@ PRICE_QUESTS = [
 ]
 
 
+GAMES_TEXT = (
+    "🎲 <b>Розваги SVOI</b>\n\n"
+    "Невеликі ігри про Європу — щоб скоротати час у дорозі або просто розважитись.\n\n"
+    "🕵️ <b>Гео-Детектив</b> — вгадайте місце за описом\n"
+    "🧠 <b>Правда чи ні</b> — дивні закони й рекорди Європи\n"
+    "🍽 <b>Смаки Європи</b> — кулінарний квіз\n"
+    "💶 <b>Цифри й рекорди</b> — перевірте інтуїцію\n"
+    "🎒 <b>Підбір туру</b> — яка поїздка вам пасує\n"
+    "🎰 <b>Колесо Фортуни</b> — один шанс на приз для кожного"
+)
+
+
 @router.callback_query(F.data == "cb_games")
 async def process_games_main(callback: CallbackQuery):
-    """Головний екран розділу ігор та вікторин (6 ігор)"""
     await callback.answer()
-    text = (
-        "🎮 <b>Ігровий клуб та вікторини SVOI Travel (6 інтерактивних ігор)</b> 🏆\n\n"
-        "Відпочивайте з користю, перевіряйте свої знання про Європу та вигравайте приємні бонуси для поїздок!\n\n"
-        "✨ <b>Оберіть гру або вікторину:</b>\n"
-        "• 🕵️ <b>«Гео-Детектив» (6 локацій):</b> вгадайте місце за описом і виграйте безкоштовний вибір крісла (+5€)!\n"
-        "• 🧠 <b>«Правда чи Неправда» (6 фактів):</b> неймовірні закони та рекорди Європи.\n"
-        "• 🍽 <b>Гастро-Квіз «Смаки Європи»:</b> кулінарна подорож нашими маршрутами.\n"
-        "• 💶 <b>«Інтуїція Мандрівника»:</b> вгадайте цифри, висоти та рекорди.\n"
-        "• 🎒 <b>Тест «Ідеальний тур»:</b> підбір поїздки за вашим настроєм за 10 секунд.\n"
-        "• 🎰 <b>Колесо Фортуни SVOI:</b> випробуйте удачу та заберіть миттєвий приз!\n\n"
-        "👇 <i>Натискайте на гру нижче:</i>"
-    )
     if callback.message:
-        await callback.message.edit_text(text=text, reply_markup=get_games_keyboard(), parse_mode="HTML")
+        await callback.message.edit_text(text=GAMES_TEXT, reply_markup=get_games_keyboard(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "cb_game_geo")
@@ -269,15 +280,10 @@ async def process_geocheck(callback: CallbackQuery):
     quest = next((q for q in GEO_QUESTS if q["id"] == quest_id), GEO_QUESTS[0])
     
     if is_correct:
-        promo_code = f"PRIORITY-{random.randint(100, 999)}"
         text = (
             "🎉 <b>БРАВО! ВИ СПРАВЖНІЙ ГЕО-ДЕТЕКТИВ!</b> 🏆\n\n"
             f"{quest['fact']}\n\n"
-            f"{quest['secret_guide']}\n\n"
-            f"🎁 <b>Ваш бонус: КАРТКА ПРІОРИТЕТУ</b>\n"
-            f"Промокод: <code>{promo_code}</code>\n"
-            f"Дає право <b>безкоштовно обрати будь-яке місце в мінівені (економія 5€)</b>!\n"
-            f"<i>Надішліть промокод менеджеру @{settings.MANAGER_USERNAME.lstrip('@')} при бронюванні.</i>"
+            f"{quest['secret_guide']}"
         )
     else:
         text = (
@@ -289,7 +295,7 @@ async def process_geocheck(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Наступна загадка Гео-Детектива", callback_data="cb_game_geo")],
-            [InlineKeyboardButton(text="🗺 Переглянути розклад турів", callback_data="cb_trips")],
+            [InlineKeyboardButton(text="🗺 Переглянути розклад турів", callback_data=TO_TRIPS)],
             [InlineKeyboardButton(text="🔙 Меню ігор", callback_data="cb_games")]
         ]
     )
@@ -341,7 +347,7 @@ async def process_quiz_check(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🎲 Наступний факт", callback_data="cb_game_quiz")],
-            [InlineKeyboardButton(text="🗺 Розклад турів", callback_data="cb_trips")],
+            [InlineKeyboardButton(text="🗺 Розклад турів", callback_data=TO_TRIPS)],
             [InlineKeyboardButton(text="🔙 Меню ігор", callback_data="cb_games")]
         ]
     )
@@ -448,10 +454,10 @@ async def process_match_result(callback: CallbackQuery):
     style = callback.data.replace("cb_match_", "")
     results = {
         "alps": (
-            "🏔 <b>Ваш ідеальний вибір: Швейцарські Альпи або Монблан!</b>\n\n"
+            "🏔 <b>Ваш ідеальний вибір: Швейцарські Альпи!</b>\n\n"
             "Рекомендуємо:\n"
             "1️⃣ <b>Ущелина Ааре + Лаутербруннен + Берн (120€)</b> — долина 72 водоспадів та каньйон.\n"
-            "2️⃣ <b>Шамоні — Монблан на 2 дні (260€)</b> — крижані печери та вершина 3842 м!"
+            "2️⃣ <b>Рейнський водоспад + Цюрих</b> — найпотужніший водоспад Європи."
         ),
         "romance": (
             "🥐 <b>Ваш ідеальний вибір: Париж або Етрета + Париж!</b>\n\n"
@@ -473,10 +479,10 @@ async def process_match_result(callback: CallbackQuery):
             "2️⃣ <b>Лазурове узбережжя: Монако, Ніцца, Канни на 3 дні (440€)</b>"
         )
     }
-    text = results.get(style, results["alps"]) + "\n\n🎁 <b>Бонус за проходження тесту:</b> безкоштовна фіксація улюбленого місця в салоні за промокодом <code>MATCH-SVOI</code>!"
+    text = results.get(style, results["alps"])
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="💺 Забронювати місце в турі", callback_data="cb_book")],
+            [InlineKeyboardButton(text="🗺 Подивитись дати", callback_data=TO_TRIPS)],
             [InlineKeyboardButton(text="🔄 Пройти тест ще раз", callback_data="cb_game_match")],
             [InlineKeyboardButton(text="🔙 Меню ігор", callback_data="cb_games")]
         ]
@@ -486,50 +492,39 @@ async def process_match_result(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "cb_game_wheel")
-async def process_wheel_spin(callback: CallbackQuery):
-    """Колесо Фортуни SVOI"""
-    await callback.answer("🎰 Крутимо Колесо Фортуни SVOI...")
-    prizes = [
-        ("💺 Безкоштовний вибір будь-якого місця в 1-му або 2-му ряду (економія 5€)", "WHEEL-SEAT5"),
-        ("☕ Кава та круасан на панорамній зупинці в подарунок від клубу", "WHEEL-COFFEE"),
-        ("💎 Знижка -10€ на будь-який дво- або триденний тур (Комо, Шамоні, Ніцца)", "WHEEL-10EUR"),
-        ("🌟 VIP-статус «Пріоритетна посадка» + місце біля панорамного вікна", "WHEEL-VIP")
-    ]
-    prize_desc, code = random.choice(prizes)
-    text = (
-        "🎰 <b>КОЛЕСО ФОРТУНИ SVOI ЗУПИНИЛОСЯ!</b> ✨🎉\n\n"
-        f"🎁 <b>Ваш виграш:</b>\n{prize_desc}!\n\n"
-        f"🔑 Ваш персональний промокод: <code>{code}</code>\n"
-        f"<i>Просто вкажіть цей код менеджеру @{settings.MANAGER_USERNAME.lstrip('@')} під час бронювання поїздки!</i>"
-    )
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🎰 Крутити ще раз", callback_data="cb_game_wheel")],
-            [InlineKeyboardButton(text="💺 Використати бонус і забронювати", callback_data="cb_book")],
-            [InlineKeyboardButton(text="🔙 Меню ігор", callback_data="cb_games")]
-        ]
-    )
-    if callback.message:
-        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+async def process_wheel_spin(callback: CallbackQuery, bot: Bot):
+    """Колесо Фортуни: один оберт на людину, приз записується в базу і приходить менеджеру."""
+    user = callback.from_user
+    back = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗺 Подивитись дати поїздок", callback_data=TO_TRIPS)],
+        [InlineKeyboardButton(text="🔙 Меню ігор", callback_data="cb_games")],
+    ])
+    async with Session() as s:
+        prev = await s.get(GamePrize, user.id)
+        if prev:
+            await callback.answer()
+            await callback.message.edit_text(
+                "🎰 Ви вже крутили Колесо Фортуни 🙂\n\n"
+                f"🎁 Ваш приз: <b>{prev.prize}</b>\nКод: <code>{prev.code}</code>\n\n"
+                "Назвіть код менеджеру під час бронювання.", reply_markup=back, parse_mode="HTML")
+            return
+        prize, prefix = random.choices(WHEEL_PRIZES, weights=[p[2] for p in WHEEL_PRIZES])[0][:2]
+        code = f"{prefix}-{random.randint(1000, 9999)}"
+        s.add(GamePrize(user_id=user.id, name=user.full_name, username=user.username, prize=prize, code=code))
+        await s.commit()
+    await callback.answer("🎰 Крутимо…")
+    await callback.message.edit_text(
+        "🎰 <b>Колесо зупинилось!</b> ✨\n\n"
+        f"🎁 Ваш приз: <b>{prize}</b>\n"
+        f"🔑 Код: <code>{code}</code>\n\n"
+        "Назвіть цей код менеджеру під час бронювання. Діє один раз.", reply_markup=back, parse_mode="HTML")
+    await notify_admins(bot, f"🎰 Колесо Фортуни: {escape(user.full_name)}"
+                             f"{' @' + user.username if user.username else ''} виграв «{prize}», код <code>{code}</code>")
 
 
-@router.callback_query(F.data == "cb_game_group_info")
-async def process_group_games_info(callback: CallbackQuery):
-    """Інформація про вікторини та розіграші у групі та каналі Telegram"""
-    await callback.answer()
-    text = (
-        "📢 <b>Вікторини та розіграші квитків у каналі та групі SVOI!</b> 🎟✨\n\n"
-        "🔥 <b>Як працюють наші розіграші:</b>\n"
-        "1. <b>Інтерактивні квізи з конфетті:</b> Бот публікує офіційні Telegram Quiz опитування у каналі та групі.\n"
-        "2. <b>Розіграші безкоштовних місць:</b> Натискайте кнопку «🎉 Брати участь!» під постом у каналі — бот автоматично перевіряє підписку та обирає переможця!\n\n"
-        "Долучайтеся до нашої спільноти:"
-    )
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="💬 Група мандрівників SVOI", url=settings.GROUP_URL)],
-            [InlineKeyboardButton(text="📢 Офіційний канал SVOI", url=settings.CHANNEL_URL)],
-            [InlineKeyboardButton(text="🔙 Назад до ігор", callback_data="cb_games")]
-        ]
-    )
-    if callback.message:
-        await callback.message.edit_text(text=text, reply_markup=kb, parse_mode="HTML")
+# (приз, префікс коду, вага — чим більша, тим частіше випадає)
+WHEEL_PRIZES = [
+    ("☕ Кава на зупинці в подарунок", "COFFEE", 50),
+    ("💺 Безкоштовний вибір місця (економія 5 €)", "SEAT5", 40),
+    ("💎 Знижка 10 € на поїздку на 2–3 дні", "TEN", 10),
+]
