@@ -10,6 +10,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from sqlalchemy import (BigInteger, Date, DateTime, ForeignKey, Integer, String, Text,
                         UniqueConstraint, select)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from .config import settings
@@ -152,7 +153,12 @@ def _normalize_url(url: str) -> tuple[str, dict]:
 
 
 _url, _connect_args = _normalize_url(settings.DATABASE_URL)
-engine = create_async_engine(_url, connect_args=_connect_args, pool_pre_ping=True)
+if _url.startswith("postgresql"):
+    # Без постійних з'єднань: база Neon «засинає», коли бот нею не користується,
+    # і не витрачає безкоштовні години.
+    engine = create_async_engine(_url, connect_args=_connect_args, poolclass=NullPool)
+else:
+    engine = create_async_engine(_url, connect_args=_connect_args)
 Session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
