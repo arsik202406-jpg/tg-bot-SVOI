@@ -13,6 +13,7 @@ BTN_TRIPS = "🗺 Поїздки та дати"
 BTN_MY = "📝 Мої бронювання"
 BTN_ASK = "💬 Задати питання"
 BTN_HOW = "ℹ️ Як усе працює"
+BTN_GAMES = "🎲 Розваги"
 BTN_CANCEL = "✖️ Скасувати"
 BTN_SHARE_PHONE = "📱 Надіслати мій номер"
 
@@ -61,7 +62,7 @@ def main_kb() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=BTN_TRIPS)],
             [KeyboardButton(text=BTN_MY), KeyboardButton(text=BTN_ASK)],
-            [KeyboardButton(text=BTN_HOW)],
+            [KeyboardButton(text=BTN_HOW), KeyboardButton(text=BTN_GAMES)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -193,13 +194,16 @@ def my_booking_confirm_kb(booking_id: int) -> InlineKeyboardMarkup:
 
 # ---------- Адмін ----------
 
-def admin_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+def admin_menu_kb(ai_state: str | None = None) -> InlineKeyboardMarkup:
+    rows = [
         [IB(text="🚐 Рейси та пасажири", callback_data=AdmCb(action="deps").pack())],
         [IB(text="➕ Додати дати поїздок", callback_data=AdmCb(action="add_dates").pack())],
         [IB(text="🖼 Фото турів", callback_data=AdmCb(action="photos").pack()),
          IB(text="🔔 Лист очікування", callback_data=AdmCb(action="waitlist").pack())],
-    ])
+    ]
+    if ai_state:
+        rows.append([IB(text=ai_state, callback_data=AdmCb(action="ai_toggle").pack())])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def admin_deps_kb(items: list[tuple[int, str]]) -> InlineKeyboardMarkup:

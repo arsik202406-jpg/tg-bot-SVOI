@@ -207,7 +207,7 @@ def booking_admin_text(b: Booking, title: str = "🆕 Нова заявка") ->
         who += f" (@{escape(b.username)})"
     elif b.user_id:
         who = f'<a href="tg://user?id={b.user_id}">{who}</a>'
-    src = {"miniapp": "Mini App", "bot": "бот", "admin": "додано вручну"}.get(b.source, b.source)
+    src = {"miniapp": "Mini App", "bot": "бот", "admin": "додано вручну", "ai": "ШІ-помічник"}.get(b.source, b.source)
     text = (
         f"<b>{title} {b.code}</b> · {src}\n\n"
         f"{escape(departure_label(b.departure))}\n"
@@ -299,15 +299,15 @@ async def notify_admins(bot: Bot, text: str, markup: InlineKeyboardMarkup | None
 
 async def notify_new_booking(bot: Bot, booking: Booking) -> None:
     from .keyboards import admin_booking_kb, client_after_booking_kb
+    from .screens import keep
     await notify_admins(bot, booking_admin_text(booking), admin_booking_kb(booking))
-    if booking.user_id and booking.source != "admin":
-        try:
-            await bot.send_message(
-                booking.user_id,
-                "✅ <b>Заявку прийнято!</b>\n\n" + booking_client_text(booking) +
-                "\n\n" + payment_note(booking.departure.trip_id) +
-                "\nМи напишемо вам напередодні ввечері з точним часом, коли під'їдемо.",
-                reply_markup=client_after_booking_kb(),
-            )
-        except Exception as e:  # noqa: BLE001
-            log.warning("Не вдалося надіслати підтвердження клієнту %s: %s", booking.user_id, e)
+    if not booking.user_id or booking.source == "admin":
+        return
+    text = ("✅ <b>Заявку прийнято!</b>\n\n" + booking_client_text(booking) +
+            "\n\n" + payment_note(booking.departure.trip_id) +
+            "\nМенеджер підтвердить бронь, а напередодні ввечері напишемо точний час, коли під'їдемо.")
+    try:
+        with keep():  # підтвердження броні ніколи не видаляється з чату
+            await bot.send_message(booking.user_id, text, reply_markup=client_after_booking_kb())
+    except Exception as e:  # noqa: BLE001
+        log.warning("Не вдалося надіслати підтвердження клієнту %s: %s", booking.user_id, e)

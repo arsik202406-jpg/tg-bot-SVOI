@@ -39,7 +39,7 @@ WELCOME = (
     "Возимо невеликими групами (до 8 людей) на мінівені з Саарланду, Тріра та Люксембурга "
     "по найкрасивіших місцях Європи. Забираємо від дому, оплата — водію при посадці.\n\n"
     "Натисніть <b>«🗺 Поїздки та дати»</b> внизу екрана 👇\n"
-    "Або просто напишіть своє питання — вам відповість менеджер."
+    "Або просто напишіть своє питання сюди в чат — відповімо 🙌"
 )
 
 HOW_IT_WORKS = (
@@ -76,6 +76,13 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
 async def cancel_any(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Скасовано. Чим ще можу допомогти?", reply_markup=kb.main_kb())
+
+
+@router.message(F.text == kb.BTN_GAMES)
+async def games(message: Message, state: FSMContext):
+    from .games import GAMES_TEXT, get_games_keyboard
+    await state.clear()
+    await message.answer(GAMES_TEXT, reply_markup=get_games_keyboard())
 
 
 @router.message(F.text == kb.BTN_HOW)

@@ -109,6 +109,18 @@ class TripPhoto(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class GamePrize(Base):
+    """Приз Колеса Фортуни: один на людину."""
+    __tablename__ = "game_prizes"
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    name: Mapped[str] = mapped_column(String(128))
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    prize: Mapped[str] = mapped_column(String(128))
+    code: Mapped[str] = mapped_column(String(32))
+    used: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class SupportThread(Base):
     """Зв'язок «повідомлення в адмін-чаті → клієнт», щоб відповідь адміна дійшла клієнту."""
     __tablename__ = "support_threads"
@@ -133,6 +145,8 @@ def _normalize_url(url: str) -> tuple[str, dict]:
         query.pop("channel_binding", None)
         if sslmode and sslmode != "disable":
             connect_args["ssl"] = ssl.create_default_context()
+        if "-pooler" in (parts.hostname or ""):
+            connect_args["statement_cache_size"] = 0  # пулер Neon (PgBouncer) не підтримує кеш запитів
         url = urlunsplit(parts._replace(query=urlencode(query)))
     return url, connect_args
 

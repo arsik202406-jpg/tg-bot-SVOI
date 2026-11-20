@@ -19,6 +19,7 @@ from ..db import Booking, Departure, Session, TripPhoto, WaitlistEntry, trip_pho
 from ..services import (load_booking, BookingError, active_bookings, add_departures, booking_admin_text, booking_client_text,
                         cancel_booking, create_booking, departure_label, free_count, manifest_csv, manifest_text,
                         notify_new_booking, upcoming_departures)
+from .. import ai
 from .support import IsAdmin
 
 log = logging.getLogger(__name__)
@@ -46,6 +47,16 @@ ADMIN_HELP = (
 )
 
 
+async def menu_kb() -> InlineKeyboardMarkup:
+    if not settings.ANTHROPIC_API_KEY:
+        label = "🤖 ШІ-помічник: не підключено"
+    elif await ai.is_enabled():
+        label = "🤖 ШІ-помічник: УВІМКНЕНО (вимкнути)"
+    else:
+        label = "🤖 ШІ-помічник: вимкнено (увімкнути)"
+    return kb.admin_menu_kb(label)
+
+
 def is_admin_cb(callback: CallbackQuery) -> bool:
     return callback.from_user.id in settings.admin_ids
 
@@ -53,13 +64,13 @@ def is_admin_cb(callback: CallbackQuery) -> bool:
 @router.message(Command("admin"))
 async def cmd_admin(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer(ADMIN_HELP, reply_markup=kb.admin_menu_kb())
+    await message.answer(ADMIN_HELP, reply_markup=await menu_kb())
 
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("Скасовано.", reply_markup=kb.admin_menu_kb())
+    await message.answer("Скасовано.", reply_markup=await menu_kb())
 
 
 # ---------- Рейси ----------
@@ -74,7 +85,7 @@ async def render_deps() -> tuple[str, InlineKeyboardMarkup]:
             new = sum(1 for b in active_bookings(d) if b.status == "new")
             items.append((d.id, f"{lock}{departure_label(d)} · {busy}/8" + (f" · 🟡{new}" if new else "")))
     if not items:
-        return "Майбутніх рейсів немає. Додайте дати 👇", kb.admin_menu_kb()
+        return "Майбутніх рейсів немає. Додайте дати 👇", await menu_kb()
     return "<b>Майбутні рейси</b> (зайнято/8, 🟡 — непідтверджені заявки):", kb.admin_deps_kb(items)
 
 
@@ -107,7 +118,7 @@ async def cb_menu(callback: CallbackQuery, state: FSMContext):
         return await callback.answer()
     await callback.answer()
     await state.clear()
-    await show(callback, ADMIN_HELP, kb.admin_menu_kb())
+    await show(callback, ADMIN_HELP, await menu_kb())
 
 
 @router.callback_query(kb.AdmCb.filter(F.action == "deps"))
@@ -190,7 +201,7 @@ async def cb_cancel_dep_yes(callback: CallbackQuery, callback_data: kb.AdmCb, bo
         await s.commit()
     await callback.answer()
     await callback.message.edit_text(f"🗑 Рейс {escape(label)} скасовано. Повідомлено пасажирів: {notified}.",
-                                     reply_markup=kb.admin_menu_kb())
+                                     reply_markup=await menu_kb())
 
 
 # ---------- Окрема бронь ----------
@@ -304,7 +315,7 @@ async def msg_dates(message: Message, state: FSMContext, bot: Bot):
     if past:
         parts.append("Пропущено (минулі): " + ", ".join(cat.fmt_date(d, False) for d in past))
     await message.answer(f"{trip['flag']} {escape(trip['short_title'])}\n" + "\n".join(parts or ["Нічого не додано."]),
-                         reply_markup=kb.admin_menu_kb())
+                         reply_markup=await menu_kb())
     # повідомляємо лист очікування
     if added and waiting:
         sent = 0
@@ -492,7 +503,7 @@ async def cb_waitlist(callback: CallbackQuery):
     async with Session() as s:
         items = list(await s.scalars(select(WaitlistEntry).order_by(WaitlistEntry.trip_id, WaitlistEntry.created_at)))
     if not items:
-        return await show(callback, "Лист очікування порожній.", kb.admin_menu_kb())
+        return await show(callback, "Лист очікування порожній.", await menu_kb())
     lines, current = ["<b>🔔 Лист очікування</b>"], None
     for w in items:
         if w.trip_id != current:
@@ -501,7 +512,7 @@ async def cb_waitlist(callback: CallbackQuery):
             lines.append(f"\n<b>{t.get('flag', '')} {escape(t.get('short_title', current))}</b>")
         lines.append(f"• {escape(w.name)}" + (f" @{escape(w.username)}" if w.username else ""))
     lines.append("\nКоли додасте дати цьому туру — бот сам повідомить цих людей.")
-    await show(callback, "\n".join(lines)[:4000], kb.admin_menu_kb())
+    await show(callback, "\n".join(lines)[:4000], await menu_kb())
 
 
 # ---------- Фото турів ----------
@@ -549,3 +560,17 @@ async def msg_photo(message: Message, state: FSMContext):
 @router.message(Adm.photo)
 async def msg_photo_wrong(message: Message):
     await message.answer("Потрібне саме фото 📷 (не файл і не текст). Або /cancel")
+
+
+# ---------- ШІ-помічник ----------
+
+@router.callback_query(kb.AdmCb.filter(F.action == "ai_toggle"))
+async def cb_ai_toggle(callback: CallbackQuery):
+    if not is_admin_cb(callback):
+        return await callback.answer()
+    if not settings.ANTHROPIC_API_KEY:
+        return await callback.answer("Додайте ANTHROPIC_API_KEY у Render → Environment, і помічник з'явиться.", show_alert=True)
+    now_on = await ai.is_enabled()
+    await ai.set_setting("ai_enabled", "0" if now_on else "1")
+    await callback.answer("Помічник вимкнений — питання йдуть вам" if now_on else "Помічник увімкнений 🤖", show_alert=True)
+    await show(callback, ADMIN_HELP, await menu_kb())

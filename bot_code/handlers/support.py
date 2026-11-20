@@ -10,9 +10,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy import select
 
+from .. import ai
 from .. import keyboards as kb
 from ..config import settings
 from ..db import Session, SupportThread
+from ..screens import keep, keep_incoming
 
 log = logging.getLogger(__name__)
 router = Router(name="support")
@@ -26,9 +28,12 @@ class IsAdmin(Filter):
 @router.message(F.text == kb.BTN_ASK)
 async def ask_question(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer(
-        "Напишіть своє питання одним повідомленням (можна голосовим) — менеджер відповість тут, у цьому чаті 🙌",
-        reply_markup=kb.main_kb())
+    if await ai.is_enabled():
+        text = ("Напишіть своє питання — відповість помічник SVOI, а якщо потрібно, підключиться менеджер 🙌\n"
+                "Можна одразу написати, наприклад: «Хочу в Париж удвох, забрати з Тріра».")
+    else:
+        text = "Напишіть своє питання одним повідомленням (можна голосовим) — менеджер відповість тут, у цьому чаті 🙌"
+    await message.answer(text, reply_markup=kb.main_kb())
 
 
 @router.message(IsAdmin(), F.reply_to_message)
@@ -43,14 +48,18 @@ async def admin_reply(message: Message, bot: Bot):
         return
     try:
         await bot.copy_message(thread.user_id, message.chat.id, message.message_id)
-        await message.reply("✅ Відповідь надіслано клієнту")
+        await ai.pause_for(thread.user_id)  # менеджер узяв розмову — помічник поки мовчить
+        await message.reply("✅ Відповідь надіслано клієнту. Помічник не втручатиметься в цю розмову 6 годин.")
     except Exception as e:  # noqa: BLE001
         await message.reply(f"Не вдалося надіслати: {escape(str(e))}")
 
 
 @router.message(~IsAdmin(), F.chat.type == "private")
 async def forward_question(message: Message, bot: Bot):
-    """Усе, що клієнт написав поза кнопками, — до менеджера."""
+    """Усе, що клієнт написав поза кнопками: спершу відповідає ШІ-помічник, інакше — менеджеру."""
+    keep_incoming()  # питання клієнта не видаляємо з чату
+    if await ai.handle(bot, message):
+        return
     user = message.from_user
     who = escape(user.full_name) + (f" @{user.username}" if user.username else "")
     header = f"❓ <b>Питання від {who}</b>\n<i>Натисніть «Відповісти» на повідомлення нижче — відповідь піде клієнту.</i>"
@@ -66,14 +75,13 @@ async def forward_question(message: Message, bot: Bot):
             except Exception as e:  # noqa: BLE001
                 log.error("Не вдалося переслати питання адміну %s: %s", admin_id, e)
         await s.commit()
-    if delivered:
-        await message.answer(
-            "Дякуємо! Передали ваше повідомлення менеджеру — відповімо тут найближчим часом 🙌\n"
-            "А поки можете подивитись «🗺 Поїздки та дати».",
-            reply_markup=kb.main_kb())
-    else:
-        await message.answer(f"Напишіть, будь ласка, менеджеру напряму: @{settings.MANAGER_USERNAME.lstrip('@')}",
-                             reply_markup=kb.main_kb())
+    if delivered and await ai.is_paused(user.id):
+        return  # менеджер уже веде розмову — не дублюємо «передали менеджеру»
+    text = ("Дякуємо! Передали ваше повідомлення менеджеру — відповімо тут найближчим часом 🙌\n"
+            "А поки можете подивитись «🗺 Поїздки та дати»." if delivered else
+            f"Напишіть, будь ласка, менеджеру напряму: @{settings.MANAGER_USERNAME.lstrip('@')}")
+    with keep():
+        await message.answer(text, reply_markup=kb.main_kb())
 
 
 @router.message(IsAdmin(), F.chat.type == "private")

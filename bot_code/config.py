@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     RENDER_EXTERNAL_URL: str = ""
     PORT: int = 10000
 
+    # ШІ-помічник (Claude). Без ключа всі питання йдуть менеджеру, як раніше.
+    ANTHROPIC_API_KEY: str = ""
+    AI_MODEL: str = "claude-haiku-5-5"
+
     # Часовий пояс для дат рейсів
     TIMEZONE: str = "Europe/Berlin"
 

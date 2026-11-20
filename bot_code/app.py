@@ -15,7 +15,8 @@ from aiohttp import web
 from .api import build_app
 from .config import settings
 from .db import init_db
-from .handlers import admin, client, support
+from .handlers import admin, client, games, support
+from .screens import CleanChat, TrackRequests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
                     stream=sys.stdout)
@@ -24,8 +25,10 @@ log = logging.getLogger("svoi")
 
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher()
+    dp.update.outer_middleware(CleanChat())  # прибирання старих повідомлень у чаті клієнта
     dp.include_router(admin.router)
     dp.include_router(client.router)
+    dp.include_router(games.router)
     dp.include_router(support.router)  # останнім: ловить усі інші повідомлення
     return dp
 
@@ -62,6 +65,7 @@ async def main() -> None:
 
     await init_db()
     bot = Bot(settings.token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot.session.middleware(TrackRequests())
     dp = build_dispatcher()
 
     runner = web.AppRunner(build_app(bot, settings.token))
