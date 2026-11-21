@@ -110,6 +110,69 @@ class TripPhoto(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class Media(Base):
+    """Фото/відео, завантажені адміном: key = welcome (привітання) або van (альбом мінівена)."""
+    __tablename__ = "media"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # photo / video / animation
+    file_id: Mapped[str] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class KnownChat(Base):
+    """Групи й канали, де є бот (щоб публікувати розіграші та вікторини)."""
+    __tablename__ = "known_chats"
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    title: Mapped[str] = mapped_column(String(128), default="")
+    type: Mapped[str] = mapped_column(String(16))  # group / supergroup / channel
+    is_admin: Mapped[int] = mapped_column(Integer, default=0)
+    last_welcome_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class Giveaway(Base):
+    __tablename__ = "giveaways"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    prize: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active / finished
+    winner_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    winner_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GiveawayPost(Base):
+    """Де опубліковано розіграш (може бути і в групі, і в каналі)."""
+    __tablename__ = "giveaway_posts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    giveaway_id: Mapped[int] = mapped_column(ForeignKey("giveaways.id"), index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    message_id: Mapped[int] = mapped_column(BigInteger)
+
+
+class GiveawayEntry(Base):
+    __tablename__ = "giveaway_entries"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    giveaway_id: Mapped[int] = mapped_column(ForeignKey("giveaways.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    name: Mapped[str] = mapped_column(String(128))
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    __table_args__ = (UniqueConstraint("giveaway_id", "user_id", name="uq_gw_user"),)
+
+
+class DateRequest(Base):
+    """Клієнт запропонував свою дату поїздки."""
+    __tablename__ = "date_requests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    trip_id: Mapped[str] = mapped_column(String(64), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    name: Mapped[str] = mapped_column(String(128))
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class GamePrize(Base):
     """Приз Колеса Фортуни: один на людину."""
     __tablename__ = "game_prizes"
@@ -190,3 +253,7 @@ async def trip_photo(session: AsyncSession, trip_id: str) -> str | None:
         return row.file_id
     from .catalog import TRIPS_BY_ID
     return TRIPS_BY_ID.get(trip_id, {}).get("image") or None
+
+
+async def media_list(session: AsyncSession, key: str) -> list[Media]:
+    return list(await session.scalars(select(Media).where(Media.key == key).order_by(Media.id)))

@@ -16,6 +16,7 @@ BTN_HOW = "ℹ️ Як усе працює"
 BTN_GAMES = "🎲 Розваги"
 BTN_CANCEL = "✖️ Скасувати"
 BTN_SHARE_PHONE = "📱 Надіслати мій номер"
+BTN_VAN = "📸 Фото мінівена"
 
 
 class TripCb(CallbackData, prefix="t"):
@@ -43,6 +44,10 @@ class StepCb(CallbackData, prefix="st"):
 
 
 class WaitCb(CallbackData, prefix="w"):
+    trip: str
+
+
+class ProposeCb(CallbackData, prefix="pd"):
     trip: str
 
 
@@ -115,7 +120,8 @@ def trip_kb(trip_id: str, deps: list[tuple[int, str, int]]) -> InlineKeyboardMar
         else:
             kb.append([IB(text=f"📅 {label} · місць немає", callback_data=WaitCb(trip=trip_id).pack())])
     if not deps or all(f <= 0 for _, _, f in deps):
-        kb.append([IB(text="🔔 Повідомити, коли з'являться дати/місця", callback_data=WaitCb(trip=trip_id).pack())])
+        kb.append([IB(text="🔔 Повідомити, коли з'являться дати", callback_data=WaitCb(trip=trip_id).pack())])
+    kb.append([IB(text="📝 Запропонувати свою дату", callback_data=ProposeCb(trip=trip_id).pack())])
     kb.append([IB(text="⬅️ До всіх поїздок", callback_data=StepCb(action="to_trips").pack())])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -198,7 +204,9 @@ def admin_menu_kb(ai_state: str | None = None) -> InlineKeyboardMarkup:
     rows = [
         [IB(text="🚐 Рейси та пасажири", callback_data=AdmCb(action="deps").pack())],
         [IB(text="➕ Додати дати поїздок", callback_data=AdmCb(action="add_dates").pack())],
-        [IB(text="🖼 Фото турів", callback_data=AdmCb(action="photos").pack()),
+        [IB(text="🎁 Розіграші", callback_data=AdmCb(action="giveaways").pack()),
+         IB(text="🧠 Вікторина", callback_data=AdmCb(action="quiz").pack())],
+        [IB(text="🖼 Фото і відео", callback_data=AdmCb(action="media").pack()),
          IB(text="🔔 Лист очікування", callback_data=AdmCb(action="waitlist").pack())],
     ]
     if ai_state:

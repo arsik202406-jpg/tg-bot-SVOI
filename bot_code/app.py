@@ -15,7 +15,7 @@ from aiohttp import web
 from .api import build_app
 from .config import settings
 from .db import init_db
-from .handlers import admin, client, games, support
+from .handlers import admin, client, community, games, support
 from .screens import CleanChat, TrackRequests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -26,6 +26,8 @@ log = logging.getLogger("svoi")
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher()
     dp.update.outer_middleware(CleanChat())  # прибирання старих повідомлень у чаті клієнта
+    dp.include_router(community.router)  # групи й канали: першим, щоб бот мовчав у групі
+    dp.include_router(community.admin)
     dp.include_router(admin.router)
     dp.include_router(client.router)
     dp.include_router(games.router)
@@ -49,8 +51,23 @@ async def keep_alive() -> None:
 
 async def setup_bot_ui(bot: Bot) -> None:
     await bot.set_my_commands([
-        BotCommand(command="start", description="Головне меню"),
+        BotCommand(command="start", description="🏠 Головне меню"),
     ])
+    # Текст «Що вміє цей бот?» на першому екрані
+    description = (
+        "🚐 SVOI — поїздки по Європі маленькими групами (до 8 людей) на мінівені Opel Vivaro.\n\n"
+        "• Забираємо від дому: Саарланд, Трір, Люксембург\n"
+        "• Одноденні поїздки — без передоплати\n"
+        "• Париж, Брюгге, Амстердам, Комо, Швейцарія та інші\n\n"
+        "👇 Натисніть «Старт», щоб побачити дати й забронювати місце."
+    )
+    try:
+        current = await bot.get_my_description()
+        if current.description != description:
+            await bot.set_my_description(description)
+            await bot.set_my_short_description("Поїздки по Європі на мінівені з Саарланду, Тріра й Люксембургу 🚐")
+    except Exception as e:  # noqa: BLE001
+        log.warning("Опис бота: %s", e)
     if settings.webapp_url.startswith("https://"):
         await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(
             text="Забронювати", web_app=WebAppInfo(url=settings.webapp_url)))

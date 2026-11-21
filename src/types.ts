@@ -44,6 +44,7 @@ export interface Catalog {
   capacity: number;
   pickup_cities: PickupCity[];
   manager: string;
+  van_photos?: string[];
 }
 
 export interface MyBooking {

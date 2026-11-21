@@ -96,3 +96,11 @@ export async function joinWaitlist(tripId: string): Promise<void> {
   if (DEMO) return;
   await request('/api/waitlist', { trip_id: tripId, initData: initData() });
 }
+
+export async function sendDateRequest(tripId: string, text: string): Promise<void> {
+  if (DEMO) {
+    await new Promise((r) => setTimeout(r, 500));
+    return;
+  }
+  await request('/api/date-request', { trip_id: tripId, text, initData: initData() });
+}
