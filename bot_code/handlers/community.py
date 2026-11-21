@@ -160,17 +160,23 @@ async def gw_post_kb(bot: Bot, gw_id: int, count: int) -> InlineKeyboardMarkup:
     ])
 
 
+async def channel_ids() -> list[int | str]:
+    """Канали для перевірки підписки: збережені ботом (закриті канали — за числовим ID) + з налаштувань."""
+    async with Session() as s:
+        known = [c.chat_id for c in await s.scalars(select(KnownChat).where(KnownChat.type == "channel"))]
+    extra = [settings.CHANNEL_CHAT_ID] if settings.CHANNEL_CHAT_ID else []
+    return known + extra
+
+
 async def is_subscribed(bot: Bot, user_id: int) -> bool | None:
-    """True/False — підписаний на канал; None — перевірити неможливо (бот не адмін каналу)."""
-    channel = settings.CHANNEL_CHAT_ID
-    if not channel:
-        return None
-    try:
-        m = await bot.get_chat_member(channel, user_id)
-        return m.status in ("member", "administrator", "creator", "restricted")
-    except Exception as e:  # noqa: BLE001
-        log.info("Перевірка підписки недоступна: %s", e)
-        return None
+    """True/False — підписаний на канал; None — перевірити неможливо (бот не знає каналу або не адмін)."""
+    for channel in await channel_ids():
+        try:
+            m = await bot.get_chat_member(channel, user_id)
+            return m.status in ("member", "administrator", "creator", "restricted")
+        except Exception as e:  # noqa: BLE001
+            log.info("Перевірка підписки в %s недоступна: %s", channel, e)
+    return None
 
 
 @router.callback_query(GwCb.filter())
@@ -215,6 +221,24 @@ def _is_admin(user_id: int) -> bool:
     return user_id in settings.admin_ids
 
 
+@admin.message(F.forward_origin.chat, F.chat.type == "private")
+async def on_forward_from_channel(message: Message, bot: Bot):
+    """Адмін переслав боту пост із каналу — запам'ятовуємо канал (потрібно для закритих каналів)."""
+    if not _is_admin(message.from_user.id):
+        return
+    chat = message.forward_origin.chat
+    try:
+        me = await bot.me()
+        member = await bot.get_chat_member(chat.id, me.id)
+        is_admin = member.status in ("administrator", "creator")
+    except Exception:  # noqa: BLE001
+        is_admin = False
+    await remember_chat(chat, is_admin)
+    note = ("Бот там адміністратор — розіграші перевірятимуть підписку на цей канал ✅" if is_admin else
+            "⚠️ Бот не адміністратор цього каналу — додайте його адміном, інакше підписку не перевірити.")
+    await message.answer(f"📢 Канал «{escape(chat.title or '')}» збережено.\n{note}")
+
+
 async def gw_admin_view(gw_id: int | None = None) -> tuple[str, InlineKeyboardMarkup]:
     async with Session() as s:
         gw = (await s.get(Giveaway, gw_id) if gw_id else
@@ -237,8 +261,11 @@ async def gw_admin_view(gw_id: int | None = None) -> tuple[str, InlineKeyboardMa
             label = f"{icon} Опублікувати в «{c.title[:28]}»" + (" ✅" if c.chat_id in posted else "")
             rows.insert(0, [IB(text=label, callback_data=GwAdm(action="post", id=gw.id, chat=c.chat_id).pack())])
         if not chats:
-            text += ("\n⚠️ Бот не знає жодної групи чи каналу. Додайте бота в групу/канал адміністратором "
-                     "або напишіть у групі будь-яке повідомлення.")
+            text += ("\n⚠️ Бот не знає жодної групи чи каналу. Напишіть будь-що в групі, "
+                     "а з каналу перешліть боту будь-який пост.")
+        elif not any(c.type == "channel" for c in chats):
+            text += ("\n⚠️ Канал не знайдено: перешліть боту будь-який пост із каналу — "
+                     "тоді розіграш перевірятиме підписку.")
         rows.insert(len(chats), [IB(text=f"🏆 Обрати переможця ({count})", callback_data=GwAdm(action="pick", id=gw.id).pack())])
     rows.append([IB(text="⬅️ Адмін-меню", callback_data=kb.AdmCb(action="menu").pack())])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
