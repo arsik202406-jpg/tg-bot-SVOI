@@ -1,563 +1,320 @@
-import React, { useState, useEffect } from 'react';
-import { Header, AppTab } from './components/Header';
-import { TelegramSimulator } from './components/TelegramSimulator';
-import { CodeStudio } from './components/CodeStudio';
-import { AdminLeadsDesk } from './components/AdminLeadsDesk';
-import { MinivanVisualizer } from './components/MinivanVisualizer';
-import { TelegramApiTester } from './components/TelegramApiTester';
-import { GamesHub } from './components/GamesHub';
-import { FaqSection } from './components/FaqSection';
-import { SvoiMiniApp } from './components/SvoiMiniApp';
-import { ChannelAdminDesk } from './components/ChannelAdminDesk';
-import { TRIPS_LIST, MEETING_STOPS, PICKUP_LOGISTICS } from './data/tripsData';
-import { LeadItem } from './types';
-import { 
-  MapPin, Bus, Sparkles, ShieldCheck, PhoneCall, 
-  ExternalLink, Compass, Clock, CheckCircle2, X, HelpCircle, Gamepad2, Users, AlertCircle 
-} from 'lucide-react';
+import { CalendarCheck, MessageCircle, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createBooking, DEMO, joinWaitlist, loadCatalog, loadMe } from './api';
+import { PickupStep, ReviewStep, SeatStep, TripList, TripStep } from './components/steps';
+import { BottomBar, Header, Sheet, Stepper } from './components/ui';
+import { closeApp, haptic, inTelegram, onBackButton, openLink, setChrome, tg, userName } from './tg';
+import type { Catalog, Draft, MyBooking } from './types';
+
+const EMPTY: Draft = { tripId: null, departureId: null, pax: 1, seats: [], auto: true, city: 'saarland', address: '', phone: '', name: '', comment: '' };
+
+function initialTheme(): 'light' | 'dark' {
+  try {
+    const saved = localStorage.getItem('svoi_theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {
+    /* ignore */
+  }
+  if (tg?.colorScheme) return tg.colorScheme === 'dark' ? 'dark' : 'light';
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
 
 export default function App() {
-  // Only detect as native Telegram WebApp if there is actual non-empty initData from Telegram,
-  // or Telegram URL parameters / hash (tgWebAppData)
-  const isRealTgWebApp = typeof window !== 'undefined' && Boolean(
-    (typeof (window as any).Telegram?.WebApp?.initData === 'string' && (window as any).Telegram.WebApp.initData.length > 0) ||
-    window.location.hash.includes('tgWebAppData') ||
-    window.location.search.includes('tgWebApp=true') ||
-    window.location.search.includes('miniapp=1') ||
-    window.location.search.includes('startapp=')
+  const [theme, setTheme] = useState(initialTheme);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [step, setStep] = useState(0);
+  const [draft, setDraftState] = useState<Draft>({ ...EMPTY, name: userName() });
+  const [myBookings, setMyBookings] = useState<MyBooking[]>([]);
+  const [showMy, setShowMy] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState<{ code: string } | null>(null);
+  const [waitlisted, setWaitlisted] = useState<Record<string, boolean>>({});
+
+  const setDraft = useCallback((d: Partial<Draft>) => {
+    setError('');
+    setDraftState((prev) => ({ ...prev, ...d }));
+  }, []);
+
+  // тема
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    setChrome(theme === 'dark' ? '#0e1412' : '#f3efe7');
+    try {
+      localStorage.setItem('svoi_theme', theme);
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
+
+  // завантаження
+  const load = useCallback(async () => {
+    setLoadError('');
+    try {
+      const [cat, me] = await Promise.all([loadCatalog(), loadMe().catch(() => ({ saved: null, bookings: [] }))]);
+      setCatalog(cat);
+      setMyBookings(me.bookings);
+      if (me.saved) {
+        setDraftState((prev) => ({
+          ...prev,
+          phone: prev.phone || me.saved?.phone || '',
+          address: prev.address || me.saved?.address || '',
+          city: cat.pickup_cities.find((c) => c.name === me.saved?.city)?.id ?? prev.city,
+        }));
+      }
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Помилка завантаження');
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const trip = catalog?.trips.find((t) => t.id === draft.tripId) ?? null;
+  const departures = useMemo(() => catalog?.departures.filter((d) => d.trip_id === draft.tripId) ?? [], [catalog, draft.tripId]);
+  const dep = departures.find((d) => d.id === draft.departureId) ?? null;
+  const total = useMemo(() => {
+    if (!trip || !catalog) return null;
+    const fee = draft.auto ? 0 : draft.seats.reduce((s, n) => s + (catalog.seats.find((x) => x.no === n)?.fee ?? 0), 0);
+    return trip.price * draft.pax + fee;
+  }, [trip, catalog, draft]);
+
+  const go = (n: number) => {
+    haptic();
+    setError('');
+    setStep(n);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // кнопка «Назад» Telegram
+  useEffect(() => {
+    if (showMy) return onBackButton(() => setShowMy(false));
+    if (done || step === 0) return onBackButton(null);
+    return onBackButton(() => go(step - 1));
+  }, [step, showMy, done]);
+
+  // ---------- валідація кроків ----------
+  const phoneOk = draft.phone.replace(/\D/g, '').length >= 7;
+  const canNext = [
+    true,
+    Boolean(dep && dep.free >= draft.pax),
+    draft.auto || draft.seats.length === draft.pax,
+    draft.address.trim().length >= 5 && phoneOk && draft.name.trim().length >= 2,
+    true,
+  ][step];
+  const nextHint = [
+    '',
+    !dep ? 'Оберіть дату' : '',
+    !draft.auto && draft.seats.length !== draft.pax ? `Оберіть ${draft.pax - draft.seats.length} ще` : '',
+    draft.address.trim().length < 5 ? 'Вкажіть адресу' : draft.name.trim().length < 2 ? 'Вкажіть ім’я' : !phoneOk ? 'Вкажіть телефон' : '',
+    '',
+  ][step];
+
+  const submit = async () => {
+    if (!dep) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await createBooking({
+        departure_id: dep.id,
+        pax: draft.pax,
+        seats: draft.auto ? null : draft.seats,
+        city: draft.city,
+        address: draft.address.trim(),
+        phone: draft.phone.trim(),
+        name: draft.name.trim(),
+        comment: draft.comment.trim(),
+      });
+      haptic('success');
+      setDone({ code: res.code });
+      window.scrollTo({ top: 0 });
+      load();
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof Error ? e.message : 'Не вдалося забронювати');
+      load(); // оновлюємо зайняті місця
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ---------- екрани ----------
+  if (loadError) {
+    return (
+      <Centered>
+        <p className="text-lg font-extrabold">Не вдалося завантажити поїздки</p>
+        <p className="mt-2 text-[15px] font-semibold text-muted">{loadError.includes('Telegram') ? loadError : 'Перевірте інтернет і спробуйте ще раз. Якщо не допомагає — зачекайте хвилину: сервер прокидається.'}</p>
+        <button type="button" className="btn-primary mt-6 flex w-full items-center justify-center gap-2" onClick={load}>
+          <RefreshCw size={19} /> Спробувати ще раз
+        </button>
+      </Centered>
+    );
+  }
+  if (!catalog) {
+    return (
+      <Centered>
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-line border-t-accent" aria-label="Завантаження" />
+      </Centered>
+    );
+  }
+
+  const manager = `https://t.me/${catalog.manager}`;
+  const header = <Header theme={theme} onTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} onMy={() => setShowMy(true)} myCount={myBookings.length} />;
+
+  const mySheet = showMy && (
+    <Sheet title="Мої бронювання" onClose={() => setShowMy(false)}>
+      {myBookings.length === 0 ? (
+        <p className="pt-6 text-center text-[15px] font-semibold text-muted">
+          {inTelegram ? 'Поки що немає майбутніх поїздок.' : 'Відкрийте застосунок через Telegram-бота, щоб побачити свої бронювання.'}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {myBookings.map((b) => {
+            const t = catalog.trips.find((x) => x.id === b.trip_id);
+            return (
+              <div key={b.code} className="card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-lg font-extrabold">
+                    {t?.flag} {t?.short_title}
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${b.status === 'confirmed' ? 'bg-accent-soft text-accent' : 'bg-surface-2 text-muted'}`}>
+                    {b.status === 'confirmed' ? 'Підтверджено' : 'Очікує'}
+                  </span>
+                </div>
+                <div className="mt-2 space-y-1 text-[15px] font-semibold text-muted">
+                  <div>📅 {b.label}</div>
+                  <div>
+                    👥 {b.pax} · місця {b.seats.join(', ')}
+                    {b.auto ? ' (будь-які)' : ''}
+                  </div>
+                  <div>
+                    📍 {b.city}, {b.address}
+                  </div>
+                  <div className="text-ink">💶 {b.total} € · {b.code}</div>
+                </div>
+              </div>
+            );
+          })}
+          <p className="pt-2 text-center text-sm font-semibold text-muted">Щоб скасувати або змінити — натисніть «📝 Мої бронювання» у чаті з ботом або напишіть менеджеру.</p>
+        </div>
+      )}
+    </Sheet>
   );
 
-  const [activeTab, setActiveTab] = useState<AppTab>(isRealTgWebApp ? 'miniapp' : 'simulator');
-  const [showFullWebAppOnly, setShowFullWebAppOnly] = useState(isRealTgWebApp);
-  const [showCarModal, setShowCarModal] = useState(false);
-
-  // Initial demo leads to showcase CRM functionality right away
-  const [leads, setLeads] = useState<LeadItem[]>([
-    {
-      id: 'lead-1',
-      type: 'booking',
-      bookingCode: 'SVOI-7842',
-      tripTitle: 'Париж (Версаль + яхта + Ейфелева вежа)',
-      duration: '1 день',
-      seatType: 'Місце 2 (1-й ряд біля вікна поруч з водієм, +5€)',
-      basePrice: 120,
-      seatFee: 5,
-      totalCost: 125,
-      meetingPoint: 'За адресою: Саарбрюккен',
-      userName: 'Олена К.',
-      userHandle: '@elena_de_voyage',
-      userId: 541829012,
-      timestamp: '16.10.2026, 14:10',
-      status: 'new'
-    },
-    {
-      id: 'lead-2',
-      type: 'booking',
-      bookingCode: 'SVOI-5193',
-      tripTitle: 'Лазурове узбережжя (3 дні: Ніцца, Монако, Канни)',
-      duration: '3 дні',
-      seatType: 'Місце 3 (2-й ряд біля вікна ліворуч, +5€)',
-      basePrice: 440,
-      seatFee: 5,
-      totalCost: 445,
-      meetingPoint: 'За адресою: Люксембург',
-      userName: 'Михайло В.',
-      userHandle: '@mike_traveler',
-      userId: 781923401,
-      timestamp: '16.10.2026, 12:45',
-      status: 'processing'
-    },
-    {
-      id: 'lead-3',
-      type: 'feedback',
-      userName: 'Ольга С.',
-      userHandle: '@olga_st',
-      userId: 629104819,
-      tripTitle: 'Брюгге (Бельгія)',
-      meetingPoint: 'За адресою: Саарбрюккен',
-      text: 'Були в турі до Брюгге минулих вихідних. Враження неймовірні! Комфортний салон Opel Vivaro та турбота організаторів зробили дорогу абсолютно непомітною. Хотілося б ще тур до Норвегії!',
-      timestamp: '17.10.2026, 19:20',
-      status: 'confirmed'
-    },
-    {
-      id: 'lead-4',
-      type: 'feedback',
-      userName: 'Максим та Аліна',
-      userHandle: '@max_alina_de',
-      userId: 491820491,
-      tripTitle: 'Париж (Версаль + яхта + Ейфелева вежа)',
-      meetingPoint: 'За адресою: Люксембург',
-      text: 'Дякуємо клубу SVOI за незабутню подорож до Парижа! Особливо цінно, що заїхали за нами прямо до будинку. Салон чистий, м’які сидіння та простір для ніг — доїхали з повним комфортом!',
-      timestamp: '18.10.2026, 10:15',
-      status: 'confirmed'
-    },
-    {
-      id: 'lead-5',
-      type: 'feedback',
-      userName: 'Дмитро К.',
-      userHandle: '@dmytro_travel',
-      userId: 382910471,
-      tripTitle: 'Озеро Комо + Мілан',
-      meetingPoint: 'За адресою: Трір',
-      text: 'Прекрасна поїздка на Комо! Комфортний мікроавтобус на 8 місць, дуже тепла компанія своїх і жодного головного болю з парковками в Італії. Вже забронювали наступний виїзд!',
-      timestamp: '18.10.2026, 17:40',
-      status: 'confirmed'
-    }
-  ]);
-
-  useEffect(() => {
-    let isMounted = true;
-    const fetchServerLeads = async () => {
-      try {
-        const res = await fetch('/api/leads');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (isMounted && data?.ok && Array.isArray(data.leads) && data.leads.length > 0) {
-          setLeads((prev) => {
-            const serverIds = new Set(data.leads.map((l: LeadItem) => l.id));
-            const remainingLocal = prev.filter((l) => !serverIds.has(l.id));
-            return [...data.leads, ...remainingLocal];
-          });
-        }
-      } catch {
-        // ignore network errors
-      }
-    };
-    fetchServerLeads();
-    const interval = setInterval(fetchServerLeads, 6000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  const handleNewLead = (newLead: LeadItem) => {
-    setLeads((prev) => [newLead, ...prev.filter((l) => l.id !== newLead.id)]);
-    fetch('/api/leads', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newLead)
-    }).catch(() => {});
-  };
-
-  const handleUpdateLeadStatus = (id: string, status: LeadItem['status']) => {
-    setLeads((prev) =>
-      prev.map((lead) => (lead.id === id ? { ...lead, status } : lead))
-    );
-    fetch(`/api/leads/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status })
-    }).catch(() => {});
-  };
-
-  const [botServerStatus, setBotServerStatus] = useState<{
-    checked: boolean;
-    tokenValid: boolean;
-    maskedToken: string;
-    botUsername?: string;
-    errorDescription?: string | null;
-  }>({ checked: false, tokenValid: true, maskedToken: '' });
-  const [quickTokenInput, setQuickTokenInput] = useState('');
-  const [isSavingQuickToken, setIsSavingQuickToken] = useState(false);
-  const [quickTokenMsg, setQuickTokenMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const checkBotStatus = async () => {
-    try {
-      const res = await fetch('/api/telegram/status');
-      const data = await res.json();
-      if (data?.ok) {
-        setBotServerStatus({
-          checked: true,
-          tokenValid: Boolean(data.tokenValid),
-          maskedToken: data.maskedToken || '',
-          botUsername: data.botInfo?.username,
-          errorDescription: data.errorDescription || null,
-        });
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    checkBotStatus();
-  }, []);
-
-  const handleQuickSaveToken = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickTokenInput.trim()) return;
-    setIsSavingQuickToken(true);
-    setQuickTokenMsg(null);
-    try {
-      const res = await fetch('/api/telegram/set-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: quickTokenInput.trim() }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setQuickTokenInput('');
-        setQuickTokenMsg({
-          ok: true,
-          text: `✅ Новий токен успішно збережено! Бот @${data.result?.username || 'Svoi_TravelEU_bot'} запущено в Telegram, чужі вебхуки скинуто!`,
-        });
-        await checkBotStatus();
-      } else {
-        setQuickTokenMsg({
-          ok: false,
-          text: data.description || 'Помилка перевірки токена. Скопіюйте повний ключ із @BotFather.',
-        });
-      }
-    } catch (err: any) {
-      setQuickTokenMsg({
-        ok: false,
-        text: `Помилка з’єднання: ${err.message}`,
-      });
-    } finally {
-      setIsSavingQuickToken(false);
-    }
-  };
-
-  // If opened directly as a Telegram Mini App inside Telegram, render clean full-screen view
-  // starting immediately with the compact brand header and navigation tabs
-  if (showFullWebAppOnly) {
+  if (done && trip && dep) {
     return (
-      <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
-        <main className="flex-1 w-full max-w-xl mx-auto">
-          <SvoiMiniApp onNewLead={handleNewLead} leads={leads} />
-        </main>
+      <div className="mx-auto max-w-xl">
+        {header}
+        <div className="px-5 pt-8 text-center fade-in">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-accent text-accent-ink">
+            <CalendarCheck size={40} />
+          </div>
+          <h1 className="mt-5 text-2xl font-extrabold">Заявку прийнято!</h1>
+          <p className="mt-2 text-[16px] font-semibold text-muted">
+            {trip.flag} {trip.short_title}, {dep.label}
+            <br />
+            Номер броні: <b className="text-ink">{done.code}</b>
+          </p>
+          <div className="card mt-6 p-5 text-left text-[15px] leading-relaxed font-semibold">
+            ✅ Підтвердження вже надіслано вам у чат з ботом.
+            <br />
+            📞 Менеджер підтвердить бронь найближчим часом.
+            <br />
+            🚐 Напередодні ввечері напишемо точний час, коли під’їдемо.
+          </div>
+          <button type="button" className="btn-primary mt-6 w-full" onClick={() => (inTelegram ? closeApp() : (setDone(null), setDraftState({ ...EMPTY, name: userName() }), setStep(0)))}>
+            {inTelegram ? 'Повернутись у чат' : 'На головну'}
+          </button>
+          <button type="button" className="mt-3 w-full py-3 text-[15px] font-bold text-accent" onClick={() => (setDone(null), setDraftState((d) => ({ ...EMPTY, name: d.name, phone: d.phone, address: d.address, city: d.city })), setStep(0))}>
+            Забронювати ще одну поїздку
+          </button>
+        </div>
+        {mySheet}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
-      {/* Top App Header */}
-      <Header
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        leadsCount={leads.filter((l) => l.status === 'new').length}
-      />
-
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Quick Token Setup Banner when old token was revoked in @BotFather */}
-        {botServerStatus.checked && !botServerStatus.tokenValid && (
-          <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-950/80 via-slate-900 to-slate-900 border border-amber-500/40 shadow-xl">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-                  <span>
-                    Старий токен бота було відкликано (/revoke) — вставте новий ключ із @BotFather, щоб запустити бота:
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Оскільки старий ключ скасовано для захисту від злому, Telegram-бот чекає на ваш новий токен. Вставте новий ключ сюди — він збережеться у закритому серверному сховищі (поза GitHub і кодом) і миттєво запустить <b>@Svoi_TravelEU_bot</b>:
-                </p>
-              </div>
-              <form onSubmit={handleQuickSaveToken} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
-                <input
-                  type="password"
-                  value={quickTokenInput}
-                  onChange={(e) => setQuickTokenInput(e.target.value)}
-                  placeholder="Вставте новий токен (8969834514:AAH...)"
-                  className="w-full sm:w-72 bg-slate-950 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white outline-none focus:border-emerald-400"
-                />
-                <button
-                  type="submit"
-                  disabled={isSavingQuickToken || !quickTokenInput.trim()}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-lg shadow-emerald-600/25 disabled:opacity-40 whitespace-nowrap"
-                >
-                  {isSavingQuickToken ? 'Запуск бота...' : '🚀 Підключити і запустити бота'}
-                </button>
-              </form>
-            </div>
-            {quickTokenMsg && (
-              <div
-                className={`mt-3 p-3 rounded-xl text-xs font-medium border ${
-                  quickTokenMsg.ok
-                    ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
-                    : 'bg-rose-950/60 border-rose-500/40 text-rose-200'
-                }`}
-              >
-                {quickTokenMsg.text}
-              </div>
-            )}
-          </div>
-        )}
-
-        {quickTokenMsg && botServerStatus.tokenValid && (
-          <div className="mb-6 p-3.5 rounded-2xl bg-emerald-950/50 border border-emerald-500/40 text-emerald-200 text-xs font-medium flex items-center justify-between">
-            <span>{quickTokenMsg.text}</span>
-            <button
-              onClick={() => setQuickTokenMsg(null)}
-              className="text-emerald-300 hover:text-white ml-3"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {/* SIMULATOR TAB */}
-        {activeTab === 'simulator' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left Column: Interactive Telegram Bot Simulation */}
-            <div className="lg:col-span-7 flex flex-col items-center">
-              <TelegramSimulator
-                onNewLead={handleNewLead}
-                leads={leads}
-                onOpenCarModal={() => setShowCarModal(true)}
-              />
-            </div>
-
-            {/* Right Column: Bot Specs, Itineraries & Logistics Overview */}
-            <div className="lg:col-span-5 space-y-4">
-              {/* Bot Quick Info Widget */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-xs">
-                      TG
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white">Параметри запуску бота</h3>
-                      <p className="text-[11px] text-slate-400">Туристичний клуб SVOI</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    aiogram 3.x Ready
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5 mt-3 text-xs">
-                  <div className="p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80">
-                    <span className="text-slate-400 block text-[10px]">Бот:</span>
-                    <a
-                      href="https://t.me/Svoi_TravelEU_bot"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium text-blue-400 hover:underline flex items-center gap-1"
-                    >
-                      @Svoi_TravelEU_bot
-                      <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                  </div>
-
-                  <div className="p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80">
-                    <span className="text-slate-400 block text-[10px]">Менеджер:</span>
-                    <a
-                      href="https://t.me/SVOI_travel_admin"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium text-emerald-400 hover:underline flex items-center gap-1"
-                    >
-                      @SVOI_travel_admin
-                      <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                  </div>
-
-                  <div className="p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80">
-                    <span className="text-slate-400 block text-[10px]">Канал SVOI:</span>
-                    <a
-                      href="https://t.me/+Flt_2r6vi3U4ZDg6"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium text-blue-300 hover:underline flex items-center gap-1"
-                    >
-                      t.me/Канал SVOI
-                      <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                  </div>
-
-                  <div className="p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80">
-                    <span className="text-slate-400 block text-[10px]">Група клубу:</span>
-                    <a
-                      href="https://t.me/+J50liyDUHPgzYTQy"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium text-purple-300 hover:underline flex items-center gap-1"
-                    >
-                      t.me/Чат поїздок
-                      <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                  </div>
-                </div>
-
-                <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-400">
-                  Токен: <code className="text-slate-300 font-mono text-[10px]">8969834514:AAGg--******** (Захищено)</code>
-                </div>
-              </div>
-
-              {/* 14 Destinations Summary Widget */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <Compass className="w-4 h-4 text-blue-400" />
-                    <h3 className="text-sm font-bold text-white">Каталог {TRIPS_LIST.length} турів у боті</h3>
-                  </div>
-                  <span className="text-[10px] text-slate-400">Старт: Саарбрюккен Hbf</span>
-                </div>
-
-                <div className="mt-3 space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
-                  {TRIPS_LIST.map((trip) => (
-                    <div
-                      key={trip.id}
-                      className="p-2 rounded-xl bg-slate-950/60 hover:bg-slate-950 border border-slate-800/70 flex items-center justify-between text-xs transition-colors"
-                    >
-                      <div className="truncate mr-2">
-                        <span className="font-medium text-slate-200">{trip.shortTitle}</span>
-                        <span className="text-[10px] text-slate-500 block">{trip.duration}</span>
-                      </div>
-                      <span className="px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-300 font-bold border border-blue-500/20 shrink-0">
-                        {trip.price}€
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Boarding Points Widget */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3.5">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-amber-400" />
-                    <h3 className="text-sm font-bold text-white">Точки збору (cb_meeting)</h3>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    За адресою
-                  </span>
-                </div>
-
-                {/* Primary Address Pickup Badge */}
-                <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-800/60 text-xs">
-                  <div className="flex items-center gap-1.5 font-bold text-blue-300 text-xs">
-                    <span>🏡 Саарланд, Трір & Люксембург:</span>
-                  </div>
-                  <p className="text-slate-300 text-[11px] mt-1">
-                    <b>Забираємо всіх прямо за адресою</b> і розвозимо назад також за адресою!
-                  </p>
-                </div>
-
-                {/* Stops List */}
-                <div className="space-y-2 text-xs">
-                  <div className="text-[11px] font-semibold text-slate-400">
-                    Інші землі (за наявності від 4-х осіб):
-                  </div>
-                  {MEETING_STOPS.slice(1).map((stop, i) => (
-                    <div key={i} className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="font-semibold text-white block text-xs truncate">{stop.city}</span>
-                        <span className="text-[10px] text-amber-300/90 block mt-0.5">{stop.condition}</span>
-                      </div>
-                      {stop.badge && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0 font-medium">
-                          {stop.badge}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Evening notification and 1-day group logistics */}
-                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1.5 text-[11px] text-slate-400">
-                  <div className="flex items-start gap-1.5 text-slate-300">
-                    <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                    <span><b>Час подачі:</b> надсилається в особистий чат за день увечері перед виїздом.</span>
-                  </div>
-                  <div className="flex items-start gap-1.5 text-slate-300">
-                    <Users className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
-                    <span><b>Чат з водієм:</b> одноденна група для комунікації (видаляється через день).</span>
-                  </div>
-                  <div className="pt-1 border-t border-slate-800/60 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Уточнити підсадку:</span>
-                    <a
-                      href="https://t.me/SVOI_travel_admin"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[10px] text-emerald-400 hover:underline font-bold"
-                    >
-                      @SVOI_travel_admin →
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MINI APP TAB */}
-        {activeTab === 'miniapp' && (
-          <div className="py-2">
-            <SvoiMiniApp onNewLead={handleNewLead} leads={leads} />
-          </div>
-        )}
-
-        {/* CHANNEL & GIVEAWAYS TAB */}
-        {activeTab === 'channel' && (
-          <ChannelAdminDesk />
-        )}
-
-        {/* GAMES & QUIZZES TAB */}
-        {activeTab === 'games' && <GamesHub />}
-
-        {/* FAQ TAB */}
-        {activeTab === 'faq' && <FaqSection />}
-
-        {/* CODE TAB */}
-        {activeTab === 'code' && <CodeStudio />}
-
-        {/* LEADS CRM TAB */}
-        {activeTab === 'leads' && (
-          <AdminLeadsDesk
-            leads={leads}
-            onUpdateStatus={handleUpdateLeadStatus}
-            onClearArchived={() => setLeads((prev) => prev.filter((l) => l.status !== 'archived'))}
-          />
-        )}
-
-        {/* MINIVAN VISUALIZER TAB */}
-        {activeTab === 'minivan' && <MinivanVisualizer />}
-
-        {/* TELEGRAM API TESTER TAB */}
-        {activeTab === 'api' && <TelegramApiTester />}
-      </main>
-
-      {/* Opel Vivaro Modal (When triggered from Telegram bot preview) */}
-      {showCarModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-4xl w-full relative">
-            <button
-              onClick={() => setShowCarModal(false)}
-              className="absolute -top-3 -right-3 z-10 w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center border border-slate-600 shadow-xl"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <MinivanVisualizer
-              onSelectSeat={(seat, price) => {
-                setShowCarModal(false);
-              }}
-            />
-          </div>
+    <div className="mx-auto max-w-xl pb-40">
+      {header}
+      {DEMO && (
+        <div className="mx-5 mb-3 rounded-xl bg-surface-2 px-4 py-2.5 text-[13px] font-semibold text-muted">
+          Демо-режим: це попередній перегляд, бронювання не надсилаються.
         </div>
       )}
+      {step > 0 && <Stepper step={step} />}
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950/60 py-4 mt-8 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Туристичний клуб SVOI Travel • Поїздки Європою із Саарбрюккена</span>
-          <div className="flex items-center gap-3">
-            <a href="https://t.me/Svoi_TravelEU_bot" target="_blank" rel="noreferrer" className="hover:text-blue-400">
-              @Svoi_TravelEU_bot
-            </a>
-            <span>•</span>
-            <a href="https://t.me/SVOI_travel_admin" target="_blank" rel="noreferrer" className="hover:text-emerald-400">
-              @SVOI_travel_admin
-            </a>
+      <main key={step} className="px-5 fade-in">
+        {step === 0 && (
+          <>
+            <p className="mb-4 px-1 text-[16px] leading-snug font-semibold text-muted">
+              Маленькі групи до 8 людей · забираємо від дому в Саарланді, Трірі та Люксембурзі · оплата при посадці
+            </p>
+            <TripList
+              catalog={catalog}
+              onPick={(t) => {
+                const first = catalog.departures.find((d) => d.trip_id === t.id && d.free > 0);
+                setDraft({ tripId: t.id, departureId: first?.id ?? null, pax: 1, seats: [], auto: true });
+                go(1);
+              }}
+            />
+          </>
+        )}
+        {step === 1 && trip && (
+          <TripStep
+            trip={trip}
+            departures={departures}
+            draft={draft}
+            setDraft={setDraft}
+            waitlisted={Boolean(waitlisted[trip.id])}
+            onWaitlist={async () => {
+              if (!inTelegram && !DEMO) return openLink(manager);
+              try {
+                await joinWaitlist(trip.id);
+                haptic('success');
+                setWaitlisted((w) => ({ ...w, [trip.id]: true }));
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Помилка');
+              }
+            }}
+          />
+        )}
+        {step === 2 && dep && <SeatStep catalog={catalog} dep={dep} draft={draft} setDraft={setDraft} />}
+        {step === 3 && <PickupStep catalog={catalog} draft={draft} setDraft={setDraft} />}
+        {step === 4 && trip && dep && total != null && <ReviewStep trip={trip} dep={dep} draft={draft} catalog={catalog} total={total} />}
+
+        {error && (
+          <div role="alert" className="mt-4 rounded-2xl border-2 border-danger/40 bg-surface p-4 text-[15px] font-bold text-danger">
+            {error}
           </div>
-        </div>
-      </footer>
+        )}
+
+        {step === 0 && (
+          <button type="button" onClick={() => openLink(manager)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-surface py-4 text-[16px] font-bold shadow-sm">
+            <MessageCircle size={20} /> Задати питання менеджеру
+          </button>
+        )}
+      </main>
+
+      {step > 0 && step < 4 && (trip && (departures.length > 0 || step > 1)) && (
+        <BottomBar total={dep ? total : null} label="Далі" disabled={!canNext} hint={canNext ? undefined : nextHint} onClick={() => go(step + 1)} />
+      )}
+      {step === 4 && (
+        <BottomBar
+          total={total}
+          label={inTelegram || DEMO ? 'Забронювати' : 'Відкрийте через Telegram'}
+          loading={submitting}
+          disabled={!inTelegram && !DEMO}
+          onClick={submit}
+          hint={!inTelegram && !DEMO ? 'Бронювання працює тільки всередині Telegram' : undefined}
+        />
+      )}
+      {mySheet}
     </div>
   );
+}
+
+function Centered({ children }: { children: React.ReactNode }) {
+  return <div className="mx-auto flex min-h-screen max-w-sm flex-col items-center justify-center px-6 text-center">{children}</div>;
 }

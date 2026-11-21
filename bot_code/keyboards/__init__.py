@@ -1,1 +1,0 @@
-# SVOI Travel - Keyboards package
