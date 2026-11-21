@@ -15,16 +15,19 @@ from sqlalchemy import select
 from .. import catalog as cat
 from .. import keyboards as kb
 from ..config import settings
-from ..db import Booking, Departure, Session, TripPhoto, WaitlistEntry, trip_photo
+from ..db import Booking, Departure, Media, Session, TripPhoto, WaitlistEntry, media_list, trip_photo
 from ..services import (load_booking, BookingError, active_bookings, add_departures, booking_admin_text, booking_client_text,
                         cancel_booking, create_booking, departure_label, free_count, manifest_csv, manifest_text,
                         notify_new_booking, upcoming_departures)
 from .. import ai
+from ..screens import KeepAll
 from .support import IsAdmin
 
 log = logging.getLogger(__name__)
 router = Router(name="admin")
 router.message.filter(IsAdmin())
+router.message.middleware(KeepAll())
+router.callback_query.middleware(KeepAll())
 
 
 class Adm(StatesGroup):
@@ -37,6 +40,8 @@ class Adm(StatesGroup):
     m_address = State()
     m_pax = State()
     photo = State()
+    welcome_media = State()
+    van_media = State()
 
 
 ADMIN_HELP = (
@@ -523,8 +528,10 @@ async def cb_photos(callback: CallbackQuery, state: FSMContext):
         return await callback.answer()
     await callback.answer()
     await state.clear()
+    markup = kb.admin_trips_kb("pick_photo")
+    markup.inline_keyboard[-1] = [InlineKeyboardButton(text="⬅️ Фото і відео", callback_data=kb.AdmCb(action="media").pack())]
     await show(callback, "Оберіть тур, для якого завантажити фото.\n"
-                         "Фото буде і в боті, і в застосунку.", kb.admin_trips_kb("pick_photo"))
+                         "Фото буде і в боті, і в застосунку.", markup)
 
 
 @router.callback_query(kb.AdmCb.filter(F.action == "pick_photo"))
@@ -574,3 +581,107 @@ async def cb_ai_toggle(callback: CallbackQuery):
     await ai.set_setting("ai_enabled", "0" if now_on else "1")
     await callback.answer("Помічник вимкнений — питання йдуть вам" if now_on else "Помічник увімкнений 🤖", show_alert=True)
     await show(callback, ADMIN_HELP, await menu_kb())
+
+
+# ---------- Фото і відео: привітання, мінівен ----------
+
+def media_menu_kb(welcome: int, van: int) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"👋 Привітання /start {'✅' if welcome else '— немає'}",
+                              callback_data=kb.AdmCb(action="m_welcome").pack())],
+        [InlineKeyboardButton(text=f"🚐 Альбом мінівена ({van} фото)", callback_data=kb.AdmCb(action="m_van").pack())],
+        [InlineKeyboardButton(text="🗺 Фото турів", callback_data=kb.AdmCb(action="photos").pack())],
+    ]
+    if welcome:
+        rows.append([InlineKeyboardButton(text="🗑 Прибрати медіа привітання", callback_data=kb.AdmCb(action="m_clear", extra="welcome").pack())])
+    if van:
+        rows.append([InlineKeyboardButton(text="🗑 Очистити альбом мінівена", callback_data=kb.AdmCb(action="m_clear", extra="van").pack())])
+    rows.append([InlineKeyboardButton(text="⬅️ Адмін-меню", callback_data=kb.AdmCb(action="menu").pack())])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def media_menu() -> tuple[str, InlineKeyboardMarkup]:
+    async with Session() as s:
+        welcome = len(await media_list(s, "welcome"))
+        van = len(await media_list(s, "van"))
+    text = ("🖼 <b>Фото і відео</b>\n\n"
+            "👋 <b>Привітання</b> — фото, логотип або коротке відео, яке клієнт бачить після /start.\n"
+            "🚐 <b>Альбом мінівена</b> — до 10 фото салону й авто (кнопка «📸 Фото мінівена» у боті та в застосунку).\n"
+            "🗺 <b>Фото турів</b> — картинки поїздок.")
+    return text, media_menu_kb(welcome, van)
+
+
+@router.callback_query(kb.AdmCb.filter(F.action == "media"))
+async def cb_media(callback: CallbackQuery, state: FSMContext):
+    if not is_admin_cb(callback):
+        return await callback.answer()
+    await callback.answer()
+    await state.clear()
+    await show(callback, *await media_menu())
+
+
+@router.callback_query(kb.AdmCb.filter(F.action == "m_welcome"))
+async def cb_m_welcome(callback: CallbackQuery, state: FSMContext):
+    if not is_admin_cb(callback):
+        return await callback.answer()
+    await callback.answer()
+    await state.set_state(Adm.welcome_media)
+    await callback.message.answer("Надішліть одне фото, логотип або коротке відео (до 20 МБ) для привітання.\n/cancel — скасувати")
+
+
+@router.message(Adm.welcome_media, F.photo | F.video | F.animation)
+async def msg_welcome_media(message: Message, state: FSMContext):
+    kind, file_id = _media_of(message)
+    async with Session() as s:
+        for old in await media_list(s, "welcome"):
+            await s.delete(old)
+        s.add(Media(key="welcome", kind=kind, file_id=file_id))
+        await s.commit()
+    await state.clear()
+    await message.answer("✅ Готово! Тепер клієнти бачать це після /start. Перевірте: надішліть боту /start.")
+    text, markup = await media_menu()
+    await message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(kb.AdmCb.filter(F.action == "m_van"))
+async def cb_m_van(callback: CallbackQuery, state: FSMContext):
+    if not is_admin_cb(callback):
+        return await callback.answer()
+    await callback.answer()
+    await state.set_state(Adm.van_media)
+    await callback.message.answer(
+        "Надсилайте фото мінівена (можна кілька одразу, до 10 усього). Коли закінчите — натисніть «Готово».",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text="✅ Готово", callback_data=kb.AdmCb(action="media").pack())]]))
+
+
+@router.message(Adm.van_media, F.photo | F.video)
+async def msg_van_media(message: Message):
+    kind, file_id = _media_of(message)
+    async with Session() as s:
+        count = len(await media_list(s, "van"))
+        if count >= 10:
+            return await message.answer("Уже 10 фото — це максимум для альбому. Натисніть «Готово».")
+        s.add(Media(key="van", kind=kind, file_id=file_id))
+        await s.commit()
+    await message.answer(f"📸 Додано ({count + 1}/10)")
+
+
+@router.callback_query(kb.AdmCb.filter(F.action == "m_clear"))
+async def cb_m_clear(callback: CallbackQuery, callback_data: kb.AdmCb):
+    if not is_admin_cb(callback):
+        return await callback.answer()
+    async with Session() as s:
+        for m in await media_list(s, callback_data.extra):
+            await s.delete(m)
+        await s.commit()
+    await callback.answer("Видалено")
+    await show(callback, *await media_menu())
+
+
+def _media_of(message: Message) -> tuple[str, str]:
+    if message.photo:
+        return "photo", message.photo[-1].file_id
+    if message.video:
+        return "video", message.video.file_id
+    return "animation", message.animation.file_id

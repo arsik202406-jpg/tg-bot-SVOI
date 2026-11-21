@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from . import catalog as cat
 from .config import settings
-from .db import Departure, Session, TripPhoto, WaitlistEntry, get_customer, trip_photos
+from .db import Departure, Media, Session, TripPhoto, WaitlistEntry, get_customer, media_list, trip_photos
 from .services import (BookingError, booking_client_text, create_booking, departure_public, notify_admins,
                        notify_new_booking, upcoming_departures, user_bookings)
 
@@ -77,8 +77,10 @@ async def get_catalog(request: web.Request) -> web.Response:
         deps = await upcoming_departures(s)
         dep_data = [departure_public(d) for d in deps]
         photos = await trip_photos(s)
+        van = await media_list(s, "van")
     data = cat.public_catalog()
     base = settings.public_url or str(request.url.origin())
+    data["van_photos"] = [f"{base}/api/media/{m.id}" for m in van if m.kind == "photo"]
     data["trips"] = [
         {**t, "image": f"{base}/api/photo/{t['id']}?v={photos[t['id']][-10:]}"} if t["id"] in photos else t
         for t in data["trips"]
@@ -91,20 +93,35 @@ async def get_catalog(request: web.Request) -> web.Response:
 _photo_cache: dict[str, bytes] = {}
 
 
-async def get_photo(request: web.Request) -> web.Response:
-    """Фото туру, завантажене адміном у бота: беремо з Telegram і кешуємо в пам'яті."""
-    trip_id = request.match_info["trip"]
-    async with Session() as s:
-        row = await s.get(TripPhoto, trip_id)
-    if not row:
-        return err("not found", 404)
-    data = _photo_cache.get(row.file_id)
+async def _serve_file(request: web.Request, file_id: str) -> web.Response:
+    """Файл із Telegram (фото, завантажене адміном у бота), кешується в пам'яті."""
+    data = _photo_cache.get(file_id)
     if data is None:
         bot: Bot = request.app["bot"]
-        buf = await bot.download(row.file_id)
+        buf = await bot.download(file_id)
         data = buf.read()
-        _photo_cache[row.file_id] = data
+        _photo_cache[file_id] = data
     return web.Response(body=data, content_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
+async def get_photo(request: web.Request) -> web.Response:
+    async with Session() as s:
+        row = await s.get(TripPhoto, request.match_info["trip"])
+    if not row:
+        return err("not found", 404)
+    return await _serve_file(request, row.file_id)
+
+
+async def get_media(request: web.Request) -> web.Response:
+    try:
+        media_id = int(request.match_info["id"])
+    except ValueError:
+        return err("bad id")
+    async with Session() as s:
+        row = await s.get(Media, media_id)
+    if not row or row.kind != "photo":
+        return err("not found", 404)
+    return await _serve_file(request, row.file_id)
 
 
 async def get_departure(request: web.Request) -> web.Response:
@@ -192,6 +209,20 @@ async def post_waitlist(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def post_date_request(request: web.Request) -> web.Response:
+    body = await request.json()
+    user = get_user(request, body)
+    if not user:
+        return err("Відкрийте застосунок через Telegram-бота.", 401)
+    trip_id, text = body.get("trip_id"), str(body.get("text") or "").strip()
+    if trip_id not in cat.TRIPS_BY_ID or len(text) < 2:
+        return err("Напишіть, будь ласка, зручну дату.")
+    from .handlers.client import save_date_request
+    name = " ".join(filter(None, [user.get("first_name"), user.get("last_name")]))
+    await save_date_request(request.app["bot"], user["id"], name, user.get("username"), trip_id, text, source="Mini App")
+    return web.json_response({"ok": True})
+
+
 def build_app(bot: Bot, bot_token: str) -> web.Application:
     app = web.Application(middlewares=[cors_middleware])
     app["bot"] = bot
@@ -201,6 +232,8 @@ def build_app(bot: Bot, bot_token: str) -> web.Application:
     app.router.add_get("/api/catalog", get_catalog)
     app.router.add_get("/api/departures/{id}", get_departure)
     app.router.add_get("/api/photo/{trip}", get_photo)
+    app.router.add_get("/api/media/{id}", get_media)
+    app.router.add_post("/api/date-request", post_date_request)
     app.router.add_post("/api/me", post_me)
     app.router.add_post("/api/bookings", post_booking)
     app.router.add_post("/api/waitlist", post_waitlist)

@@ -1,4 +1,5 @@
-import { Bell, Check, ChevronDown, Clock, MapPin, Minus, Phone, Plus, Users } from 'lucide-react';
+import { Bell, CalendarPlus, Check, ChevronDown, Clock, MapPin, Minus, Phone, Plus, Users } from 'lucide-react';
+import { sendDateRequest } from '../api';
 import { useState } from 'react';
 import type { Catalog, Departure, Draft, Trip } from '../types';
 import { haptic, requestPhone, tg } from '../tg';
@@ -187,6 +188,8 @@ export function TripStep({ trip, departures, draft, setDraft, onWaitlist, waitli
         )}
       </section>
 
+      <ProposeDate tripId={trip.id} />
+
       {dep && (
         <section className="fade-in">
           <h3 className="mb-3 px-1 text-lg font-extrabold">Скільки людей поїде?</h3>
@@ -229,6 +232,55 @@ export function TripStep({ trip, departures, draft, setDraft, onWaitlist, waitli
   );
 }
 
+function ProposeDate({ tripId }: { tripId: string }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
+  const [error, setError] = useState('');
+
+  if (state === 'done') {
+    return (
+      <div className="rounded-2xl bg-accent-soft p-4 text-[15px] font-bold text-accent fade-in">
+        ✓ Дякуємо! Передали менеджеру. Якщо збереться група — додамо дату й напишемо вам першими.
+      </div>
+    );
+  }
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line py-3.5 text-[15px] font-bold text-muted">
+        <CalendarPlus size={19} /> Не підходить дата? Запропонуйте свою
+      </button>
+    );
+  }
+  return (
+    <div className="card space-y-3 p-4 fade-in">
+      <label className="block">
+        <span className="mb-2 block text-[15px] font-extrabold">Яка дата вам зручна і скільки вас буде?</span>
+        <textarea className="field min-h-[80px] resize-none" value={text} onChange={(e) => setText(e.target.value)} placeholder="Наприклад: 14 або 21 грудня, нас 4" />
+      </label>
+      {state === 'error' && <p className="text-sm font-bold text-danger">{error}</p>}
+      <button
+        type="button"
+        className="btn-primary w-full"
+        disabled={text.trim().length < 2 || state === 'sending'}
+        onClick={async () => {
+          setState('sending');
+          try {
+            await sendDateRequest(tripId, text.trim());
+            haptic('success');
+            setState('done');
+          } catch (e) {
+            setError(e instanceof Error ? e.message : 'Помилка');
+            setState('error');
+          }
+        }}
+      >
+        {state === 'sending' ? 'Надсилаємо…' : 'Надіслати менеджеру'}
+      </button>
+    </div>
+  );
+}
+
 // ---------- Крок 3: місця ----------
 
 export function SeatStep({ catalog, dep, draft, setDraft }: { catalog: Catalog; dep: Departure; draft: Draft; setDraft: (d: Partial<Draft>) => void }) {
@@ -247,8 +299,19 @@ export function SeatStep({ catalog, dep, draft, setDraft }: { catalog: Catalog; 
     setDraft({ seats, auto: false });
   };
 
+  const photos = catalog.van_photos ?? [];
   return (
     <div className="space-y-5">
+      {photos.length > 0 && (
+        <div>
+          <h3 className="mb-2 px-1 text-[15px] font-extrabold">📸 Наш Opel Vivaro</h3>
+          <div className="-mx-5 flex snap-x gap-2.5 overflow-x-auto px-5 pb-1">
+            {photos.map((src) => (
+              <img key={src} src={src} alt="Салон мінівена" loading="lazy" className="h-36 w-56 shrink-0 snap-start rounded-2xl object-cover" />
+            ))}
+          </div>
+        </div>
+      )}
       <Choice active={draft.auto} onClick={() => setDraft({ auto: true, seats: [] })}>
         <div className="flex items-center gap-3">
           <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${draft.auto ? 'border-accent bg-accent text-accent-ink' : 'border-line'}`}>

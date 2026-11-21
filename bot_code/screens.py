@@ -18,11 +18,11 @@ from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, Bot
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware, NextRequestMiddlewareType
-from aiogram.methods import SendMessage, SendPhoto, TelegramMethod
+from aiogram.methods import (SendAnimation, SendMediaGroup, SendMessage, SendPhoto, SendVideo,
+                             TelegramMethod)
 from aiogram.methods.base import Response, TelegramType
 from aiogram.types import Message, TelegramObject, Update
 
-from .config import settings
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +52,15 @@ def keep_incoming() -> None:
         cur["keep_incoming"] = True
 
 
+class KeepAll(BaseMiddleware):
+    """Для адмін-розділу: нічого не видаляти (списки пасажирів мають залишатись у чаті)."""
+
+    async def __call__(self, handler, event, data):
+        keep_incoming()
+        with keep():
+            return await handler(event, data)
+
+
 class TrackRequests(BaseRequestMiddleware):
     """Запам'ятовує тимчасові повідомлення бота поточному клієнту."""
 
@@ -59,15 +68,17 @@ class TrackRequests(BaseRequestMiddleware):
                        method: TelegramMethod[TelegramType]) -> Response[TelegramType]:
         response = await make_request(bot, method)
         cur = _current.get()
-        if cur is None or _keep.get() or not isinstance(method, (SendMessage, SendPhoto)):
+        if cur is None or _keep.get() or not isinstance(
+                method, (SendMessage, SendPhoto, SendVideo, SendAnimation, SendMediaGroup)):
             return response
-        # make_request повертає вже готовий об'єкт (Message), а не обгортку Response
-        result = response if isinstance(response, Message) else getattr(response, "result", None)
-        if isinstance(result, Message) and result.chat.id == cur["chat"]:
-            lst = _ephemeral.setdefault(cur["chat"], [])
-            lst.append(result.message_id)
-            del lst[:-MAX_TRACKED]
-            cur["sent"] = True
+        # make_request повертає вже готовий об'єкт (Message або список для альбому)
+        results = response if isinstance(response, list) else [response]
+        for result in results:
+            if isinstance(result, Message) and result.chat.id == cur["chat"]:
+                lst = _ephemeral.setdefault(cur["chat"], [])
+                lst.append(result.message_id)
+                del lst[:-MAX_TRACKED]
+                cur["sent"] = True
         return response
 
 
@@ -82,7 +93,7 @@ class CleanChat(BaseMiddleware):
         cq = event.callback_query
         chat = (msg.chat if msg else cq.message.chat if cq and cq.message else None)
         user = (msg.from_user if msg else cq.from_user if cq else None)
-        if not chat or chat.type != "private" or not user or user.id in settings.admin_ids:
+        if not chat or chat.type != "private" or not user:
             return await handler(event, data)
 
         previous = _ephemeral.pop(chat.id, [])

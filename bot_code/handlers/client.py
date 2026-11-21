@@ -14,13 +14,19 @@ from sqlalchemy import select
 
 from .. import catalog as cat
 from .. import keyboards as kb
-from ..db import Booking, Departure, Session, WaitlistEntry, get_customer, taken_seats, trip_photo
+from ..config import settings
+from ..db import (Booking, DateRequest, Departure, Session, SupportThread, WaitlistEntry, get_customer, media_list,
+                  taken_seats, trip_photo)
 from ..services import (load_booking, BookingError, booking_admin_text, booking_client_text, cancel_booking, create_booking,
                         free_count, notify_admins, notify_new_booking, payment_note, upcoming_departures,
                         user_bookings)
 
 log = logging.getLogger(__name__)
 router = Router(name="client")
+
+
+class Propose(StatesGroup):
+    text = State()
 
 
 class Book(StatesGroup):
@@ -36,10 +42,10 @@ class Book(StatesGroup):
 
 WELCOME = (
     "Вітаємо в <b>SVOI Travel</b>! 👋\n\n"
-    "Возимо невеликими групами (до 8 людей) на мінівені з Саарланду, Тріра та Люксембурга "
-    "по найкрасивіших місцях Європи. Забираємо від дому, оплата — водію при посадці.\n\n"
-    "Натисніть <b>«🗺 Поїздки та дати»</b> внизу екрана 👇\n"
-    "Або просто напишіть своє питання сюди в чат — відповімо 🙌"
+    "Поїздки по Європі маленькими групами (до 8 людей) на мінівені. "
+    "Забираємо від дому: Саарланд, Трір, Люксембург.\n\n"
+    "👇 Натисніть <b>«🗺 Поїздки та дати»</b> або просто напишіть питання.\n"
+    "Повернутись сюди будь-коли — /start"
 )
 
 HOW_IT_WORKS = (
@@ -56,6 +62,13 @@ HOW_IT_WORKS = (
     "🏨 Для поїздок на 2–3 дні потрібна передоплата лише за готель"
 )
 
+
+def how_kb():
+    return kb.InlineKeyboardMarkup(inline_keyboard=[
+        [kb.IB(text=kb.BTN_VAN, callback_data="van_photos")],
+        [kb.IB(text="🗺 Поїздки та дати", callback_data=kb.StepCb(action="to_trips").pack())],
+    ])
+
 PHONE_RE = re.compile(r"^\+?[\d\s\-()]{7,20}$")
 
 
@@ -65,11 +78,31 @@ PHONE_RE = re.compile(r"^\+?[\d\s\-()]{7,20}$")
 async def cmd_start(message: Message, state: FSMContext, command: CommandObject):
     await state.clear()
     payload = (command.args or "").strip()
-    await message.answer(WELCOME, reply_markup=kb.main_kb())
+    await send_welcome(message)
+    if payload == "trips":
+        text, markup = await trips_overview()
+        await message.answer(text, reply_markup=markup)
     if payload.startswith("dep_") and payload[4:].isdigit():
         await start_booking(message, state, int(payload[4:]))
     elif payload.startswith("trip_"):
         await send_trip_card(message, payload[5:])
+
+
+async def send_welcome(message: Message):
+    """Привітання з фото/відео (якщо адмін завантажив його в /admin → 🖼 Фото і відео)."""
+    async with Session() as s:
+        items = await media_list(s, "welcome")
+    m = items[-1] if items else None
+    try:
+        if m and m.kind == "photo":
+            return await message.answer_photo(m.file_id, caption=WELCOME, reply_markup=kb.main_kb())
+        if m and m.kind == "video":
+            return await message.answer_video(m.file_id, caption=WELCOME, reply_markup=kb.main_kb())
+        if m and m.kind == "animation":
+            return await message.answer_animation(m.file_id, caption=WELCOME, reply_markup=kb.main_kb())
+    except Exception as e:  # noqa: BLE001
+        log.warning("Привітальне медіа: %s", e)
+    await message.answer(WELCOME, reply_markup=kb.main_kb())
 
 
 @router.message(F.text == kb.BTN_CANCEL)
@@ -87,7 +120,22 @@ async def games(message: Message, state: FSMContext):
 
 @router.message(F.text == kb.BTN_HOW)
 async def how_it_works(message: Message):
-    await message.answer(HOW_IT_WORKS, reply_markup=kb.main_kb())
+    await message.answer(HOW_IT_WORKS, reply_markup=how_kb())
+
+
+@router.callback_query(F.data == "van_photos")
+async def cb_van_photos(callback: CallbackQuery):
+    from aiogram.types import InputMediaPhoto, InputMediaVideo
+    await callback.answer()
+    async with Session() as s:
+        items = await media_list(s, "van")
+    if not items:
+        return await callback.message.answer("Фото нашого мінівена Opel Vivaro скоро з'являться тут 🚐")
+    album = [(InputMediaVideo if m.kind == "video" else InputMediaPhoto)(media=m.file_id) for m in items[:10]]
+    album[0].caption = "🚐 Наш Opel Vivaro: 8 зручних місць, клімат-контроль, USB-зарядки"
+    await callback.message.answer_media_group(album)
+    await callback.message.answer("Готові поїхати? 👇", reply_markup=kb.InlineKeyboardMarkup(inline_keyboard=[
+        [kb.IB(text="🗺 Поїздки та дати", callback_data=kb.StepCb(action="to_trips").pack())]]))
 
 
 # ---------- Список поїздок ----------
@@ -178,6 +226,54 @@ async def cb_waitlist(callback: CallbackQuery, callback_data: kb.WaitCb, bot: Bo
                                      f"{' @' + user.username if user.username else ''} хоче на "
                                      f"{trip.get('flag', '')} {escape(trip.get('short_title', ''))}")
     await callback.answer("Готово! Напишемо, щойно з'являться місця 🙌", show_alert=True)
+
+
+# ---------- Своя дата ----------
+
+@router.callback_query(kb.ProposeCb.filter())
+async def cb_propose(callback: CallbackQuery, callback_data: kb.ProposeCb, state: FSMContext):
+    await callback.answer()
+    trip = cat.TRIPS_BY_ID.get(callback_data.trip, {})
+    await state.set_state(Propose.text)
+    await state.update_data(trip_id=callback_data.trip)
+    await callback.message.answer(
+        f"📝 <b>{trip.get('flag', '')} {escape(trip.get('short_title', ''))}</b>\n\n"
+        "Напишіть, яка дата вам зручна і скільки вас буде.\n"
+        "Наприклад: <i>«14 грудня або 21 грудня, нас 4»</i>",
+        reply_markup=kb.cancel_kb())
+
+
+@router.message(Propose.text, F.text)
+async def msg_propose(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    await state.clear()
+    u = message.from_user
+    await save_date_request(bot, u.id, u.full_name, u.username, data["trip_id"], message.text.strip())
+    await message.answer("Дякуємо! 🙌 Передали менеджеру. Якщо збереться група на цю дату — "
+                         "додамо її і напишемо вам першими.", reply_markup=kb.main_kb())
+
+
+async def save_date_request(bot: Bot, user_id: int, name: str, username: str | None, trip_id: str, text: str,
+                            source: str = "бот") -> None:
+    """Пропозиція своєї дати: зберігаємо, додаємо в лист очікування, повідомляємо менеджера."""
+    trip = cat.TRIPS_BY_ID.get(trip_id, {})
+    async with Session() as s:
+        s.add(DateRequest(trip_id=trip_id, user_id=user_id, name=name, username=username, text=text[:500]))
+        exists = await s.scalar(select(WaitlistEntry.id).where(
+            WaitlistEntry.trip_id == trip_id, WaitlistEntry.user_id == user_id))
+        if not exists:
+            s.add(WaitlistEntry(trip_id=trip_id, user_id=user_id, name=name, username=username))
+        who = escape(name) + (f" @{username}" if username else "")
+        for admin_id in settings.admin_ids:
+            try:
+                m = await bot.send_message(
+                    admin_id,
+                    f"📝 <b>Пропозиція дати</b> ({source})\n{trip.get('flag', '')} {escape(trip.get('short_title', trip_id))}\n"
+                    f"👤 {who}\n💬 {escape(text[:500])}\n\n<i>Натисніть «Відповісти», щоб написати клієнту.</i>")
+                s.add(SupportThread(admin_chat_id=admin_id, admin_message_id=m.message_id, user_id=user_id))
+            except Exception as e:  # noqa: BLE001
+                log.error("Пропозиція дати: %s", e)
+        await s.commit()
 
 
 # ---------- Бронювання ----------

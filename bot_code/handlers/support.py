@@ -39,6 +39,7 @@ async def ask_question(message: Message, state: FSMContext):
 @router.message(IsAdmin(), F.reply_to_message)
 async def admin_reply(message: Message, bot: Bot):
     """Адмін відповідає (Reply) на переслане питання → відповідь іде клієнту від імені бота."""
+    keep_incoming()
     async with Session() as s:
         thread = await s.scalar(select(SupportThread).where(
             SupportThread.admin_chat_id == message.chat.id,
@@ -86,5 +87,6 @@ async def forward_question(message: Message, bot: Bot):
 
 @router.message(IsAdmin(), F.chat.type == "private")
 async def admin_fallback(message: Message):
+    keep_incoming()
     await message.answer("Ви адміністратор 👑 Меню: /admin\n"
                          "Щоб відповісти клієнту — натисніть «Відповісти» на його питання.")
