@@ -99,6 +99,10 @@ def webapp_button(text: str = "📱 Відкрити застосунок") -> I
 
 # ---------- Клієнт ----------
 
+def home_button() -> IB:
+    return IB(text="🏠 Головне меню", callback_data="home")
+
+
 def trips_kb(rows: list[tuple[dict, str | None]]) -> InlineKeyboardMarkup:
     """rows: (тур, найближча дата або None)."""
     kb = []
@@ -108,6 +112,7 @@ def trips_kb(rows: list[tuple[dict, str | None]]) -> InlineKeyboardMarkup:
     btn = webapp_button("📱 Те саме з фото — у застосунку")
     if btn:
         kb.append([btn])
+    kb.append([home_button()])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
@@ -182,6 +187,7 @@ def confirm_kb() -> InlineKeyboardMarkup:
 def client_after_booking_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [IB(text="💬 Написати менеджеру", url=manager_url())],
+        [home_button()],
     ])
 
 

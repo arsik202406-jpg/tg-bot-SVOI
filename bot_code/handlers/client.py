@@ -67,6 +67,7 @@ def how_kb():
     return kb.InlineKeyboardMarkup(inline_keyboard=[
         [kb.IB(text=kb.BTN_VAN, callback_data="van_photos")],
         [kb.IB(text="🗺 Поїздки та дати", callback_data=kb.StepCb(action="to_trips").pack())],
+        [kb.home_button()],
     ])
 
 PHONE_RE = re.compile(r"^\+?[\d\s\-()]{7,20}$")
@@ -105,6 +106,13 @@ async def send_welcome(message: Message):
     await message.answer(WELCOME, reply_markup=kb.main_kb())
 
 
+@router.callback_query(F.data == "home")
+async def cb_home(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.clear()
+    await send_welcome(callback.message)
+
+
 @router.message(F.text == kb.BTN_CANCEL)
 async def cancel_any(message: Message, state: FSMContext):
     await state.clear()
@@ -135,7 +143,8 @@ async def cb_van_photos(callback: CallbackQuery):
     album[0].caption = "🚐 Наш Opel Vivaro: 8 зручних місць, клімат-контроль, USB-зарядки"
     await callback.message.answer_media_group(album)
     await callback.message.answer("Готові поїхати? 👇", reply_markup=kb.InlineKeyboardMarkup(inline_keyboard=[
-        [kb.IB(text="🗺 Поїздки та дати", callback_data=kb.StepCb(action="to_trips").pack())]]))
+        [kb.IB(text="🗺 Поїздки та дати", callback_data=kb.StepCb(action="to_trips").pack())],
+        [kb.home_button()]]))
 
 
 # ---------- Список поїздок ----------
@@ -582,9 +591,12 @@ async def my_bookings(message: Message, state: FSMContext):
             text, markup = await trips_overview()
             await message.answer(text, reply_markup=markup)
             return
-        for b in items:
+        for i, b in enumerate(items):
             status = "✅ підтверджено" if b.status == "confirmed" else "🕐 чекає підтвердження менеджера"
-            await message.answer(booking_client_text(b) + f"\nСтатус: {status}", reply_markup=kb.my_booking_kb(b.id))
+            markup = kb.my_booking_kb(b.id)
+            if i == len(items) - 1:
+                markup.inline_keyboard.append([kb.home_button()])
+            await message.answer(booking_client_text(b) + f"\nСтатус: {status}", reply_markup=markup)
 
 
 @router.callback_query(kb.MyCb.filter())
