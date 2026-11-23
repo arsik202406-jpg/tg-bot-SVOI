@@ -36,6 +36,11 @@ class Departure(Base):
     status: Mapped[str] = mapped_column(String(16), default="open")
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Маршрут збору: куди і на котру треба приїхати (за замовчуванням — з каталогу та 11:00)
+    arrive_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    destination: Mapped[str | None] = mapped_column(Text, nullable=True)
+    route_summary: Mapped[str | None] = mapped_column(Text, nullable=True)  # останній затверджений маршрут
+    start_time: Mapped[str | None] = mapped_column(String(5), nullable=True)  # виїзд із дому
 
     bookings: Mapped[list[Booking]] = relationship(back_populates="departure", lazy="selectin")
     __table_args__ = (UniqueConstraint("trip_id", "date", name="uq_trip_date"),)
@@ -61,6 +66,10 @@ class Booking(Base):
     status: Mapped[str] = mapped_column(String(16), default="new")
     source: Mapped[str] = mapped_column(String(16), default="bot")  # bot / miniapp / admin
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    pickup_time: Mapped[str | None] = mapped_column(String(5), nullable=True)   # "05:40"
+    pickup_order: Mapped[int | None] = mapped_column(Integer, nullable=True)    # порядок у маршруті
+    paid: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)  # 1 — оплачено
+    attend: Mapped[str | None] = mapped_column(String(8), nullable=True)        # asked / yes / no
 
     departure: Mapped[Departure] = relationship(back_populates="bookings", lazy="selectin")
 
@@ -185,6 +194,38 @@ class GamePrize(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class BotUser(Base):
+    """Кожен, хто натиснув /start: для статистики й запрошень друзів."""
+    __tablename__ = "bot_users"
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    name: Mapped[str] = mapped_column(String(128), default="")
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    referred_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    booking_id: Mapped[int] = mapped_column(Integer, index=True, unique=True)
+    trip_id: Mapped[str] = mapped_column(String(64), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    name: Mapped[str] = mapped_column(String(128))
+    rating: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending / approved / hidden
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class JobLog(Base):
+    """Що вже зроблено автоматично (щоб після перезапуску не надіслати двічі)."""
+    __tablename__ = "job_log"
+    key: Mapped[str] = mapped_column(String(96), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class SupportThread(Base):
     """Зв'язок «повідомлення в адмін-чаті → клієнт», щоб відповідь адміна дійшла клієнту."""
     __tablename__ = "support_threads"
@@ -225,9 +266,27 @@ else:
 Session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
+def _add_missing_columns(conn) -> None:
+    """Проста автоміграція: додає нові колонки в уже створені таблиці (дані не чіпає)."""
+    from sqlalchemy import inspect
+    insp = inspect(conn)
+    existing_tables = set(insp.get_table_names())
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        have = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in have:
+                continue
+            ddl = col.type.compile(dialect=conn.dialect)
+            conn.exec_driver_sql(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {ddl}')
+            log.info("Додано колонку %s.%s", table.name, col.name)
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_missing_columns)
     kind = "SQLite (тимчасова!)" if _url.startswith("sqlite") else "PostgreSQL"
     log.info("База даних готова: %s", kind)
 
@@ -257,3 +316,28 @@ async def trip_photo(session: AsyncSession, trip_id: str) -> str | None:
 
 async def media_list(session: AsyncSession, key: str) -> list[Media]:
     return list(await session.scalars(select(Media).where(Media.key == key).order_by(Media.id)))
+
+
+async def job_done(session: AsyncSession, key: str) -> bool:
+    """Позначити завдання виконаним. False — якщо вже було виконано раніше."""
+    if await session.get(JobLog, key):
+        return False
+    session.add(JobLog(key=key))
+    await session.commit()
+    return True
+
+
+async def touch_user(user, source: str | None = None, referred_by: int | None = None) -> bool:
+    """Запам'ятати користувача. True — якщо це новий користувач."""
+    async with Session() as s:
+        row = await s.get(BotUser, user.id)
+        new = row is None
+        if new:
+            row = BotUser(user_id=user.id, source=source,
+                          referred_by=referred_by if referred_by and referred_by != user.id else None)
+            s.add(row)
+        row.name = user.full_name
+        row.username = user.username
+        row.last_seen = utcnow()
+        await s.commit()
+        return new

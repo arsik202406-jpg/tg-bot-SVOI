@@ -180,7 +180,8 @@ def comment_kb() -> InlineKeyboardMarkup:
 def confirm_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [IB(text="✅ Підтвердити бронювання", callback_data=StepCb(action="confirm").pack())],
-        [IB(text="✏️ Почати спочатку", callback_data=StepCb(action="restart").pack())],
+        [IB(text="✏️ Почати спочатку", callback_data=StepCb(action="restart").pack()),
+         IB(text="🔒 Політика", callback_data="privacy")],
     ])
 
 
@@ -214,6 +215,8 @@ def admin_menu_kb(ai_state: str | None = None) -> InlineKeyboardMarkup:
          IB(text="🧠 Вікторина", callback_data=AdmCb(action="quiz").pack())],
         [IB(text="🖼 Фото і відео", callback_data=AdmCb(action="media").pack()),
          IB(text="🔔 Лист очікування", callback_data=AdmCb(action="waitlist").pack())],
+        [IB(text="📊 Статистика", callback_data=AdmCb(action="stats").pack()),
+         IB(text="⭐ Відгуки", callback_data=AdmCb(action="reviews").pack())],
     ]
     if ai_state:
         rows.append([IB(text=ai_state, callback_data=AdmCb(action="ai_toggle").pack())])
@@ -229,6 +232,7 @@ def admin_deps_kb(items: list[tuple[int, str]]) -> InlineKeyboardMarkup:
 def admin_dep_kb(dep_id: int, status: str, bookings: list[tuple[int, str]]) -> InlineKeyboardMarkup:
     kb = [[IB(text=label, callback_data=AdmCb(action="bk", id=bid).pack())] for bid, label in bookings]
     kb += [
+        [IB(text="🗺 Маршрут і час збору", callback_data=f"o:route:{dep_id}")],
         [IB(text="➕ Додати пасажира (дзвінок)", callback_data=AdmCb(action="manual", id=dep_id).pack())],
         [IB(text="📨 Написати всім пасажирам", callback_data=AdmCb(action="broadcast", id=dep_id).pack())],
         [IB(text="📄 Таблиця (Excel)", callback_data=AdmCb(action="csv", id=dep_id).pack()),
@@ -249,6 +253,7 @@ def admin_booking_kb(b) -> InlineKeyboardMarkup:
                    IB(text="❌ Скасувати", callback_data=AdmCb(action="bk_cancel", id=b.id).pack())])
     elif b.status == "confirmed":
         kb.append([IB(text="❌ Скасувати бронь", callback_data=AdmCb(action="bk_cancel", id=b.id).pack())])
+    kb.append([IB(text="💶 Зняти позначку оплати" if b.paid else "💶 Позначити: оплачено", callback_data=f"o:paid:{b.id}")])
     if b.username:  # кнопки tg://user?id=… Telegram відхиляє через налаштування приватності
         kb.append([IB(text="💬 Написати клієнту", url=f"https://t.me/{b.username}")])
     kb.append([IB(text="🚐 Відкрити рейс", callback_data=AdmCb(action="dep", id=b.departure_id).pack())])

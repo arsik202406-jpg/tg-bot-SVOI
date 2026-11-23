@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     AI_MODEL: str = "claude-haiku-5-5"
 
+    # Рейси й маршрут
+    MIN_PAX: int = 5                 # мінімум людей, щоб рейс відбувся
+    ARRIVE_TIME: str = "11:00"       # на котру треба бути на місці (можна змінити для кожного рейсу)
+    HOME_ADDRESS: str = ""           # звідки виїжджає водій (можна задати в /admin)
+    PICKUP_MINUTES: int = 5          # скільки хвилин на посадку за однією адресою
+    BREAK_MINUTES: int = 15          # тривалість однієї зупинки в дорозі
+    CONFIRM_HOUR: int = 14           # о котрій напередодні просити підтвердити участь (~15 год до виїзду)
+    GOOGLE_MAPS_API_KEY: str = ""    # Google Routes API (з урахуванням заторів). Без ключа — безкоштовний OSRM
+
     # Часовий пояс для дат рейсів
     TIMEZONE: str = "Europe/Berlin"
 

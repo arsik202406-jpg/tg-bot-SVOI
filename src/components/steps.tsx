@@ -1,8 +1,8 @@
-import { Bell, CalendarPlus, Check, ChevronDown, Clock, MapPin, Minus, Phone, Plus, Users } from 'lucide-react';
+import { Bell, CalendarPlus, Check, ChevronDown, Clock, MapPin, Minus, Phone, Plus, Share2, Star, Users } from 'lucide-react';
 import { sendDateRequest } from '../api';
 import { useState } from 'react';
 import type { Catalog, Departure, Draft, Trip } from '../types';
-import { haptic, requestPhone, tg } from '../tg';
+import { haptic, openLink, requestPhone, tg } from '../tg';
 import VanMap from './VanMap';
 import { Choice } from './ui';
 
@@ -20,6 +20,13 @@ function TripImage({ trip, className, hero }: { trip: Trip; className?: string; 
     );
   }
   return <img src={trip.image} alt="" loading="lazy" onError={() => setBroken(true)} className={`object-cover ${className ?? ''}`} />;
+}
+
+function reviewWord(n: number): string {
+  const d = n % 10, h = n % 100;
+  if (d === 1 && h !== 11) return 'відгук';
+  if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return 'відгуки';
+  return 'відгуків';
 }
 
 // ---------- Крок 1: список поїздок ----------
@@ -86,8 +93,9 @@ export function TripList({ catalog, onPick }: { catalog: Catalog; onPick: (t: Tr
 
 // ---------- Крок 2: тур, дата, кількість людей ----------
 
-export function TripStep({ trip, departures, draft, setDraft, onWaitlist, waitlisted }: {
+export function TripStep({ trip, catalog, departures, draft, setDraft, onWaitlist, waitlisted }: {
   trip: Trip;
+  catalog: Catalog;
   departures: Departure[];
   draft: Draft;
   setDraft: (d: Partial<Draft>) => void;
@@ -96,6 +104,8 @@ export function TripStep({ trip, departures, draft, setDraft, onWaitlist, waitli
 }) {
   const [showProgram, setShowProgram] = useState(false);
   const dep = departures.find((d) => d.id === draft.departureId);
+  const minPax = catalog.min_pax ?? 5;
+  const reviews = catalog.reviews?.[trip.id];
   const maxPax = dep ? dep.free : 8;
 
   return (
@@ -146,8 +156,41 @@ export function TripStep({ trip, departures, draft, setDraft, onWaitlist, waitli
             <span className="text-[15px] font-bold">Ціна з людини</span>
             <span className="text-xl font-extrabold text-accent">{trip.price} €</span>
           </div>
+          <p className="mt-3 text-center text-[13px] font-semibold text-muted">🚐 Поїздка відбудеться, коли збереться від {minPax} людей</p>
+          {catalog.bot_username && (
+            <button
+              type="button"
+              onClick={() => {
+                const link = `https://t.me/${catalog.bot_username}?start=trip_${trip.id}`;
+                openLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(`Поїхали разом: ${trip.flag} ${trip.short_title} 🚐`)}`);
+              }}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-line py-3 text-[15px] font-bold"
+            >
+              <Share2 size={18} /> Поділитися з друзями
+            </button>
+          )}
         </div>
       </div>
+
+      {reviews && reviews.count > 0 && (
+        <section className="card p-4">
+          <div className="flex items-center gap-2">
+            <Star size={20} className="fill-current text-warm" />
+            <span className="text-lg font-extrabold">{reviews.avg.toFixed(1)}</span>
+            <span className="text-[15px] font-semibold text-muted">· {reviews.count} {reviewWord(reviews.count)}</span>
+          </div>
+          <div className="mt-3 space-y-3">
+            {reviews.items.map((r, i) => (
+              <div key={i} className="border-t border-line pt-3 first:border-0 first:pt-0">
+                <div className="text-sm font-bold">
+                  {'⭐'.repeat(r.rating)} <span className="text-muted">{r.name}</span>
+                </div>
+                {r.text && <p className="mt-1 text-[15px] leading-snug font-medium">«{r.text}»</p>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <h3 className="mb-3 px-1 text-lg font-extrabold">Оберіть дату</h3>
@@ -182,6 +225,11 @@ export function TripStep({ trip, departures, draft, setDraft, onWaitlist, waitli
                     {d.free > 0 ? `вільно ${d.free} з 8` : 'місць немає'}
                   </span>
                 </div>
+                {d.free > 0 && (d.booked ?? 0) < minPax && (
+                  <div className="mt-1 text-[13px] font-semibold text-muted">
+                    {(d.booked ?? 0) === 0 ? `Станьте першим — їдемо від ${minPax} людей` : `Ще ${minPax - (d.booked ?? 0)} — і поїздка гарантована`}
+                  </div>
+                )}
               </Choice>
             ))}
           </div>
@@ -437,7 +485,7 @@ export function PickupStep({ catalog, draft, setDraft }: { catalog: Catalog; dra
 
 // ---------- Крок 5: перевірка ----------
 
-export function ReviewStep({ trip, dep, draft, catalog, total }: { trip: Trip; dep: Departure; draft: Draft; catalog: Catalog; total: number }) {
+export function ReviewStep({ trip, dep, draft, catalog, total, onPrivacy }: { trip: Trip; dep: Departure; draft: Draft; catalog: Catalog; total: number; onPrivacy: () => void }) {
   const city = catalog.pickup_cities.find((c) => c.id === draft.city)?.name ?? draft.city;
   const fee = draft.auto ? 0 : draft.seats.reduce((s, n) => s + (catalog.seats.find((x) => x.no === n)?.fee ?? 0), 0);
   const rows: [string, string][] = [
@@ -483,7 +531,13 @@ export function ReviewStep({ trip, dep, draft, catalog, total }: { trip: Trip; d
         {trip.days > 1
           ? '🏨 Менеджер зв’яжеться щодо передоплати за готель, решта — при посадці.'
           : '💶 Передоплата не потрібна — оплата водію при посадці.'}{' '}
-        Напередодні ввечері напишемо точний час, коли під’їдемо.
+        Напередодні напишемо точний час, коли під’їдемо.
+      </p>
+      <p className="px-1 text-center text-[13px] leading-snug font-semibold text-muted">
+        Натискаючи «Забронювати», ви погоджуєтесь з обробкою даних для організації поїздки.{' '}
+        <button type="button" onClick={onPrivacy} className="font-bold text-accent underline">
+          Політика конфіденційності
+        </button>
       </p>
     </div>
   );

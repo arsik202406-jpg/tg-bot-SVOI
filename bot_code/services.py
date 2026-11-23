@@ -6,6 +6,7 @@ import io
 import logging
 from datetime import date
 from html import escape
+from urllib.parse import quote
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup
@@ -64,6 +65,7 @@ def departure_public(dep: Departure) -> dict:
         "date": dep.date.isoformat(),
         "label": cat.fmt_departure(dep.date, trip.get("days", 1)),
         "free": free_count(dep),
+        "booked": cat.CAPACITY - free_count(dep),
         "taken": taken_from_bookings(dep),
         "status": dep.status,
     }
@@ -221,43 +223,69 @@ def booking_admin_text(b: Booking, title: str = "🆕 Нова заявка") ->
     if b.comment:
         text += f"\n💬 {escape(b.comment)}"
     dep = b.departure
+    if b.pickup_time:
+        text += f"\n🕐 Посадка о {b.pickup_time}"
+    text += "\n💶 Оплачено ✅" if b.paid else "\n💶 Ще не оплачено"
+    if b.attend in ("yes", "no", "asked"):
+        text += {"yes": "\n✅ Підтвердив участь", "no": "\n❌ Відмовився", "asked": "\n❔ Ще не відповів на підтвердження"}[b.attend]
     text += f"\n\nНа рейсі зайнято {cat.CAPACITY - free_count(dep)}/{cat.CAPACITY}"
     return text
 
 
-def manifest_text(dep: Departure) -> str:
-    """Повна інформація про рейс: хто, куди, які місця, скільки грошей."""
+def maps_link(address: str) -> str:
+    return "https://www.google.com/maps/search/?api=1&query=" + quote(address)
+
+
+ATTEND_ICON = {"yes": "✅", "no": "❌", "asked": "❔"}
+
+
+def manifest_text(dep: Departure, compact: bool = False) -> str:
+    """Повна інформація про рейс: хто, звідки, о котрій, які місця, хто оплатив."""
+    from .config import settings
     trip = cat.TRIPS_BY_ID.get(dep.trip_id, {})
     bookings = active_bookings(dep)
     pax = sum(b.pax for b in bookings)
     money = sum(b.price_total for b in bookings)
+    paid = sum(b.price_total for b in bookings if b.paid)
     status = {"open": "набір відкрито", "closed": "набір закрито", "cancelled": "скасовано"}[dep.status]
     lines = [
         f"<b>🚐 {escape(departure_label(dep))}</b>",
-        f"Статус: {status} · пасажирів {pax}/{cat.CAPACITY} · до збору {money} €",
+        f"Статус: {status} · пасажирів <b>{pax}/{cat.CAPACITY}</b>",
+        f"💶 До збору {money} € · оплачено {paid} € · залишилось {money - paid} €",
     ]
-    if trip.get("pickup_time"):
-        lines.append(f"Орієнтовний виїзд із Саарбрюккена: {trip['pickup_time']}")
+    if pax < settings.MIN_PAX:
+        lines.append(f"⚠️ До мінімуму ({settings.MIN_PAX} ос.) не вистачає {settings.MIN_PAX - pax}")
+    if dep.start_time:
+        lines.append(f"🏠 Виїзд із дому о <b>{dep.start_time}</b> · прибуття {dep.arrive_time or settings.ARRIVE_TIME}")
     if dep.note:
         lines.append(f"📝 {escape(dep.note)}")
     if not bookings:
         lines.append("\nПоки що бронювань немає.")
         return "\n".join(lines)
 
-    # групуємо за містом, щоб зручно будувати маршрут збору
-    by_city: dict[str, list[Booking]] = {}
-    for b in bookings:
-        by_city.setdefault(b.city, []).append(b)
-    for city, items in by_city.items():
-        lines.append(f"\n<b>📍 {escape(city)}</b>")
+    if any(b.pickup_order for b in bookings):  # маршрут затверджено — показуємо в порядку збору
+        ordered = sorted(bookings, key=lambda b: (b.pickup_order or 99, b.id))
+        lines.append("\n<b>Порядок збору:</b>")
+        groups = [("", ordered)]
+    else:
+        by_city: dict[str, list[Booking]] = {}
+        for b in bookings:
+            by_city.setdefault(b.city, []).append(b)
+        groups = list(by_city.items())
+    for city, items in groups:
+        if city:
+            lines.append(f"\n<b>📍 {escape(city)}</b>")
         for b in items:
             mark = "" if b.status == "confirmed" else " 🟡"
             uname = f" @{escape(b.username)}" if b.username else ""
+            time = f"<b>{b.pickup_time}</b> " if b.pickup_time else ""
+            money_icon = "💶✅" if b.paid else "💶"
+            att = f" {ATTEND_ICON[b.attend]}" if b.attend in ATTEND_ICON else ""
             lines.append(
-                f"• <b>{escape(b.name)}</b>{uname}{mark} — {b.pax} ос., місця {seats_text(b)}, {b.price_total} €\n"
+                f"• {time}<b>{escape(b.name)}</b>{uname}{mark}{att} — {b.pax} ос., місця {seats_text(b)}, {money_icon} {b.price_total} €\n"
                 f"   📞 <code>{escape(b.phone)}</code>\n"
-                f"   🏠 {escape(b.address)}"
-                + (f"\n   💬 {escape(b.comment)}" if b.comment else "")
+                + (f"   🏠 {escape(b.address)}" if compact else f'   🏠 <a href="{maps_link(b.address)}">{escape(b.address)}</a>')
+                + (f"\n   💬 {escape(b.comment)}" if b.comment and not compact else "")
             )
     seat_map = {s: b for b in bookings for s in b.seat_list}
     lines.append("\n<b>Посадка:</b>")
@@ -267,17 +295,20 @@ def manifest_text(dep: Departure) -> str:
             b = seat_map.get(s["no"])
             cells.append(f"{s['no']}: {escape(b.name.split()[0]) if b else '—'}")
         lines.append("   " + " | ".join(cells))
-    lines.append("\n🟡 — заявка ще не підтверджена")
+    lines.append("\n🟡 — заявка не підтверджена · ✅/❌/❔ — відповідь на «Підтвердіть участь»")
     return "\n".join(lines)
 
 
 def manifest_csv(dep: Departure) -> bytes:
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
-    w.writerow(["Бронь", "Статус", "Ім'я", "Telegram", "Телефон", "Місто", "Адреса", "Пасажирів", "Місця", "Сума €", "Коментар", "Джерело"])
-    for b in active_bookings(dep):
-        w.writerow([b.code, STATUS_UA.get(b.status, b.status), b.name, f"@{b.username}" if b.username else "",
-                    b.phone, b.city, b.address, b.pax, seats_text(b), b.price_total, b.comment or "", b.source])
+    w.writerow(["Порядок", "Час посадки", "Бронь", "Статус", "Ім'я", "Telegram", "Телефон", "Місто", "Адреса",
+                "Пасажирів", "Місця", "Сума €", "Оплачено", "Участь", "Коментар", "Джерело"])
+    for b in sorted(active_bookings(dep), key=lambda b: (b.pickup_order or 99, b.id)):
+        w.writerow([b.pickup_order or "", b.pickup_time or "", b.code, STATUS_UA.get(b.status, b.status), b.name,
+                    f"@{b.username}" if b.username else "", b.phone, b.city, b.address, b.pax, seats_text(b),
+                    b.price_total, "так" if b.paid else "ні", {"yes": "їде", "no": "не їде", "asked": "не відповів"}.get(b.attend or "", ""),
+                    b.comment or "", b.source])
     return ("﻿" + buf.getvalue()).encode("utf-8")  # BOM, щоб Excel правильно показав кирилицю
 
 
@@ -300,7 +331,17 @@ async def notify_admins(bot: Bot, text: str, markup: InlineKeyboardMarkup | None
 async def notify_new_booking(bot: Bot, booking: Booking) -> None:
     from .keyboards import admin_booking_kb, client_after_booking_kb
     from .screens import keep
-    await notify_admins(bot, booking_admin_text(booking), admin_booking_kb(booking))
+    text = booking_admin_text(booking)
+    if booking.user_id:
+        from .db import BotUser, Session as _S
+        async with _S() as s:
+            u = await s.get(BotUser, booking.user_id)
+            first = await s.scalar(select(Booking.id).where(Booking.user_id == booking.user_id, Booking.id != booking.id).limit(1))
+            inviter = await s.get(BotUser, u.referred_by) if u and u.referred_by else None
+        if inviter and not first:
+            who = escape(inviter.name) + (f" @{escape(inviter.username)}" if inviter.username else "")
+            text += f"\n\n🎁 Перша поїздка за запрошенням від {who} — бонус обом: безкоштовний вибір місця"
+    await notify_admins(bot, text, admin_booking_kb(booking))
     if not booking.user_id or booking.source == "admin":
         return
     text = ("✅ <b>Заявку прийнято!</b>\n\n" + booking_client_text(booking) +

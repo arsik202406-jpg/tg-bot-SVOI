@@ -100,6 +100,8 @@ async def render_dep(dep_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
         if not dep:
             return None
         text = manifest_text(dep)
+        if len(text) > 3900:  # обмеження Telegram — показуємо коротку версію (повна — у таблиці)
+            text = manifest_text(dep, compact=True)
         items = [(b.id, f"{'🟡' if b.status == 'new' else '🟢'} {b.code} · {b.name} · {b.pax} ос.")
                  for b in active_bookings(dep)]
         return text, kb.admin_dep_kb(dep.id, dep.status, items)
@@ -109,12 +111,12 @@ async def show(callback: CallbackQuery, text: str, markup: InlineKeyboardMarkup,
     if len(text) > 4000:
         text = text[:3990] + "…\n(повний список — у таблиці)"
     if new:
-        await callback.message.answer(text, reply_markup=markup)
+        await callback.message.answer(text, reply_markup=markup, disable_web_page_preview=True)
         return
     try:
-        await callback.message.edit_text(text, reply_markup=markup)
+        await callback.message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
     except Exception:  # noqa: BLE001
-        await callback.message.answer(text, reply_markup=markup)
+        await callback.message.answer(text, reply_markup=markup, disable_web_page_preview=True)
 
 
 @router.callback_query(kb.AdmCb.filter(F.action == "menu"))
@@ -359,7 +361,7 @@ async def msg_note(message: Message, state: FSMContext):
         await s.commit()
     await state.clear()
     text, markup = await render_dep(data["dep_id"])
-    await message.answer(text, reply_markup=markup)
+    await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
 
 
 # ---------- Розсилка пасажирам ----------
@@ -458,7 +460,7 @@ async def m_pax(message: Message, state: FSMContext, bot: Bot):
         return await message.answer(f"Не вийшло: {e}")
     await notify_new_booking(bot, b)
     text, markup = await render_dep(data["dep_id"])
-    await message.answer(text, reply_markup=markup)
+    await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
 
 
 # ---------- Анонс у канал ----------
@@ -640,7 +642,7 @@ async def msg_welcome_media(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("✅ Готово! Тепер клієнти бачать це після /start. Перевірте: надішліть боту /start.")
     text, markup = await media_menu()
-    await message.answer(text, reply_markup=markup)
+    await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
 
 
 @router.callback_query(kb.AdmCb.filter(F.action == "m_van"))

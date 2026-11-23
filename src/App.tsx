@@ -1,6 +1,6 @@
 import { CalendarCheck, MessageCircle, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createBooking, DEMO, joinWaitlist, loadCatalog, loadMe } from './api';
+import { cancelBooking, createBooking, DEMO, joinWaitlist, loadCatalog, loadMe, loadPrivacy } from './api';
 import { PickupStep, ReviewStep, SeatStep, TripList, TripStep } from './components/steps';
 import { BottomBar, Header, Sheet, Stepper } from './components/ui';
 import { closeApp, cloudGet, cloudSet, haptic, inTelegram, onBackButton, openLink, setChrome, userName } from './tg';
@@ -31,6 +31,34 @@ export default function App() {
   const [error, setError] = useState('');
   const [done, setDone] = useState<{ code: string } | null>(null);
   const [waitlisted, setWaitlisted] = useState<Record<string, boolean>>({});
+  const [privacy, setPrivacy] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  const openPrivacy = async () => {
+    setPrivacy('Завантаження…');
+    try {
+      setPrivacy(await loadPrivacy());
+    } catch {
+      setPrivacy('Не вдалося завантажити. Політика доступна в боті: команда /privacy');
+    }
+  };
+
+  const doCancel = async (code: string) => {
+    setCancelling(true);
+    try {
+      await cancelBooking(code);
+      haptic('success');
+      setMyBookings((list) => list.filter((b) => b.code !== code));
+      setConfirmCancel(null);
+      load();
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof Error ? e.message : 'Не вдалося скасувати');
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const setDraft = useCallback((d: Partial<Draft>) => {
     setError('');
@@ -194,6 +222,7 @@ export default function App() {
                 </div>
                 <div className="mt-2 space-y-1 text-[15px] font-semibold text-muted">
                   <div>📅 {b.label}</div>
+                  {b.pickup_time && <div className="text-ink">🕐 Заберемо о {b.pickup_time}</div>}
                   <div>
                     👥 {b.pax} · місця {b.seats.join(', ')}
                     {b.auto ? ' (будь-які)' : ''}
@@ -203,12 +232,33 @@ export default function App() {
                   </div>
                   <div className="text-ink">💶 {b.total} € · {b.code}</div>
                 </div>
+                {confirmCancel === b.code ? (
+                  <div className="mt-3 flex gap-2">
+                    <button type="button" disabled={cancelling} onClick={() => doCancel(b.code)} className="flex-1 rounded-xl bg-danger py-3 text-[15px] font-bold text-white disabled:opacity-50">
+                      {cancelling ? 'Скасовуємо…' : 'Так, скасувати'}
+                    </button>
+                    <button type="button" onClick={() => setConfirmCancel(null)} className="flex-1 rounded-xl bg-surface-2 py-3 text-[15px] font-bold">
+                      Ні, залишити
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setConfirmCancel(b.code)} className="mt-3 w-full rounded-xl border-2 border-line py-3 text-[15px] font-bold text-danger">
+                    Скасувати бронь
+                  </button>
+                )}
               </div>
             );
           })}
-          <p className="pt-2 text-center text-sm font-semibold text-muted">Щоб скасувати або змінити — натисніть «📝 Мої бронювання» у чаті з ботом або напишіть менеджеру.</p>
+          {error && <p className="text-center text-sm font-bold text-danger">{error}</p>}
+          <p className="pt-2 text-center text-sm font-semibold text-muted">Безкоштовне скасування — за 3 дні до виїзду. Щоб змінити бронь, напишіть менеджеру.</p>
         </div>
       )}
+    </Sheet>
+  );
+
+  const privacySheet = privacy !== null && (
+    <Sheet title="Політика конфіденційності" onClose={() => setPrivacy(null)}>
+      <div className="text-[15px] leading-relaxed font-medium whitespace-pre-line">{privacy}</div>
     </Sheet>
   );
 
@@ -274,6 +324,7 @@ export default function App() {
         {step === 1 && trip && (
           <TripStep
             trip={trip}
+            catalog={catalog}
             departures={departures}
             draft={draft}
             setDraft={setDraft}
@@ -292,7 +343,7 @@ export default function App() {
         )}
         {step === 2 && dep && <SeatStep catalog={catalog} dep={dep} draft={draft} setDraft={setDraft} />}
         {step === 3 && <PickupStep catalog={catalog} draft={draft} setDraft={setDraft} />}
-        {step === 4 && trip && dep && total != null && <ReviewStep trip={trip} dep={dep} draft={draft} catalog={catalog} total={total} />}
+        {step === 4 && trip && dep && total != null && <ReviewStep trip={trip} dep={dep} draft={draft} catalog={catalog} total={total} onPrivacy={openPrivacy} />}
 
         {error && (
           <div role="alert" className="mt-4 rounded-2xl border-2 border-danger/40 bg-surface p-4 text-[15px] font-bold text-danger">
@@ -321,6 +372,7 @@ export default function App() {
         />
       )}
       {mySheet}
+      {privacySheet}
     </div>
   );
 }

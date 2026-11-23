@@ -33,7 +33,7 @@ function demoCatalog(): Catalog {
   const wd = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
   const mk = (id: number, trip: string, n: number, taken: number[]): Departure => {
     const x = addDays(n);
-    return { id, trip_id: trip, date: x.toISOString().slice(0, 10), label: `${wd[x.getDay()]}, ${x.getDate()} ${months[x.getMonth()]}`, free: 8 - taken.length, taken, status: 'open' };
+    return { id, trip_id: trip, date: x.toISOString().slice(0, 10), label: `${wd[x.getDay()]}, ${x.getDate()} ${months[x.getMonth()]}`, free: 8 - taken.length, booked: taken.length, taken, status: 'open' };
   };
   return {
     trips: demoTrips as Catalog['trips'],
@@ -56,6 +56,9 @@ function demoCatalog(): Catalog {
       { id: 'other', name: 'Інше місто', hint: 'Хомбург, Кайзерслаутерн, Мангейм… уточнимо' },
     ],
     manager: 'SVOI_travel_admin',
+    min_pax: 5,
+    bot_username: 'Svoi_TravelEU_bot',
+    reviews: { paris: { avg: 5, count: 1, items: [{ name: 'Приклад', rating: 5, text: 'Так виглядатиме відгук пасажира (демо).' }] } },
   };
 }
 
@@ -103,4 +106,16 @@ export async function sendDateRequest(tripId: string, text: string): Promise<voi
     return;
   }
   await request('/api/date-request', { trip_id: tripId, text, initData: initData() });
+}
+
+export async function cancelBooking(code: string): Promise<void> {
+  if (DEMO) return;
+  await request('/api/bookings/cancel', { code, initData: initData() });
+}
+
+export async function loadPrivacy(): Promise<string> {
+  if (DEMO || !API_URL) return 'Політика конфіденційності доступна в боті: команда /privacy';
+  const res = await fetch(`${API_URL}/api/privacy`);
+  const data = await res.json();
+  return data.text || '';
 }
