@@ -87,7 +87,28 @@ async def get_catalog(request: web.Request) -> web.Response:
     ]
     data["departures"] = dep_data
     data["manager"] = settings.MANAGER_USERNAME.lstrip("@")
+    data["min_pax"] = settings.MIN_PAX
+    try:
+        data["bot_username"] = (await request.app["bot"].me()).username
+    except Exception:  # noqa: BLE001
+        data["bot_username"] = ""
+    data["reviews"] = await reviews_summary()
     return web.json_response({"ok": True, **data})
+
+
+async def reviews_summary() -> dict:
+    """Схвалені відгуки по кожному туру: середня оцінка, кількість, 3 останні."""
+    from .db import Review
+    out: dict[str, dict] = {}
+    async with Session() as s:
+        items = list(await s.scalars(select(Review).where(Review.status == "approved").order_by(Review.id.desc())))
+    for r in items:
+        d = out.setdefault(r.trip_id, {"sum": 0, "count": 0, "items": []})
+        d["sum"] += r.rating
+        d["count"] += 1
+        if len(d["items"]) < 3:
+            d["items"].append({"name": r.name.split()[0], "rating": r.rating, "text": r.text or ""})
+    return {k: {"avg": round(v["sum"] / v["count"], 1), "count": v["count"], "items": v["items"]} for k, v in out.items()}
 
 
 _photo_cache: dict[str, bytes] = {}
@@ -149,7 +170,7 @@ async def post_me(request: web.Request) -> web.Response:
             "date": b.departure.date.isoformat(),
             "label": cat.fmt_departure(b.departure.date, cat.TRIPS_BY_ID.get(b.departure.trip_id, {}).get("days", 1)),
             "pax": b.pax, "seats": b.seat_list, "auto": bool(b.auto_seats), "total": b.price_total,
-            "city": b.city, "address": b.address,
+            "city": b.city, "address": b.address, "pickup_time": b.pickup_time,
         } for b in items]
     saved = {"phone": cust.phone, "city": cust.city, "address": cust.address} if cust else None
     return web.json_response({"ok": True, "saved": saved, "bookings": bookings})
@@ -223,6 +244,35 @@ async def post_date_request(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def post_cancel(request: web.Request) -> web.Response:
+    """Клієнт скасовує свою бронь у Mini App."""
+    from .db import Booking
+    from .services import booking_admin_text, cancel_booking
+    body = await request.json()
+    user = get_user(request, body)
+    if not user:
+        return err("Відкрийте застосунок через Telegram-бота.", 401)
+    async with Session() as s:
+        b = await s.scalar(select(Booking).where(Booking.code == str(body.get("code", ""))))
+        if not b or b.user_id != user["id"] or b.status == "cancelled":
+            return err("Бронь не знайдено або вже скасовано.", 404)
+        await cancel_booking(s, b)
+        await s.refresh(b, ["departure"])
+        await s.refresh(b.departure, ["bookings"])
+        text = booking_admin_text(b, "❌ Клієнт скасував бронь (Mini App)")
+        dep = b.departure
+    bot = request.app["bot"]
+    await notify_admins(bot, text)
+    from .handlers.extras import notify_waitlist_free_seat
+    await notify_waitlist_free_seat(bot, dep)
+    return web.json_response({"ok": True})
+
+
+async def get_privacy(_request: web.Request) -> web.Response:
+    from .handlers.extras import privacy_text
+    return web.json_response({"ok": True, "text": privacy_text()})
+
+
 def build_app(bot: Bot, bot_token: str) -> web.Application:
     app = web.Application(middlewares=[cors_middleware])
     app["bot"] = bot
@@ -234,6 +284,8 @@ def build_app(bot: Bot, bot_token: str) -> web.Application:
     app.router.add_get("/api/photo/{trip}", get_photo)
     app.router.add_get("/api/media/{id}", get_media)
     app.router.add_post("/api/date-request", post_date_request)
+    app.router.add_post("/api/bookings/cancel", post_cancel)
+    app.router.add_get("/api/privacy", get_privacy)
     app.router.add_post("/api/me", post_me)
     app.router.add_post("/api/bookings", post_booking)
     app.router.add_post("/api/waitlist", post_waitlist)

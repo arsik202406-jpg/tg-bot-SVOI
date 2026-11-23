@@ -15,7 +15,8 @@ from aiohttp import web
 from .api import build_app
 from .config import settings
 from .db import init_db
-from .handlers import admin, client, community, games, support
+from .handlers import admin, client, community, extras, games, ops, support
+from .jobs import scheduler
 from .screens import CleanChat, TrackRequests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -28,7 +29,9 @@ def build_dispatcher() -> Dispatcher:
     dp.update.outer_middleware(CleanChat())  # прибирання старих повідомлень у чаті клієнта
     dp.include_router(community.router)  # групи й канали: першим, щоб бот мовчав у групі
     dp.include_router(community.admin)
+    dp.include_router(ops.router)
     dp.include_router(admin.router)
+    dp.include_router(extras.router)
     dp.include_router(client.router)
     dp.include_router(games.router)
     dp.include_router(support.router)  # останнім: ловить усі інші повідомлення
@@ -52,6 +55,7 @@ async def keep_alive() -> None:
 async def setup_bot_ui(bot: Bot) -> None:
     await bot.set_my_commands([
         BotCommand(command="start", description="🏠 Головне меню"),
+        BotCommand(command="privacy", description="🔒 Політика конфіденційності"),
     ])
     # Текст «Що вміє цей бот?» на першому екрані
     description = (
@@ -96,6 +100,7 @@ async def main() -> None:
         log.warning("Не вдалося налаштувати меню бота: %s", e)
 
     asyncio.create_task(keep_alive())
+    asyncio.create_task(scheduler(bot))
     while True:  # чекаємо, поки Telegram стане доступним (збої мережі при старті)
         try:
             await bot.delete_webhook(drop_pending_updates=False)

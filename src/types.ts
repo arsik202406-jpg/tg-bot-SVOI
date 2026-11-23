@@ -20,6 +20,7 @@ export interface Departure {
   date: string;
   label: string;
   free: number;
+  booked?: number;
   taken: number[];
   status: string;
 }
@@ -45,6 +46,9 @@ export interface Catalog {
   pickup_cities: PickupCity[];
   manager: string;
   van_photos?: string[];
+  min_pax?: number;
+  bot_username?: string;
+  reviews?: Record<string, { avg: number; count: number; items: { name: string; rating: number; text: string }[] }>;
 }
 
 export interface MyBooking {
@@ -59,6 +63,7 @@ export interface MyBooking {
   total: number;
   city: string;
   address: string;
+  pickup_time?: string | null;
 }
 
 export interface SavedContact {

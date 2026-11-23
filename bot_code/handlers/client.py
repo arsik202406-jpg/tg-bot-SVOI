@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+from urllib.parse import quote
 from html import escape
 
 from aiogram import Bot, F, Router
@@ -15,6 +16,7 @@ from sqlalchemy import select
 from .. import catalog as cat
 from .. import keyboards as kb
 from ..config import settings
+from ..db import touch_user
 from ..db import (Booking, DateRequest, Departure, Session, SupportThread, WaitlistEntry, get_customer, media_list,
                   taken_seats, trip_photo)
 from ..services import (load_booking, BookingError, booking_admin_text, booking_client_text, cancel_booking, create_booking,
@@ -65,7 +67,9 @@ HOW_IT_WORKS = (
 
 def how_kb():
     return kb.InlineKeyboardMarkup(inline_keyboard=[
-        [kb.IB(text=kb.BTN_VAN, callback_data="van_photos")],
+        [kb.IB(text=kb.BTN_VAN, callback_data="van_photos"), kb.IB(text="⭐ Відгуки", callback_data="reviews")],
+        [kb.IB(text="🎁 Запросити друга", callback_data="invite")],
+        [kb.IB(text="🔒 Політика конфіденційності", callback_data="privacy")],
         [kb.IB(text="🗺 Поїздки та дати", callback_data=kb.StepCb(action="to_trips").pack())],
         [kb.home_button()],
     ])
@@ -79,6 +83,12 @@ PHONE_RE = re.compile(r"^\+?[\d\s\-()]{7,20}$")
 async def cmd_start(message: Message, state: FSMContext, command: CommandObject):
     await state.clear()
     payload = (command.args or "").strip()
+    ref = int(payload[4:]) if payload.startswith("ref_") and payload[4:].isdigit() else None
+    is_new = await touch_user(message.from_user, source=payload[:32] or None, referred_by=ref)
+    if is_new and ref:
+        inviter = ref
+        await notify_admins(message.bot, f"🎁 Новий користувач {escape(message.from_user.full_name)} прийшов "
+                                         f"за запрошенням (ID {inviter}).")
     await send_welcome(message)
     if payload == "trips":
         text, markup = await trips_overview()
@@ -189,6 +199,7 @@ def trip_caption(trip: dict, has_dates: bool) -> str:
     lines += [f"• {escape(h)}" for h in trip.get("highlights", [])[:5]]
     if trip.get("pickup_time"):
         lines.append(f"\n🕕 Виїзд із Саарбрюккена ≈ {trip['pickup_time']}")
+    lines.append(f"🚐 Поїздка відбудеться, коли збереться від {settings.MIN_PAX} людей")
     lines.append("\nОберіть дату 👇" if has_dates else "\nДати ще не призначені — натисніть «Повідомити», і ми напишемо першими.")
     caption = "\n".join(lines)
     return caption[:1020]
@@ -205,6 +216,15 @@ async def send_trip_card(message: Message, trip_id: str):
         photo = await trip_photo(s, trip_id)
     caption = trip_caption(trip, bool(rows))
     markup = kb.trip_kb(trip_id, rows)
+    me = await message.bot.me()
+    share = ("https://t.me/share/url?url=" + quote(f"https://t.me/{me.username}?start=trip_{trip_id}") +
+             "&text=" + quote(f"Поїхали разом: {trip['flag']} {trip['short_title']} 🚐"))
+    from .extras import approved_reviews
+    _, avg, count = await approved_reviews(trip_id, limit=0)
+    extra = [kb.IB(text="📤 Поділитися", url=share)]
+    if count:
+        extra.insert(0, kb.IB(text=f"⭐ {avg:.1f} ({count})", callback_data=f"reviews:{trip_id}"))
+    markup.inline_keyboard.insert(len(markup.inline_keyboard) - 1, extra)
     if photo:
         try:
             await message.answer_photo(photo, caption=caption, reply_markup=markup)
@@ -529,6 +549,7 @@ async def show_summary(message: Message, state: FSMContext):
     if data.get("comment"):
         text += f"💬 {escape(data['comment'])}\n"
     text += f"\n💶 <b>Разом: {total} €</b>\n{payment_note(data['trip_id'])}"
+    text += "\n\n<i>Натискаючи «Підтвердити», ви погоджуєтесь з обробкою даних для організації поїздки.</i>"
     await state.set_state(Book.confirm)
     await message.answer(text, reply_markup=kb.confirm_kb())
 
