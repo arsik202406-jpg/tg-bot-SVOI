@@ -3,11 +3,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createBooking, DEMO, joinWaitlist, loadCatalog, loadMe } from './api';
 import { PickupStep, ReviewStep, SeatStep, TripList, TripStep } from './components/steps';
 import { BottomBar, Header, Sheet, Stepper } from './components/ui';
-import { closeApp, haptic, inTelegram, onBackButton, openLink, setChrome, tg, userName } from './tg';
+import { closeApp, cloudGet, cloudSet, haptic, inTelegram, onBackButton, openLink, setChrome, userName } from './tg';
 import type { Catalog, Draft, MyBooking } from './types';
 
 const EMPTY: Draft = { tripId: null, departureId: null, pax: 1, seats: [], auto: true, city: 'saarland', address: '', phone: '', name: '', comment: '' };
 
+// Світла тема — основна. Якщо людина обрала темну, запам'ятовуємо її вибір.
 function initialTheme(): 'light' | 'dark' {
   try {
     const saved = localStorage.getItem('svoi_theme');
@@ -15,8 +16,7 @@ function initialTheme(): 'light' | 'dark' {
   } catch {
     /* ignore */
   }
-  if (tg?.colorScheme) return tg.colorScheme === 'dark' ? 'dark' : 'light';
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 export default function App() {
@@ -37,16 +37,26 @@ export default function App() {
     setDraftState((prev) => ({ ...prev, ...d }));
   }, []);
 
-  // тема
+  // тема: показуємо одразу, а збережений у Telegram вибір підтягуємо (він діє на всіх пристроях)
+  useEffect(() => {
+    cloudGet('svoi_theme').then((v) => {
+      if (v === 'light' || v === 'dark') setTheme(v);
+    });
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     setChrome(theme === 'dark' ? '#0e1412' : '#f3efe7');
+  }, [theme]);
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    cloudSet('svoi_theme', next);
     try {
-      localStorage.setItem('svoi_theme', theme);
+      localStorage.setItem('svoi_theme', next);
     } catch {
       /* ignore */
     }
-  }, [theme]);
+  };
 
   // завантаження
   const load = useCallback(async () => {
@@ -160,7 +170,7 @@ export default function App() {
   }
 
   const manager = `https://t.me/${catalog.manager}`;
-  const header = <Header theme={theme} onTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} onMy={() => setShowMy(true)} myCount={myBookings.length} />;
+  const header = <Header theme={theme} onTheme={toggleTheme} onMy={() => setShowMy(true)} myCount={myBookings.length} />;
 
   const mySheet = showMy && (
     <Sheet title="Мої бронювання" onClose={() => setShowMy(false)}>

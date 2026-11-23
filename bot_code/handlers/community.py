@@ -17,7 +17,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, ChatMemberUpdated, InlineKeyboardButton as IB, InlineKeyboardMarkup,
-                           Message)
+                           KeyboardButton, KeyboardButtonRequestChat, Message, ReplyKeyboardMarkup)
 from sqlalchemy import func, select
 
 from .. import keyboards as kb
@@ -239,36 +239,142 @@ async def on_forward_from_channel(message: Message, bot: Bot):
     await message.answer(f"📢 Канал «{escape(chat.title or '')}» збережено.\n{note}")
 
 
+def post_link(chat_id: int, message_id: int) -> str:
+    """Посилання на пост (працює для учасників групи/каналу, і відкритих, і закритих)."""
+    cid = str(chat_id)
+    return f"https://t.me/c/{cid[4:] if cid.startswith('-100') else cid.lstrip('-')}/{message_id}"
+
+
 async def gw_admin_view(gw_id: int | None = None) -> tuple[str, InlineKeyboardMarkup]:
     async with Session() as s:
         gw = (await s.get(Giveaway, gw_id) if gw_id else
               await s.scalar(select(Giveaway).order_by(Giveaway.id.desc()).limit(1)))
-        rows = [[IB(text="➕ Новий розіграш", callback_data=GwAdm(action="new").pack())]]
         if not gw:
-            rows.append([IB(text="⬅️ Адмін-меню", callback_data=kb.AdmCb(action="menu").pack())])
+            rows = [[IB(text="➕ Новий розіграш", callback_data=GwAdm(action="new").pack())],
+                    [IB(text="⬅️ Адмін-меню", callback_data=kb.AdmCb(action="menu").pack())]]
             return "🎁 <b>Розіграші</b>\n\nЩе не було жодного розіграшу.", InlineKeyboardMarkup(inline_keyboard=rows)
         count = await s.scalar(select(func.count(GiveawayEntry.id)).where(GiveawayEntry.giveaway_id == gw.id))
         posts = list(await s.scalars(select(GiveawayPost).where(GiveawayPost.giveaway_id == gw.id)))
-        chats = list(await s.scalars(select(KnownChat).order_by(KnownChat.type)))
-    text = (f"🎁 <b>Розіграш #{gw.id}</b>\nПриз: <b>{escape(gw.prize)}</b>\n"
-            f"Учасників: <b>{count}</b>\nОпубліковано: {len(posts)} раз(и)\n")
-    if gw.status == "finished":
-        text += f"\n🏆 Переможець: <b>{escape(gw.winner_name or '')}</b>"
+        titles = {c.chat_id: c for c in await s.scalars(select(KnownChat))}
+    status = "🟢 триває" if gw.status == "active" else "🏁 завершено"
+    lines = [f"🎁 <b>Розіграш #{gw.id}</b> · {status}", f"Приз: <b>{escape(gw.prize)}</b>",
+             f"👥 Учасників: <b>{count}</b>", "", "<b>Де опубліковано:</b>"]
+    if posts:
+        for p in posts:
+            c = titles.get(p.chat_id)
+            icon = "📢" if c and c.type == "channel" else "👥"
+            name = escape(c.title) if c else str(p.chat_id)
+            lines.append(f'{icon} <a href="{post_link(p.chat_id, p.message_id)}">{name}</a> ✅')
     else:
-        posted = {p.chat_id for p in posts}
-        for c in chats:
-            icon = "📢" if c.type == "channel" else "👥"
-            label = f"{icon} Опублікувати в «{c.title[:28]}»" + (" ✅" if c.chat_id in posted else "")
-            rows.insert(0, [IB(text=label, callback_data=GwAdm(action="post", id=gw.id, chat=c.chat_id).pack())])
-        if not chats:
-            text += ("\n⚠️ Бот не знає жодної групи чи каналу. Напишіть будь-що в групі, "
-                     "а з каналу перешліть боту будь-який пост.")
-        elif not any(c.type == "channel" for c in chats):
-            text += ("\n⚠️ Канал не знайдено: перешліть боту будь-який пост із каналу — "
-                     "тоді розіграш перевірятиме підписку.")
-        rows.insert(len(chats), [IB(text=f"🏆 Обрати переможця ({count})", callback_data=GwAdm(action="pick", id=gw.id).pack())])
-    rows.append([IB(text="⬅️ Адмін-меню", callback_data=kb.AdmCb(action="menu").pack())])
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+        lines.append("ще ніде — натисніть «Поділитися» 👇")
+    if gw.status == "finished":
+        lines += ["", f"🏆 Переможець: <b>{escape(gw.winner_name or '')}</b>"]
+    rows = []
+    if gw.status == "active":
+        rows += [
+            [IB(text="👥 Поділитися в групі", callback_data=GwAdm(action="share", id=gw.id, chat=2).pack()),
+             IB(text="📢 Поділитися в каналі", callback_data=GwAdm(action="share", id=gw.id, chat=1).pack())],
+            [IB(text=f"🏆 Обрати переможця ({count})", callback_data=GwAdm(action="pick", id=gw.id).pack())],
+        ]
+    rows += [[IB(text="🔄 Оновити", callback_data=GwAdm(action="view", id=gw.id).pack()),
+              IB(text="➕ Новий розіграш", callback_data=GwAdm(action="new").pack())],
+             [IB(text="⬅️ Адмін-меню", callback_data=kb.AdmCb(action="menu").pack())]]
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@admin.callback_query(GwAdm.filter(F.action == "view"))
+async def cb_gw_view(callback: CallbackQuery, callback_data: GwAdm):
+    if not _is_admin(callback.from_user.id):
+        return await callback.answer()
+    await callback.answer()
+    text, markup = await gw_admin_view(callback_data.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+    except Exception:  # noqa: BLE001 — нічого не змінилось
+        pass
+
+
+# ---------- Поділитися: вибір групи/каналу ----------
+# chat=1 — канал, chat=2 — група
+
+def chat_picker_kb(gw_id: int, kind: int) -> ReplyKeyboardMarkup:
+    """Кнопка Telegram «обрати чат»: показує ваші групи/канали, де є бот."""
+    is_channel = kind == 1
+    btn = KeyboardButton(
+        text="📢 Обрати канал" if is_channel else "👥 Обрати групу",
+        request_chat=KeyboardButtonRequestChat(request_id=gw_id * 10 + kind, chat_is_channel=is_channel,
+                                               bot_is_member=True, request_title=True))
+    return ReplyKeyboardMarkup(keyboard=[[btn], [KeyboardButton(text=kb.BTN_CANCEL)]], resize_keyboard=True,
+                               one_time_keyboard=True)
+
+
+@admin.callback_query(GwAdm.filter(F.action == "share"))
+async def cb_gw_share(callback: CallbackQuery, callback_data: GwAdm):
+    if not _is_admin(callback.from_user.id):
+        return await callback.answer()
+    await callback.answer()
+    is_channel = callback_data.chat == 1
+    async with Session() as s:
+        q = select(KnownChat).where(KnownChat.type == "channel") if is_channel else \
+            select(KnownChat).where(KnownChat.type.in_(("group", "supergroup")))
+        chats = list(await s.scalars(q))
+    what = "канал" if is_channel else "групу"
+    if chats:
+        rows = [[IB(text=("📢 " if is_channel else "👥 ") + f"Опублікувати в «{c.title[:30]}»",
+                    callback_data=GwAdm(action="post", id=callback_data.id, chat=c.chat_id).pack())] for c in chats]
+        rows.append([IB(text="➕ Обрати інший канал" if is_channel else "➕ Обрати іншу групу",
+                        callback_data=GwAdm(action="picker", id=callback_data.id, chat=callback_data.chat).pack())])
+        rows.append([IB(text="⬅️ Назад", callback_data=GwAdm(action="view", id=callback_data.id).pack())])
+        return await callback.message.answer("Куди опублікувати розіграш?", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await callback.message.answer(
+        f"Натисніть кнопку внизу екрана і оберіть {what} — Telegram покаже лише ті, де є бот 👇",
+        reply_markup=chat_picker_kb(callback_data.id, callback_data.chat))
+
+
+@admin.callback_query(GwAdm.filter(F.action == "picker"))
+async def cb_gw_picker(callback: CallbackQuery, callback_data: GwAdm):
+    if not _is_admin(callback.from_user.id):
+        return await callback.answer()
+    await callback.answer()
+    await callback.message.answer("Натисніть кнопку внизу екрана 👇", reply_markup=chat_picker_kb(callback_data.id, callback_data.chat))
+
+
+@admin.message(F.chat_shared)
+async def on_chat_shared(message: Message, bot: Bot):
+    """Адмін обрав групу/канал через кнопку Telegram — публікуємо розіграш туди."""
+    if not _is_admin(message.from_user.id):
+        return
+    shared = message.chat_shared
+    gw_id = shared.request_id // 10
+    try:
+        chat = await bot.get_chat(shared.chat_id)
+        await remember_chat(chat, True)
+    except Exception as e:  # noqa: BLE001
+        return await message.answer(f"Не вдалося відкрити цей чат: {escape(str(e))}\n"
+                                    "Перевірте, що бот доданий туди адміністратором.", reply_markup=kb.main_kb())
+    ok, info = await publish_giveaway(bot, gw_id, chat.id)
+    await message.answer(info, reply_markup=kb.main_kb(), disable_web_page_preview=True)
+    text, markup = await gw_admin_view(gw_id)
+    await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
+
+
+async def publish_giveaway(bot: Bot, gw_id: int, chat_id: int) -> tuple[bool, str]:
+    async with Session() as s:
+        gw = await s.get(Giveaway, gw_id)
+        if not gw or gw.status != "active":
+            return False, "Цей розіграш уже завершено."
+        count = await s.scalar(select(func.count(GiveawayEntry.id)).where(GiveawayEntry.giveaway_id == gw.id))
+        try:
+            sent = await bot.send_message(chat_id, gw_post_text(gw.prize),
+                                          reply_markup=await gw_post_kb(bot, gw.id, count),
+                                          disable_web_page_preview=True)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Публікація розіграшу в %s: %s", chat_id, e)
+            return False, (f"❌ Не вдалося опублікувати: {escape(str(e))}\n\n"
+                           "Перевірте, що бот — адміністратор із правом «Публікація/надсилання повідомлень».")
+        s.add(GiveawayPost(giveaway_id=gw.id, chat_id=chat_id, message_id=sent.message_id))
+        await s.commit()
+    return True, f'✅ Опубліковано: <a href="{post_link(chat_id, sent.message_id)}">відкрити пост</a>'
 
 
 @admin.callback_query(kb.AdmCb.filter(F.action == "giveaways"))
@@ -277,7 +383,7 @@ async def cb_gw_menu(callback: CallbackQuery):
         return await callback.answer()
     await callback.answer()
     text, markup = await gw_admin_view()
-    await callback.message.edit_text(text, reply_markup=markup)
+    await callback.message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
 
 
 @admin.callback_query(GwAdm.filter(F.action == "new"))
@@ -308,20 +414,10 @@ async def msg_gw_prize(message: Message, state: FSMContext):
 async def cb_gw_post(callback: CallbackQuery, callback_data: GwAdm, bot: Bot):
     if not _is_admin(callback.from_user.id):
         return await callback.answer()
-    async with Session() as s:
-        gw = await s.get(Giveaway, callback_data.id)
-        count = await s.scalar(select(func.count(GiveawayEntry.id)).where(GiveawayEntry.giveaway_id == gw.id))
-        try:
-            sent = await bot.send_message(callback_data.chat, gw_post_text(gw.prize),
-                                          reply_markup=await gw_post_kb(bot, gw.id, count),
-                                          disable_web_page_preview=True)
-        except Exception as e:  # noqa: BLE001
-            return await callback.answer(f"Не вдалося: {e}. Бот має бути адміністратором.", show_alert=True)
-        s.add(GiveawayPost(giveaway_id=gw.id, chat_id=callback_data.chat, message_id=sent.message_id))
-        await s.commit()
-    await callback.answer("Опубліковано ✅", show_alert=True)
+    ok, info = await publish_giveaway(bot, callback_data.id, callback_data.chat)
+    await callback.answer("Опубліковано ✅" if ok else "Не вдалося", show_alert=not ok)
     text, markup = await gw_admin_view(callback_data.id)
-    await callback.message.edit_text(text, reply_markup=markup)
+    await callback.message.edit_text(info + "\n\n" + text, reply_markup=markup, disable_web_page_preview=True)
 
 
 @admin.callback_query(GwAdm.filter(F.action == "pick"))

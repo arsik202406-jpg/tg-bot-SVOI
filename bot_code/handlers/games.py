@@ -21,6 +21,7 @@ def get_games_keyboard() -> InlineKeyboardMarkup:
          InlineKeyboardButton(text="💶 Цифри й рекорди", callback_data="cb_game_price")],
         [InlineKeyboardButton(text="🎒 Підбір ідеального туру", callback_data="cb_game_match")],
         [InlineKeyboardButton(text="🎰 Колесо Фортуни (1 раз)", callback_data="cb_game_wheel")],
+        [kb.home_button()],
     ])
 
 logger = logging.getLogger(__name__)

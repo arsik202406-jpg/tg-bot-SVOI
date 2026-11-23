@@ -85,3 +85,26 @@ export function closeApp() {
     /* ignore */
   }
 }
+
+// Сховище Telegram: зберігається в акаунті користувача, працює на всіх його пристроях
+export function cloudGet(key: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const cs = tg?.CloudStorage;
+    if (!cs || !tg?.isVersionAtLeast?.('6.9')) return resolve(null);
+    try {
+      cs.getItem(key, (err: unknown, value: string) => resolve(err ? null : value || null));
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export function cloudSet(key: string, value: string) {
+  const cs = tg?.CloudStorage;
+  if (!cs || !tg?.isVersionAtLeast?.('6.9')) return;
+  try {
+    cs.setItem(key, value);
+  } catch {
+    /* ignore */
+  }
+}
