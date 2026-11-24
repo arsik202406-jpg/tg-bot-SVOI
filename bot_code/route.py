@@ -11,7 +11,7 @@
   = час виїзду з дому і час, коли забираємо кожного
 
 Google Routes API (якщо задано GOOGLE_MAPS_API_KEY) враховує затори на дату поїздки.
-Без ключа — безкоштовні OpenStreetMap (Nominatim + OSRM): без заторів, тому запас більший.
+Без ключа — безкоштовні OpenStreetMap (Nominatim + OSRM): без урахування заторів.
 """
 from __future__ import annotations
 
@@ -85,8 +85,9 @@ def schedule(stops: list[Stop], legs_min: list[int], arrive: datetime, provider:
     main_leg = legs_min[-1]
     breaks = plan_breaks(main_leg)
     total = sum(legs_min)
-    # Запас: без заторів (OSM) — 10 %, з Google — 5 %, але не менше 10 хв
-    buffer_min = max(10, round(total * (0.05 if provider == "google" else 0.10)))
+    # Запас на непередбачене — фіксований (ROUTE_BUFFER_MIN, за замовчуванням 10 хв).
+    # Зупинки в дорозі (1–2 по 15 хв) — окремо, вони теж дають резерв.
+    buffer_min = settings.ROUTE_BUFFER_MIN
     t = arrive - timedelta(minutes=breaks * settings.BREAK_MINUTES + main_leg + buffer_min)
     times: list[datetime] = []
     for i in range(len(stops) - 1, -1, -1):
