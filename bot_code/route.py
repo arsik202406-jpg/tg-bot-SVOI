@@ -6,12 +6,12 @@
   прибуття 11:00
   − зупинки в дорозі (1–2 по 15 хв)
   − дорога від останнього пасажира до місця
-  − для кожного пасажира: посадка (5 хв) + дорога від попередньої адреси
+  − для кожної адреси: посадка (1 хв на людину) + дорога від попередньої адреси
   − невеликий запас на непередбачене
   = час виїзду з дому і час, коли забираємо кожного
 
 Google Routes API (якщо задано GOOGLE_MAPS_API_KEY) враховує затори на дату поїздки.
-Без ключа — безкоштовні OpenStreetMap (Nominatim + OSRM): без заторів, тому запас більший.
+Без ключа — безкоштовні OpenStreetMap (Nominatim + OSRM): без урахування заторів.
 """
 from __future__ import annotations
 
@@ -85,12 +85,13 @@ def schedule(stops: list[Stop], legs_min: list[int], arrive: datetime, provider:
     main_leg = legs_min[-1]
     breaks = plan_breaks(main_leg)
     total = sum(legs_min)
-    # Запас: без заторів (OSM) — 10 %, з Google — 5 %, але не менше 10 хв
-    buffer_min = max(10, round(total * (0.05 if provider == "google" else 0.10)))
+    # Запас на непередбачене — фіксований (ROUTE_BUFFER_MIN, за замовчуванням 10 хв).
+    # Зупинки в дорозі (1–2 по 15 хв) — окремо, вони теж дають резерв.
+    buffer_min = settings.ROUTE_BUFFER_MIN
     t = arrive - timedelta(minutes=breaks * settings.BREAK_MINUTES + main_leg + buffer_min)
     times: list[datetime] = []
     for i in range(len(stops) - 1, -1, -1):
-        pickup = t - timedelta(minutes=settings.PICKUP_MINUTES)
+        pickup = t - timedelta(minutes=settings.PICKUP_MINUTES * max(1, stops[i].pax))
         times.append(pickup)
         t = pickup - timedelta(minutes=legs_min[i])
     times.reverse()
@@ -181,25 +182,32 @@ async def build_plan(home: str, stops: list[Stop], destination: str, arrive: dat
         raise RouteError("На рейсі ще немає пасажирів.")
     if len(stops) > 23:
         raise RouteError("Забагато адрес для одного маршруту.")
+    plan = None
     if settings.GOOGLE_MAPS_API_KEY:
-        provider = "google"
-        # 1-й прохід — орієнтовний виїзд за 6 год, 2-й — уточнений із заторами на реальний час
-        depart = max(arrive - timedelta(hours=6), datetime.now(timezone.utc) + timedelta(minutes=5))
-        order, legs = await _google(home, stops, destination, depart)
-        ordered = [stops[i] for i in order]
-        plan = schedule(ordered, legs, arrive, provider)
-        depart2 = max(plan.start_time, datetime.now(timezone.utc) + timedelta(minutes=5))
         try:
-            order2, legs2 = await _google(home, ordered, destination, depart2)
-            if order2 == list(range(len(ordered))):  # порядок не змінився — беремо точніший час
-                plan = schedule(ordered, legs2, arrive, provider)
-        except RouteError:
-            pass
-    else:
-        provider = "osm"
+            plan = await _google_plan(home, stops, destination, arrive)
+        except Exception as e:  # noqa: BLE001 — Google недоступний (ключ, оплата) → рахуємо безкоштовно
+            log.warning("Google Routes недоступний, рахую через OpenStreetMap: %s", e)
+    if plan is None:
         order, legs = await _osm(home, stops, destination)
-        plan = schedule([stops[i] for i in order], legs, arrive, provider)
+        plan = schedule([stops[i] for i in order], legs, arrive, "osm")
     plan.home, plan.destination = home, destination
     if plan.start_time.hour < 3 or plan.start_time.date() < arrive.date():
         plan.warnings.append("⚠️ Виїзд виходить дуже рано — можливо, варто перенести час прибуття.")
+    return plan
+
+
+async def _google_plan(home: str, stops: list[Stop], destination: str, arrive: datetime) -> Plan:
+    """Google Routes: 1-й прохід — орієнтовний виїзд за 6 год, 2-й — уточнений із заторами на реальний час."""
+    depart = max(arrive - timedelta(hours=6), datetime.now(timezone.utc) + timedelta(minutes=5))
+    order, legs = await _google(home, stops, destination, depart)
+    ordered = [stops[i] for i in order]
+    plan = schedule(ordered, legs, arrive, "google")
+    depart2 = max(plan.start_time, datetime.now(timezone.utc) + timedelta(minutes=5))
+    try:
+        order2, legs2 = await _google(home, ordered, destination, depart2)
+        if order2 == list(range(len(ordered))):  # порядок не змінився — беремо точніший час
+            plan = schedule(ordered, legs2, arrive, "google")
+    except RouteError:
+        pass
     return plan

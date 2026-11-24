@@ -119,8 +119,8 @@ async def render_route(dep_id: int) -> tuple[str, InlineKeyboardMarkup]:
                  + (f", зупинок у дорозі: {plan.breaks} × {settings.BREAK_MINUTES} хв" if plan.breaks else ""))
     lines.append(f"🏁 <b>{_hm(plan.arrive_time)}</b> — на місці (запас {plan.buffer_min} хв)")
     lines.append("\n" + ("Розраховано Google Maps з урахуванням заторів." if plan.provider == "google" else
-                         "Розраховано за OpenStreetMap (без заторів, тому запас більший). "
-                         "Для точності з урахуванням заторів додайте GOOGLE_MAPS_API_KEY."))
+                         "Розраховано за OpenStreetMap (безкоштовно, без урахування заторів). "
+                         "Рано вранці заторів майже немає, тож розрахунок близький до реального."))
     lines += plan.warnings
     return "\n".join(lines), route_kb(dep_id, plan.maps_url)
 

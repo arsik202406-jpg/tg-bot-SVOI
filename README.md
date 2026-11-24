@@ -62,6 +62,7 @@
 | `GOOGLE_MAPS_API_KEY` | ключ Google Routes API (необязательно; маршрут с учётом пробок) |
 | `MIN_PAX` | минимум людей для поездки (по умолчанию 5) |
 | `ARRIVE_TIME` | во сколько быть на месте (по умолчанию 11:00) |
+| `ROUTE_BUFFER_MIN` | запас времени в маршруте, минут (по умолчанию 10) |
 
 Build Command: `pip install -r requirements.txt` · Start Command: `python main.py`.
 Если в Render указан Root Directory `bot_code` и команда `python bot.py`, это тоже работает.
