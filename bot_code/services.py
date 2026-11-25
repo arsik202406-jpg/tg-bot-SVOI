@@ -26,6 +26,30 @@ class BookingError(Exception):
     """Помилка, текст якої можна показати клієнту."""
 
 
+POSTCODE_RE = __import__("re").compile(r"^(?:[A-Za-z]{1,2}-?)?\d{4,5}$")
+
+
+def clean_postcode(value: str | None) -> str:
+    """«66 111», «L-1234», «l1234» → «66111», «L-1234». Порожній рядок — якщо формат невірний."""
+    v = (value or "").strip().replace(" ", "").upper()
+    if not POSTCODE_RE.match(v):
+        return ""
+    if v[0].isalpha() and "-" not in v:
+        letters = "".join(ch for ch in v if ch.isalpha())
+        v = f"{letters}-{v[len(letters):]}"
+    return v
+
+
+def full_address(b) -> str:
+    """Адреса для показу: «вулиця, будинок, місто · 66111 · район Х»."""
+    parts = [b.address]
+    if getattr(b, "postcode", None):
+        parts.append(b.postcode)
+    if getattr(b, "district", None):
+        parts.append(f"район {b.district}")
+    return " · ".join(parts)
+
+
 # ---------- Рейси ----------
 
 async def upcoming_departures(session: AsyncSession, trip_id: str | None = None,
@@ -107,6 +131,7 @@ async def create_booking(
     session: AsyncSession, *, departure_id: int, pax: int, seats: list[int] | None,
     name: str, phone: str, city: str, address: str, user_id: int | None = None,
     username: str | None = None, comment: str | None = None, source: str = "bot",
+    postcode: str | None = None, district: str | None = None,
 ) -> Booking:
     dep = await session.get(Departure, departure_id)
     if not dep or dep.status != "open" or dep.date < cat.today():
@@ -137,7 +162,9 @@ async def create_booking(
 
     booking = Booking(
         departure_id=dep.id, user_id=user_id, name=name, username=username, phone=phone,
-        city=city, address=address, pax=pax, seats=",".join(map(str, seats)), auto_seats=int(auto),
+        city=city, address=address, postcode=clean_postcode(postcode) or None,
+        district=(district or "").strip()[:80] or None,
+        pax=pax, seats=",".join(map(str, seats)), auto_seats=int(auto),
         price_total=price_for(trip, pax, seats, auto), comment=(comment or "").strip()[:500] or None,
         source=source,
     )
@@ -158,11 +185,33 @@ async def create_booking(
             cust = Customer(user_id=user_id)
             session.add(cust)
         cust.name, cust.username, cust.phone, cust.city, cust.address = name, username, phone, city, address
+        cust.postcode, cust.district = booking.postcode, booking.district
 
     await session.commit()
     await session.refresh(booking, ["departure"])
     await session.refresh(booking.departure, ["bookings"])
     return booking
+
+
+async def update_address(session: AsyncSession, booking: Booking, address: str, postcode: str,
+                         district: str | None) -> bool:
+    """Змінити адресу броні. Повертає True, якщо маршрут уже був затверджений (його треба перерахувати)."""
+    address = address.strip()[:500]
+    if len(address) < 5:
+        raise BookingError("Напишіть повну адресу: вулицю, номер будинку і місто.")
+    pc = clean_postcode(postcode)
+    if not pc:
+        raise BookingError("Невірний поштовий індекс. Наприклад: 66111 або L-1234.")
+    had_route = bool(booking.pickup_time)
+    booking.address, booking.postcode = address, pc
+    booking.district = (district or "").strip()[:80] or None
+    booking.pickup_time, booking.pickup_order = None, None
+    if booking.user_id:
+        cust = await session.get(Customer, booking.user_id)
+        if cust:
+            cust.address, cust.postcode, cust.district = booking.address, booking.postcode, booking.district
+    await session.commit()
+    return had_route
 
 
 async def cancel_booking(session: AsyncSession, booking: Booking) -> None:
@@ -196,7 +245,7 @@ def booking_client_text(b: Booking) -> str:
         f"<b>{trip.get('flag', '')} {escape(trip.get('short_title', ''))}</b>\n"
         f"📅 {cat.fmt_departure(b.departure.date, trip.get('days', 1))}\n"
         f"👥 Пасажирів: {b.pax} · місця: {seats_text(b)}\n"
-        f"📍 Звідки забрати: {escape(b.city)}, {escape(b.address)}\n"
+        f"📍 Звідки забрати: {escape(b.city)}, {escape(full_address(b))}\n"
         f"📞 {escape(b.phone)}\n"
         f"💶 До сплати: <b>{b.price_total} €</b>\n"
         f"Номер броні: <code>{b.code}</code>"
@@ -215,7 +264,7 @@ def booking_admin_text(b: Booking, title: str = "🆕 Нова заявка") ->
         f"{escape(departure_label(b.departure))}\n"
         f"👤 {who}\n"
         f"📞 <code>{escape(b.phone)}</code>\n"
-        f"📍 {escape(b.city)}: {escape(b.address)}\n"
+        f"📍 {escape(b.city)}: {escape(full_address(b))}\n"
         f"👥 {b.pax} · місця {seats_text(b)}\n"
         f"💶 {b.price_total} €\n"
         f"Статус: {STATUS_UA.get(b.status, b.status)}"
@@ -230,6 +279,14 @@ def booking_admin_text(b: Booking, title: str = "🆕 Нова заявка") ->
         text += {"yes": "\n✅ Підтвердив участь", "no": "\n❌ Відмовився", "asked": "\n❔ Ще не відповів на підтвердження"}[b.attend]
     text += f"\n\nНа рейсі зайнято {cat.CAPACITY - free_count(dep)}/{cat.CAPACITY}"
     return text
+
+
+def map_query(b) -> str:
+    """Рядок для пошуку на карті: адреса + індекс (індекс розрізняє однакові вулиці в сусідніх містах)."""
+    q = b.address
+    if getattr(b, "postcode", None) and b.postcode not in q:
+        q = f"{q}, {b.postcode}"
+    return q
 
 
 def maps_link(address: str) -> str:
@@ -284,7 +341,8 @@ def manifest_text(dep: Departure, compact: bool = False) -> str:
             lines.append(
                 f"• {time}<b>{escape(b.name)}</b>{uname}{mark}{att} — {b.pax} ос., місця {seats_text(b)}, {money_icon} {b.price_total} €\n"
                 f"   📞 <code>{escape(b.phone)}</code>\n"
-                + (f"   🏠 {escape(b.address)}" if compact else f'   🏠 <a href="{maps_link(b.address)}">{escape(b.address)}</a>')
+                + (f"   🏠 {escape(full_address(b))}" if compact else
+                   f'   🏠 <a href="{maps_link(map_query(b))}">{escape(full_address(b))}</a>')
                 + (f"\n   💬 {escape(b.comment)}" if b.comment and not compact else "")
             )
     seat_map = {s: b for b in bookings for s in b.seat_list}
@@ -302,11 +360,12 @@ def manifest_text(dep: Departure, compact: bool = False) -> str:
 def manifest_csv(dep: Departure) -> bytes:
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
-    w.writerow(["Порядок", "Час посадки", "Бронь", "Статус", "Ім'я", "Telegram", "Телефон", "Місто", "Адреса",
+    w.writerow(["Порядок", "Час посадки", "Бронь", "Статус", "Ім'я", "Telegram", "Телефон", "Місто", "Адреса", "Індекс", "Район",
                 "Пасажирів", "Місця", "Сума €", "Оплачено", "Участь", "Коментар", "Джерело"])
     for b in sorted(active_bookings(dep), key=lambda b: (b.pickup_order or 99, b.id)):
         w.writerow([b.pickup_order or "", b.pickup_time or "", b.code, STATUS_UA.get(b.status, b.status), b.name,
-                    f"@{b.username}" if b.username else "", b.phone, b.city, b.address, b.pax, seats_text(b),
+                    f"@{b.username}" if b.username else "", b.phone, b.city, b.address, b.postcode or "", b.district or "",
+                    b.pax, seats_text(b),
                     b.price_total, "так" if b.paid else "ні", {"yes": "їде", "no": "не їде", "asked": "не відповів"}.get(b.attend or "", ""),
                     b.comment or "", b.source])
     return ("﻿" + buf.getvalue()).encode("utf-8")  # BOM, щоб Excel правильно показав кирилицю

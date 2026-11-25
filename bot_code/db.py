@@ -57,6 +57,8 @@ class Booking(Base):
     phone: Mapped[str] = mapped_column(String(32))
     city: Mapped[str] = mapped_column(String(64))
     address: Mapped[str] = mapped_column(Text)
+    postcode: Mapped[str | None] = mapped_column(String(12), nullable=True)   # поштовий індекс (PLZ)
+    district: Mapped[str | None] = mapped_column(String(80), nullable=True)   # район (необов'язково)
     pax: Mapped[int] = mapped_column(Integer)
     seats: Mapped[str] = mapped_column(String(32))  # "3,4"
     auto_seats: Mapped[int] = mapped_column(Integer, default=0)
@@ -97,6 +99,8 @@ class Customer(Base):
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     city: Mapped[str | None] = mapped_column(String(64), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    postcode: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    district: Mapped[str | None] = mapped_column(String(80), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 

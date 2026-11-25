@@ -15,7 +15,7 @@ from aiohttp import web
 from .api import build_app
 from .config import settings
 from .db import init_db
-from .handlers import admin, client, community, extras, games, ops, support
+from .handlers import address_edit, admin, client, community, extras, games, ops, support
 from .jobs import scheduler
 from .screens import CleanChat, TrackRequests
 
@@ -31,6 +31,7 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(community.admin)
     dp.include_router(ops.router)
     dp.include_router(admin.router)
+    dp.include_router(address_edit.router)
     dp.include_router(extras.router)
     dp.include_router(client.router)
     dp.include_router(games.router)

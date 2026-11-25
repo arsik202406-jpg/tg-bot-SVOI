@@ -194,6 +194,7 @@ def client_after_booking_kb() -> InlineKeyboardMarkup:
 
 def my_booking_kb(booking_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [IB(text="✏️ Змінити адресу", callback_data=f"ea:{booking_id}")],
         [IB(text="❌ Скасувати цю бронь", callback_data=MyCb(action="cancel", booking=booking_id).pack())],
     ])
 
@@ -254,6 +255,8 @@ def admin_booking_kb(b) -> InlineKeyboardMarkup:
     elif b.status == "confirmed":
         kb.append([IB(text="❌ Скасувати бронь", callback_data=AdmCb(action="bk_cancel", id=b.id).pack())])
     kb.append([IB(text="💶 Зняти позначку оплати" if b.paid else "💶 Позначити: оплачено", callback_data=f"o:paid:{b.id}")])
+    if b.status != "cancelled":
+        kb.append([IB(text="✏️ Змінити адресу", callback_data=f"ea:{b.id}")])
     if b.username:  # кнопки tg://user?id=… Telegram відхиляє через налаштування приватності
         kb.append([IB(text="💬 Написати клієнту", url=f"https://t.me/{b.username}")])
     kb.append([IB(text="🚐 Відкрити рейс", callback_data=AdmCb(action="dep", id=b.departure_id).pack())])

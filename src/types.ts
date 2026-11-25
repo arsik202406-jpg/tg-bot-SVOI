@@ -63,6 +63,8 @@ export interface MyBooking {
   total: number;
   city: string;
   address: string;
+  postcode?: string | null;
+  district?: string | null;
   pickup_time?: string | null;
 }
 
@@ -70,6 +72,8 @@ export interface SavedContact {
   phone: string | null;
   city: string | null;
   address: string | null;
+  postcode?: string | null;
+  district?: string | null;
 }
 
 export interface Draft {
@@ -80,6 +84,8 @@ export interface Draft {
   auto: boolean;
   city: string;
   address: string;
+  postcode: string;
+  district: string;
   phone: string;
   name: string;
   comment: string;

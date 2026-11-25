@@ -127,7 +127,7 @@ STYLE = """Ти — помічник SVOI Travel у Telegram. Відповіда
 2) скільки людей (не більше, ніж вільних місць);
 3) ім'я;
 4) телефон;
-5) місто збору (Саарланд / Трір / Люксембург / інше) і точна адреса (вулиця, будинок, місто);
+5) місто збору (Саарланд / Трір / Люксембург / інше), точна адреса (вулиця, будинок, місто) і поштовий індекс (обов'язково); район — якщо клієнт сам назве;
 6) побажання (діти, крісло, валіза) — необов'язково.
 Місця в салоні не обираєш: у заявці «будь-які вільні, без доплати». Якщо клієнт хоче конкретне місце — скажи, що його можна обрати в застосунку (кнопка «Забронювати») або менеджер допоможе.
 Перед створенням коротко повтори все одним повідомленням із сумою і спитай «Все вірно?». Лише після чіткого «так» виклич create_booking_request.
@@ -189,9 +189,11 @@ TOOLS = [
                 "phone": {"type": "string"},
                 "city": {"type": "string", "enum": ["saarland", "trier", "luxembourg", "other"]},
                 "address": {"type": "string", "description": "вулиця, будинок, місто"},
+                "postcode": {"type": "string", "description": "поштовий індекс, напр. 66111 або L-1234"},
+                "district": {"type": "string", "description": "район, якщо клієнт назвав"},
                 "comment": {"type": "string", "description": "побажання клієнта, якщо є"},
             },
-            "required": ["departure_id", "pax", "name", "phone", "city", "address"],
+            "required": ["departure_id", "pax", "name", "phone", "city", "address", "postcode"],
         },
     },
     {
@@ -219,13 +221,17 @@ TOOLS = [
 # ---------- Інструменти ----------
 
 async def _tool_create_booking(bot: Bot, user, args: dict) -> dict:
+    from .services import clean_postcode
     city = cat.PICKUP_BY_ID.get(args.get("city", ""), cat.PICKUP_CITIES[-1])["name"]
+    if not clean_postcode(args.get("postcode")):
+        return {"ok": False, "error": "Потрібен правильний поштовий індекс (4–5 цифр). Уточни в клієнта."}
     try:
         async with Session() as s:
             b = await create_booking(
                 s, departure_id=int(args["departure_id"]), pax=int(args["pax"]), seats=None,
                 name=str(args["name"]), phone=str(args["phone"]), city=city, address=str(args["address"]),
-                user_id=user.id, username=user.username, comment=args.get("comment"), source="ai")
+                user_id=user.id, username=user.username, comment=args.get("comment"), source="ai",
+                postcode=args.get("postcode"), district=args.get("district"))
     except BookingError as e:
         return {"ok": False, "error": str(e)}
     except (KeyError, ValueError) as e:

@@ -81,6 +81,8 @@ export interface BookingPayload {
   seats: number[] | null;
   city: string;
   address: string;
+  postcode: string;
+  district: string;
   phone: string;
   name: string;
   comment: string;
@@ -118,4 +120,14 @@ export async function loadPrivacy(): Promise<string> {
   const res = await fetch(`${API_URL}/api/privacy`);
   const data = await res.json();
   return data.text || '';
+}
+
+export async function updateAddress(code: string, address: string, postcode: string, district: string): Promise<void> {
+  if (DEMO) return;
+  await request('/api/bookings/address', { code, address, postcode, district, initData: initData() });
+}
+
+/** Поштовий індекс: 4–5 цифр, для Люксембургу можна «L-1234». */
+export function postcodeOk(v: string): boolean {
+  return /^(?:[A-Za-z]{1,2}-?)?\d{4,5}$/.test(v.replace(/\s/g, ''));
 }
