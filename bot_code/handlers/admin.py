@@ -485,7 +485,7 @@ async def cb_announce(callback: CallbackQuery, callback_data: kb.AdmCb, bot: Bot
         dep = await s.get(Departure, callback_data.id)
         trip = cat.TRIPS_BY_ID[dep.trip_id]
         free = free_count(dep)
-        photo = await trip_photo(s, dep.trip_id)
+        photo, rel = await trip_photo(s, dep.trip_id)
     me = await bot.me()
     caption = (
         f"<b>{trip['flag']} {escape(trip['title'])}</b>\n"
@@ -497,7 +497,8 @@ async def cb_announce(callback: CallbackQuery, callback_data: kb.AdmCb, bot: Bot
         text="💺 Забронювати місце", url=f"https://t.me/{me.username}?start=dep_{dep.id}")]])
     try:
         if photo:
-            await bot.send_photo(settings.CHANNEL_CHAT_ID, photo, caption=caption[:1024], reply_markup=markup)
+            sent = await bot.send_photo(settings.CHANNEL_CHAT_ID, photo, caption=caption[:1024], reply_markup=markup)
+            cat.remember_photo(rel, sent)
         else:
             await bot.send_message(settings.CHANNEL_CHAT_ID, caption, reply_markup=markup)
         await callback.answer("Опубліковано в каналі ✅", show_alert=True)

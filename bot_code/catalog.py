@@ -10,6 +10,24 @@ _TRIPS_FILE = Path(__file__).resolve().parent / "data" / "trips.json"
 TRIPS: list[dict] = json.loads(_TRIPS_FILE.read_text(encoding="utf-8"))
 TRIPS_BY_ID: dict[str, dict] = {t["id"]: t for t in TRIPS}
 
+# Фото локацій (Pixabay) лежать у public/trips — їх бачить і Mini App (GitHub Pages), і бот
+PUBLIC_DIR = Path(__file__).resolve().parent.parent / "public"
+_file_ids: dict[str, str] = {}  # шлях → file_id у Telegram, щоб не завантажувати фото щоразу
+
+
+def gallery(trip_id: str) -> list[str]:
+    return [p for p in TRIPS_BY_ID.get(trip_id, {}).get("gallery", []) if (PUBLIC_DIR / p).is_file()]
+
+
+def photo_input(rel: str):
+    from aiogram.types import FSInputFile
+    return _file_ids.get(rel) or FSInputFile(PUBLIC_DIR / rel)
+
+
+def remember_photo(rel: str | None, message) -> None:
+    if rel and message is not None and getattr(message, "photo", None):
+        _file_ids[rel] = message.photo[-1].file_id
+
 CAPACITY = 8
 
 # Схема салону Opel Vivaro: 2 + 3 + 3. fee — доплата за вибір саме цього місця.

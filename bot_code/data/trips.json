@@ -7,7 +7,7 @@
     "flag": "🇫🇷",
     "price": 120,
     "duration": "1 день",
-    "image": "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1200&q=80",
+    "image": "",
     "highlights": [
       "Версальський палац і сади",
       "Круїз на яхті по Сені",
@@ -24,7 +24,14 @@
     ],
     "pickup_time": "06:00",
     "days": 1,
-    "destination": "Château de Versailles, Versailles, France"
+    "destination": "Château de Versailles, Versailles, France",
+    "thumb": "trips/paris/thumb.jpg",
+    "gallery": [
+      "trips/paris/1.jpg",
+      "trips/paris/2.jpg",
+      "trips/paris/3.jpg",
+      "trips/paris/4.jpg"
+    ]
   },
   {
     "id": "etretat_paris",
@@ -50,7 +57,14 @@
     ],
     "pickup_time": "05:30",
     "days": 1,
-    "destination": "Étretat, France"
+    "destination": "Étretat, France",
+    "thumb": "trips/etretat_paris/thumb.jpg",
+    "gallery": [
+      "trips/etretat_paris/1.jpg",
+      "trips/etretat_paris/2.jpg",
+      "trips/etretat_paris/3.jpg",
+      "trips/etretat_paris/4.jpg"
+    ]
   },
   {
     "id": "alsace_strasbourg",
@@ -75,7 +89,14 @@
     ],
     "pickup_time": "07:30",
     "days": 1,
-    "destination": "Strasbourg Cathedral, Strasbourg, France"
+    "destination": "Strasbourg Cathedral, Strasbourg, France",
+    "thumb": "trips/alsace_strasbourg/thumb.jpg",
+    "gallery": [
+      "trips/alsace_strasbourg/1.jpg",
+      "trips/alsace_strasbourg/2.jpg",
+      "trips/alsace_strasbourg/3.jpg",
+      "trips/alsace_strasbourg/4.jpg"
+    ]
   },
   {
     "id": "neuschwanstein",
@@ -101,7 +122,14 @@
     ],
     "pickup_time": "05:30",
     "days": 1,
-    "destination": "Schloss Neuschwanstein, Schwangau, Germany"
+    "destination": "Schloss Neuschwanstein, Schwangau, Germany",
+    "thumb": "trips/neuschwanstein/thumb.jpg",
+    "gallery": [
+      "trips/neuschwanstein/1.jpg",
+      "trips/neuschwanstein/2.jpg",
+      "trips/neuschwanstein/3.jpg",
+      "trips/neuschwanstein/4.jpg"
+    ]
   },
   {
     "id": "berlin_dresden",
@@ -111,7 +139,7 @@
     "flag": "🇩🇪",
     "price": 190,
     "duration": "2 дні",
-    "image": "https://images.unsplash.com/photo-1560969184-10fe8719e047?auto=format&fit=crop&w=1200&q=80",
+    "image": "",
     "highlights": [
       "Берлін: Бранденбурзькі ворота і Рейхстаг",
       "Дрезден: Цвінгер і Фрауенкірхе",
@@ -125,7 +153,14 @@
     ],
     "pickup_time": "05:00",
     "days": 2,
-    "destination": "Brandenburger Tor, Berlin, Germany"
+    "destination": "Brandenburger Tor, Berlin, Germany",
+    "thumb": "trips/berlin_dresden/thumb.jpg",
+    "gallery": [
+      "trips/berlin_dresden/1.jpg",
+      "trips/berlin_dresden/2.jpg",
+      "trips/berlin_dresden/3.jpg",
+      "trips/berlin_dresden/4.jpg"
+    ]
   },
   {
     "id": "legoland_germany",
@@ -135,7 +170,7 @@
     "flag": "🇩🇪",
     "price": 110,
     "duration": "1 день",
-    "image": "https://images.unsplash.com/photo-1513889961551-628c1e5e2ee9?auto=format&fit=crop&w=1200&q=80",
+    "image": "",
     "highlights": [
       "Понад 60 атракціонів і гірок",
       "Країна Мініленд з 25 млн кубиків LEGO",
@@ -150,7 +185,14 @@
     ],
     "pickup_time": "05:45",
     "days": 1,
-    "destination": "LEGOLAND Deutschland, Günzburg, Germany"
+    "destination": "LEGOLAND Deutschland, Günzburg, Germany",
+    "thumb": "trips/legoland_germany/thumb.jpg",
+    "gallery": [
+      "trips/legoland_germany/1.jpg",
+      "trips/legoland_germany/2.jpg",
+      "trips/legoland_germany/3.jpg",
+      "trips/legoland_germany/4.jpg"
+    ]
   },
   {
     "id": "stuttgart_tour",
@@ -176,7 +218,14 @@
     ],
     "pickup_time": "07:15",
     "days": 1,
-    "destination": "Mercedes-Benz Museum, Stuttgart, Germany"
+    "destination": "Mercedes-Benz Museum, Stuttgart, Germany",
+    "thumb": "trips/stuttgart_tour/thumb.jpg",
+    "gallery": [
+      "trips/stuttgart_tour/1.jpg",
+      "trips/stuttgart_tour/2.jpg",
+      "trips/stuttgart_tour/3.jpg",
+      "trips/stuttgart_tour/4.jpg"
+    ]
   },
   {
     "id": "europa_park",
@@ -186,7 +235,7 @@
     "flag": "🇩🇪",
     "price": 95,
     "duration": "1 день",
-    "image": "https://images.unsplash.com/photo-1513889961551-628c1e5e2ee9?auto=format&fit=crop&w=1200&q=80",
+    "image": "",
     "highlights": [
       "Лише 2 години їзди від Саарбрюккена",
       "19 тематичних країн Європи",
@@ -201,7 +250,14 @@
     ],
     "pickup_time": "07:00",
     "days": 1,
-    "destination": "Europa-Park, Rust, Germany"
+    "destination": "Europa-Park, Rust, Germany",
+    "thumb": "trips/europa_park/thumb.jpg",
+    "gallery": [
+      "trips/europa_park/1.jpg",
+      "trips/europa_park/2.jpg",
+      "trips/europa_park/3.jpg",
+      "trips/europa_park/4.jpg"
+    ]
   },
   {
     "id": "eltz_cochem_mosel",
@@ -227,7 +283,14 @@
     ],
     "pickup_time": "07:30",
     "days": 1,
-    "destination": "Burg Eltz, Wierschem, Germany"
+    "destination": "Burg Eltz, Wierschem, Germany",
+    "thumb": "trips/eltz_cochem_mosel/thumb.jpg",
+    "gallery": [
+      "trips/eltz_cochem_mosel/1.jpg",
+      "trips/eltz_cochem_mosel/2.jpg",
+      "trips/eltz_cochem_mosel/3.jpg",
+      "trips/eltz_cochem_mosel/4.jpg"
+    ]
   },
   {
     "id": "heidelberg_baden",
@@ -252,7 +315,14 @@
     ],
     "pickup_time": "07:30",
     "days": 1,
-    "destination": "Heidelberger Schloss, Heidelberg, Germany"
+    "destination": "Heidelberger Schloss, Heidelberg, Germany",
+    "thumb": "trips/heidelberg_baden/thumb.jpg",
+    "gallery": [
+      "trips/heidelberg_baden/1.jpg",
+      "trips/heidelberg_baden/2.jpg",
+      "trips/heidelberg_baden/3.jpg",
+      "trips/heidelberg_baden/4.jpg"
+    ]
   },
   {
     "id": "amsterdam",
@@ -277,7 +347,14 @@
     ],
     "pickup_time": "05:30",
     "days": 1,
-    "destination": "Giethoorn, Netherlands"
+    "destination": "Giethoorn, Netherlands",
+    "thumb": "trips/amsterdam/thumb.jpg",
+    "gallery": [
+      "trips/amsterdam/1.jpg",
+      "trips/amsterdam/2.jpg",
+      "trips/amsterdam/3.jpg",
+      "trips/amsterdam/4.jpg"
+    ]
   },
   {
     "id": "zaandam_sea_amsterdam",
@@ -287,7 +364,7 @@
     "flag": "🇳🇱",
     "price": 120,
     "duration": "1 день",
-    "image": "https://images.unsplash.com/photo-1512470876302-972faa2aa9a4?auto=format&fit=crop&w=1200&q=80",
+    "image": "",
     "highlights": [
       "Заандам та вітряки Заансе-Сханс",
       "Північне море (піщаний пляж і пірс)",
@@ -303,7 +380,14 @@
     ],
     "pickup_time": "05:30",
     "days": 1,
-    "destination": "Zaanse Schans, Zaandam, Netherlands"
+    "destination": "Zaanse Schans, Zaandam, Netherlands",
+    "thumb": "trips/zaandam_sea_amsterdam/thumb.jpg",
+    "gallery": [
+      "trips/zaandam_sea_amsterdam/1.jpg",
+      "trips/zaandam_sea_amsterdam/2.jpg",
+      "trips/zaandam_sea_amsterdam/3.jpg",
+      "trips/zaandam_sea_amsterdam/4.jpg"
+    ]
   },
   {
     "id": "brussels",
@@ -329,7 +413,14 @@
     ],
     "pickup_time": "06:30",
     "days": 1,
-    "destination": "Grand-Place, Brussels, Belgium"
+    "destination": "Grand-Place, Brussels, Belgium",
+    "thumb": "trips/brussels/thumb.jpg",
+    "gallery": [
+      "trips/brussels/1.jpg",
+      "trips/brussels/2.jpg",
+      "trips/brussels/3.jpg",
+      "trips/brussels/4.jpg"
+    ]
   },
   {
     "id": "bruges",
@@ -354,7 +445,14 @@
     ],
     "pickup_time": "06:00",
     "days": 1,
-    "destination": "Antwerpen-Centraal, Antwerp, Belgium"
+    "destination": "Antwerpen-Centraal, Antwerp, Belgium",
+    "thumb": "trips/bruges/thumb.jpg",
+    "gallery": [
+      "trips/bruges/1.jpg",
+      "trips/bruges/2.jpg",
+      "trips/bruges/3.jpg",
+      "trips/bruges/4.jpg"
+    ]
   },
   {
     "id": "liechtenstein",
@@ -380,7 +478,14 @@
     ],
     "pickup_time": "06:00",
     "days": 1,
-    "destination": "Vaduz, Liechtenstein"
+    "destination": "Vaduz, Liechtenstein",
+    "thumb": "trips/liechtenstein/thumb.jpg",
+    "gallery": [
+      "trips/liechtenstein/1.jpg",
+      "trips/liechtenstein/2.jpg",
+      "trips/liechtenstein/3.jpg",
+      "trips/liechtenstein/4.jpg"
+    ]
   },
   {
     "id": "swiss_rhine_zurich",
@@ -390,7 +495,7 @@
     "flag": "🇨🇭",
     "price": 120,
     "duration": "1 день",
-    "image": "https://images.unsplash.com/photo-1527668752968-14dc70a27c95?auto=format&fit=crop&w=1200&q=80",
+    "image": "",
     "highlights": [
       "Рейнський водоспад (Rheinfall)",
       "Історичний центр і озеро Цюриха",
@@ -406,7 +511,14 @@
     ],
     "pickup_time": "06:00",
     "days": 1,
-    "destination": "Rheinfall, Neuhausen am Rheinfall, Switzerland"
+    "destination": "Rheinfall, Neuhausen am Rheinfall, Switzerland",
+    "thumb": "trips/swiss_rhine_zurich/thumb.jpg",
+    "gallery": [
+      "trips/swiss_rhine_zurich/1.jpg",
+      "trips/swiss_rhine_zurich/2.jpg",
+      "trips/swiss_rhine_zurich/3.jpg",
+      "trips/swiss_rhine_zurich/4.jpg"
+    ]
   },
   {
     "id": "swiss_aare_bern",
@@ -432,7 +544,14 @@
     ],
     "pickup_time": "06:00",
     "days": 1,
-    "destination": "Aareschlucht, Meiringen, Switzerland"
+    "destination": "Aareschlucht, Meiringen, Switzerland",
+    "thumb": "trips/swiss_aare_bern/thumb.jpg",
+    "gallery": [
+      "trips/swiss_aare_bern/1.jpg",
+      "trips/swiss_aare_bern/2.jpg",
+      "trips/swiss_aare_bern/3.jpg",
+      "trips/swiss_aare_bern/4.jpg"
+    ]
   },
   {
     "id": "cote_dazur",
@@ -457,7 +576,14 @@
     ],
     "pickup_time": "05:00",
     "days": 3,
-    "destination": "Nice, France"
+    "destination": "Nice, France",
+    "thumb": "trips/cote_dazur/thumb.jpg",
+    "gallery": [
+      "trips/cote_dazur/1.jpg",
+      "trips/cote_dazur/2.jpg",
+      "trips/cote_dazur/3.jpg",
+      "trips/cote_dazur/4.jpg"
+    ]
   },
   {
     "id": "mont_saint_michel",
@@ -481,7 +607,14 @@
     ],
     "pickup_time": "05:00",
     "days": 2,
-    "destination": "Mont-Saint-Michel, France"
+    "destination": "Mont-Saint-Michel, France",
+    "thumb": "trips/mont_saint_michel/thumb.jpg",
+    "gallery": [
+      "trips/mont_saint_michel/1.jpg",
+      "trips/mont_saint_michel/2.jpg",
+      "trips/mont_saint_michel/3.jpg",
+      "trips/mont_saint_michel/4.jpg"
+    ]
   },
   {
     "id": "como_milan",
@@ -505,7 +638,14 @@
     ],
     "pickup_time": "05:00",
     "days": 2,
-    "destination": "Como, Italy"
+    "destination": "Como, Italy",
+    "thumb": "trips/como_milan/thumb.jpg",
+    "gallery": [
+      "trips/como_milan/1.jpg",
+      "trips/como_milan/2.jpg",
+      "trips/como_milan/3.jpg",
+      "trips/como_milan/4.jpg"
+    ]
   },
   {
     "id": "prague",
@@ -531,7 +671,14 @@
     ],
     "pickup_time": "05:00",
     "days": 1,
-    "destination": "Prague Castle, Prague, Czechia"
+    "destination": "Prague Castle, Prague, Czechia",
+    "thumb": "trips/prague/thumb.jpg",
+    "gallery": [
+      "trips/prague/1.jpg",
+      "trips/prague/2.jpg",
+      "trips/prague/3.jpg",
+      "trips/prague/4.jpg"
+    ]
   },
   {
     "id": "salzburg_hallstatt",
@@ -557,7 +704,14 @@
     ],
     "pickup_time": "04:30",
     "days": 1,
-    "destination": "Hallstatt, Austria"
+    "destination": "Hallstatt, Austria",
+    "thumb": "trips/salzburg_hallstatt/thumb.jpg",
+    "gallery": [
+      "trips/salzburg_hallstatt/1.jpg",
+      "trips/salzburg_hallstatt/2.jpg",
+      "trips/salzburg_hallstatt/3.jpg",
+      "trips/salzburg_hallstatt/4.jpg"
+    ]
   },
   {
     "id": "bruges_ghent_brussels",
@@ -567,7 +721,7 @@
     "flag": "🇧🇪",
     "price": 120,
     "duration": "1 день",
-    "image": "https://images.unsplash.com/photo-1559113202-c916b8e44373?auto=format&fit=crop&w=1200&q=80",
+    "image": "",
     "highlights": [
       "Казковий Брюгге: Озеро Кохання з лебедями та набережна Розенхудкай",
       "Середньовічний Гент: замок графів Фландрії Гравенстен та набережні Граслей і Корнлей",
@@ -583,6 +737,13 @@
     ],
     "pickup_time": "05:30",
     "days": 1,
-    "destination": "Bruges, Belgium"
+    "destination": "Bruges, Belgium",
+    "thumb": "trips/bruges_ghent_brussels/thumb.jpg",
+    "gallery": [
+      "trips/bruges_ghent_brussels/1.jpg",
+      "trips/bruges_ghent_brussels/2.jpg",
+      "trips/bruges_ghent_brussels/3.jpg",
+      "trips/bruges_ghent_brussels/4.jpg"
+    ]
   }
 ]

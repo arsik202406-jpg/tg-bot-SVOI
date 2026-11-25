@@ -6,20 +6,63 @@ import { haptic, openLink, requestPhone, tg } from '../tg';
 import VanMap from './VanMap';
 import { Choice } from './ui';
 
-// Фото туру або охайна заглушка з прапором, якщо фото ще немає
-function TripImage({ trip, className, hero }: { trip: Trip; className?: string; hero?: boolean }) {
-  const [broken, setBroken] = useState(false);
-  if (!trip.image || broken) {
-    return (
-      <div className={`flex items-center justify-center bg-gradient-to-br from-accent-soft via-surface-2 to-surface-2 ${className ?? ''}`} aria-hidden>
-        <div className={`text-center ${hero ? '-mt-16' : ''}`}>
-          <div className="text-6xl leading-none">{trip.flag}</div>
-          {!hero && <div className="mt-2 text-xs font-extrabold tracking-[0.2em] text-muted uppercase">{trip.country}</div>}
-        </div>
+function Placeholder({ trip, className, hero }: { trip: Trip; className?: string; hero?: boolean }) {
+  return (
+    <div className={`flex items-center justify-center bg-gradient-to-br from-accent-soft via-surface-2 to-surface-2 ${className ?? ''}`} aria-hidden>
+      <div className={`text-center ${hero ? '-mt-16' : ''}`}>
+        <div className="text-6xl leading-none">{trip.flag}</div>
+        {!hero && <div className="mt-2 text-xs font-extrabold tracking-[0.2em] text-muted uppercase">{trip.country}</div>}
       </div>
-    );
-  }
-  return <img src={trip.image} alt="" loading="lazy" onError={() => setBroken(true)} className={`object-cover ${className ?? ''}`} />;
+    </div>
+  );
+}
+
+// Обкладинка в списку: власне фото адміна або легке превʼю з каталогу
+function TripImage({ trip, className }: { trip: Trip; className?: string }) {
+  const [broken, setBroken] = useState(false);
+  const src = trip.image || trip.thumb || trip.gallery?.[0];
+  if (!src || broken) return <Placeholder trip={trip} className={className} />;
+  return <img src={src} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} className={`object-cover ${className ?? ''}`} />;
+}
+
+// Гортання фото локацій пальцем, з крапками-індикаторами
+function TripGallery({ trip, className }: { trip: Trip; className?: string }) {
+  const [broken, setBroken] = useState<Set<string>>(new Set());
+  const [index, setIndex] = useState(0);
+  const all = [trip.image, ...(trip.gallery ?? [])].filter((s): s is string => !!s && !broken.has(s));
+  const photos = [...new Set(all)];
+  if (photos.length === 0) return <Placeholder trip={trip} className={className} hero />;
+  return (
+    <div className={`relative ${className ?? ''}`}>
+      <div
+        className="no-scrollbar flex h-full w-full snap-x snap-mandatory overflow-x-auto"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          setIndex(Math.round(el.scrollLeft / Math.max(el.clientWidth, 1)));
+        }}
+      >
+        {photos.map((src, i) => (
+          <img
+            key={src}
+            src={src}
+            alt=""
+            loading={i === 0 ? 'eager' : 'lazy'}
+            decoding="async"
+            draggable={false}
+            onError={() => setBroken((b) => new Set(b).add(src))}
+            className="h-full w-full shrink-0 snap-center object-cover"
+          />
+        ))}
+      </div>
+      {photos.length > 1 && (
+        <div className="pointer-events-none absolute top-3 right-0 left-0 flex justify-center gap-1.5">
+          {photos.map((src, i) => (
+            <span key={src} className={`h-1.5 rounded-full bg-white shadow transition-all ${i === index ? 'w-5 opacity-100' : 'w-1.5 opacity-60'}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function reviewWord(n: number): string {
@@ -112,9 +155,9 @@ export function TripStep({ trip, catalog, departures, draft, setDraft, onWaitlis
     <div className="space-y-5">
       <div className="card overflow-hidden">
         <div className="relative aspect-[16/10]">
-          <TripImage trip={trip} className="h-full w-full" hero />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/5 to-transparent" />
-          <div className="absolute right-4 bottom-4 left-4 text-white">
+          <TripGallery trip={trip} className="h-full w-full" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/5 to-transparent" />
+          <div className="pointer-events-none absolute right-4 bottom-4 left-4 text-white">
             <div className="text-sm font-bold opacity-90">
               {trip.flag} {trip.country} · {trip.duration}
             </div>

@@ -8,6 +8,8 @@ export interface Trip {
   duration: string;
   days: number;
   image: string;
+  thumb?: string;
+  gallery?: string[];
   highlights: string[];
   description: string;
   program: string[];

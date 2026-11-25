@@ -136,3 +136,11 @@ body {
     animation: none;
   }
 }
+
+/* Гортання фото без смуги прокрутки */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
