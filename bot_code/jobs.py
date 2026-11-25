@@ -175,11 +175,26 @@ async def _retention(now: datetime) -> None:
         await s.commit()
 
 
+# Години, о котрих планувальник заглядає в базу (о HH:05). Рідкі перевірки дають базі Neon «заснути»
+# між ними й не витрачати безкоштовні години роботи. Усі вікна завдань («о 14:00 і пізніше») це враховують.
+CHECK_HOURS = {3, *range(7, 23)}
+
+
+def should_check(now: datetime, last: datetime | None) -> bool:
+    if now.hour not in CHECK_HOURS or now.minute < 5:
+        return False
+    return last is None or (now.date(), now.hour) != (last.date(), last.hour)
+
+
 async def scheduler(bot: Bot) -> None:
     await asyncio.sleep(20)  # даємо боту запуститись
+    last: datetime | None = None
     while True:
-        try:
-            await run_once(bot)
-        except Exception:  # noqa: BLE001
-            log.exception("Планувальник")
+        now = datetime.now(cat.TZ)
+        if should_check(now, last):
+            last = now
+            try:
+                await run_once(bot, now)
+            except Exception:  # noqa: BLE001
+                log.exception("Планувальник")
         await asyncio.sleep(60)
