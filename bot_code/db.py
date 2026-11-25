@@ -72,6 +72,9 @@ class Booking(Base):
     pickup_order: Mapped[int | None] = mapped_column(Integer, nullable=True)    # порядок у маршруті
     paid: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)  # 1 — оплачено
     attend: Mapped[str | None] = mapped_column(String(8), nullable=True)        # asked / yes / no
+    children: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)  # скільки з pax — діти до 12
+    child_ages: Mapped[str | None] = mapped_column(String(32), nullable=True)        # "4,9"
+    boarded: Mapped[str | None] = mapped_column(String(8), nullable=True)            # день поїздки: yes / noshow
 
     departure: Mapped[Departure] = relationship(back_populates="bookings", lazy="selectin")
 
@@ -141,6 +144,19 @@ class KnownChat(Base):
     type: Mapped[str] = mapped_column(String(16))  # group / supergroup / channel
     is_admin: Mapped[int] = mapped_column(Integer, default=0)
     last_welcome_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class TripGroup(Base):
+    """Telegram-група з «пулу»: бот бере її під поїздку напередодні ввечері, а після поїздки очищує.
+    Бот не може сам створювати групи (обмеження Telegram), тому адмін один раз створює 1–3 групи й додає бота."""
+    __tablename__ = "trip_groups"
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    title: Mapped[str] = mapped_column(String(128), default="")
+    departure_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    invite_link: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    first_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    members: Mapped[str | None] = mapped_column(Text, nullable=True)  # id учасників через кому, щоб потім прибрати
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 

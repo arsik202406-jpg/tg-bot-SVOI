@@ -184,7 +184,9 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "departure_id": {"type": "integer", "description": "departure_id з розділу ДАТИ"},
-                "pax": {"type": "integer", "minimum": 1, "maximum": 8},
+                "pax": {"type": "integer", "minimum": 1, "maximum": 8, "description": "усього людей разом із дітьми"},
+                "children": {"type": "integer", "minimum": 0, "description": "скільки з них діти до 12 років (дитячий квиток)"},
+                "child_ages": {"type": "array", "items": {"type": "integer"}, "description": "вік кожної дитини — обов'язково, якщо є діти"},
                 "name": {"type": "string"},
                 "phone": {"type": "string"},
                 "city": {"type": "string", "enum": ["saarland", "trier", "luxembourg", "other"]},
@@ -231,7 +233,8 @@ async def _tool_create_booking(bot: Bot, user, args: dict) -> dict:
                 s, departure_id=int(args["departure_id"]), pax=int(args["pax"]), seats=None,
                 name=str(args["name"]), phone=str(args["phone"]), city=city, address=str(args["address"]),
                 user_id=user.id, username=user.username, comment=args.get("comment"), source="ai",
-                postcode=args.get("postcode"), district=args.get("district"))
+                postcode=args.get("postcode"), district=args.get("district"),
+                children=int(args.get("children") or 0), child_ages=args.get("child_ages"))
     except BookingError as e:
         return {"ok": False, "error": str(e)}
     except (KeyError, ValueError) as e:

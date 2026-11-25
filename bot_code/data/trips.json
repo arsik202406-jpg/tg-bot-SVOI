@@ -31,7 +31,12 @@
       "trips/paris/2.jpg",
       "trips/paris/3.jpg",
       "trips/paris/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 48.8566,
+      "lon": 2.3522,
+      "city": "Париж"
+    }
   },
   {
     "id": "etretat_paris",
@@ -64,7 +69,12 @@
       "trips/etretat_paris/2.jpg",
       "trips/etretat_paris/3.jpg",
       "trips/etretat_paris/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 49.707,
+      "lon": 0.2045,
+      "city": "Етрета"
+    }
   },
   {
     "id": "alsace_strasbourg",
@@ -96,7 +106,12 @@
       "trips/alsace_strasbourg/2.jpg",
       "trips/alsace_strasbourg/3.jpg",
       "trips/alsace_strasbourg/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 48.5734,
+      "lon": 7.7521,
+      "city": "Страсбург"
+    }
   },
   {
     "id": "neuschwanstein",
@@ -129,7 +144,12 @@
       "trips/neuschwanstein/2.jpg",
       "trips/neuschwanstein/3.jpg",
       "trips/neuschwanstein/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 47.5576,
+      "lon": 10.7498,
+      "city": "Швангау"
+    }
   },
   {
     "id": "berlin_dresden",
@@ -160,7 +180,12 @@
       "trips/berlin_dresden/2.jpg",
       "trips/berlin_dresden/3.jpg",
       "trips/berlin_dresden/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 52.52,
+      "lon": 13.405,
+      "city": "Берлін"
+    }
   },
   {
     "id": "legoland_germany",
@@ -192,7 +217,12 @@
       "trips/legoland_germany/2.jpg",
       "trips/legoland_germany/3.jpg",
       "trips/legoland_germany/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 48.4253,
+      "lon": 10.299,
+      "city": "Гюнцбург"
+    }
   },
   {
     "id": "stuttgart_tour",
@@ -225,7 +255,12 @@
       "trips/stuttgart_tour/2.jpg",
       "trips/stuttgart_tour/3.jpg",
       "trips/stuttgart_tour/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 48.7758,
+      "lon": 9.1829,
+      "city": "Штутгарт"
+    }
   },
   {
     "id": "europa_park",
@@ -257,7 +292,12 @@
       "trips/europa_park/2.jpg",
       "trips/europa_park/3.jpg",
       "trips/europa_park/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 48.266,
+      "lon": 7.722,
+      "city": "Руст"
+    }
   },
   {
     "id": "eltz_cochem_mosel",
@@ -290,7 +330,12 @@
       "trips/eltz_cochem_mosel/2.jpg",
       "trips/eltz_cochem_mosel/3.jpg",
       "trips/eltz_cochem_mosel/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 50.1469,
+      "lon": 7.1667,
+      "city": "Кохем"
+    }
   },
   {
     "id": "heidelberg_baden",
@@ -322,7 +367,12 @@
       "trips/heidelberg_baden/2.jpg",
       "trips/heidelberg_baden/3.jpg",
       "trips/heidelberg_baden/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 49.3988,
+      "lon": 8.6724,
+      "city": "Гайдельберг"
+    }
   },
   {
     "id": "amsterdam",
@@ -354,7 +404,12 @@
       "trips/amsterdam/2.jpg",
       "trips/amsterdam/3.jpg",
       "trips/amsterdam/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 52.3676,
+      "lon": 4.9041,
+      "city": "Амстердам"
+    }
   },
   {
     "id": "zaandam_sea_amsterdam",
@@ -387,7 +442,12 @@
       "trips/zaandam_sea_amsterdam/2.jpg",
       "trips/zaandam_sea_amsterdam/3.jpg",
       "trips/zaandam_sea_amsterdam/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 52.474,
+      "lon": 4.8166,
+      "city": "Заандам"
+    }
   },
   {
     "id": "brussels",
@@ -420,7 +480,12 @@
       "trips/brussels/2.jpg",
       "trips/brussels/3.jpg",
       "trips/brussels/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 50.8467,
+      "lon": 4.3525,
+      "city": "Брюссель"
+    }
   },
   {
     "id": "bruges",
@@ -452,7 +517,12 @@
       "trips/bruges/2.jpg",
       "trips/bruges/3.jpg",
       "trips/bruges/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 51.2093,
+      "lon": 3.2247,
+      "city": "Брюгге"
+    }
   },
   {
     "id": "liechtenstein",
@@ -485,7 +555,12 @@
       "trips/liechtenstein/2.jpg",
       "trips/liechtenstein/3.jpg",
       "trips/liechtenstein/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 47.141,
+      "lon": 9.5209,
+      "city": "Вадуц"
+    }
   },
   {
     "id": "swiss_rhine_zurich",
@@ -518,7 +593,12 @@
       "trips/swiss_rhine_zurich/2.jpg",
       "trips/swiss_rhine_zurich/3.jpg",
       "trips/swiss_rhine_zurich/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 47.3769,
+      "lon": 8.5417,
+      "city": "Цюрих"
+    }
   },
   {
     "id": "swiss_aare_bern",
@@ -551,7 +631,12 @@
       "trips/swiss_aare_bern/2.jpg",
       "trips/swiss_aare_bern/3.jpg",
       "trips/swiss_aare_bern/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 46.5935,
+      "lon": 7.9091,
+      "city": "Лаутербруннен"
+    }
   },
   {
     "id": "cote_dazur",
@@ -583,7 +668,12 @@
       "trips/cote_dazur/2.jpg",
       "trips/cote_dazur/3.jpg",
       "trips/cote_dazur/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 43.7102,
+      "lon": 7.262,
+      "city": "Ніцца"
+    }
   },
   {
     "id": "mont_saint_michel",
@@ -614,7 +704,12 @@
       "trips/mont_saint_michel/2.jpg",
       "trips/mont_saint_michel/3.jpg",
       "trips/mont_saint_michel/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 48.6361,
+      "lon": -1.5115,
+      "city": "Мон-Сен-Мішель"
+    }
   },
   {
     "id": "como_milan",
@@ -645,7 +740,12 @@
       "trips/como_milan/2.jpg",
       "trips/como_milan/3.jpg",
       "trips/como_milan/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 45.8081,
+      "lon": 9.0852,
+      "city": "Комо"
+    }
   },
   {
     "id": "prague",
@@ -678,7 +778,12 @@
       "trips/prague/2.jpg",
       "trips/prague/3.jpg",
       "trips/prague/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 50.0755,
+      "lon": 14.4378,
+      "city": "Прага"
+    }
   },
   {
     "id": "salzburg_hallstatt",
@@ -711,7 +816,12 @@
       "trips/salzburg_hallstatt/2.jpg",
       "trips/salzburg_hallstatt/3.jpg",
       "trips/salzburg_hallstatt/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 47.5622,
+      "lon": 13.6493,
+      "city": "Гальштат"
+    }
   },
   {
     "id": "bruges_ghent_brussels",
@@ -744,6 +854,11 @@
       "trips/bruges_ghent_brussels/2.jpg",
       "trips/bruges_ghent_brussels/3.jpg",
       "trips/bruges_ghent_brussels/4.jpg"
-    ]
+    ],
+    "weather": {
+      "lat": 51.2093,
+      "lon": 3.2247,
+      "city": "Брюгге"
+    }
   }
 ]

@@ -110,5 +110,46 @@ def seat_fee(seats: list[int], auto: bool) -> int:
     return sum(SEATS_BY_NO[s]["fee"] for s in seats)
 
 
+# ---------- Діти ----------
+CHILD_MAX_AGE = 11  # дитячий тариф — до 12 років (тобто 0–11)
+
+
+def child_discount(trip: dict) -> int:
+    """Знижка за одну дитину: багатоденна поїздка −10 %, одноденна дорожча за 100 € — −20 €, інакше −15 €.
+    Для окремої поїздки можна задати свою ціну полем child_price у trips.json."""
+    price = trip["price"]
+    if trip.get("child_price") is not None:
+        return max(price - int(trip["child_price"]), 0)
+    if trip.get("days", 1) > 1:
+        return round(price * 0.10)
+    return 20 if price > 100 else 15
+
+
+def child_price(trip: dict) -> int:
+    return trip["price"] - child_discount(trip)
+
+
+def seat_word(age: int) -> str:
+    """Яке автокрісло потрібне дитині (орієнтовно за віком)."""
+    if age < 1:
+        return "люлька/автокрісло 0+"
+    if age < 4:
+        return "автокрісло"
+    return "бустер"
+
+
+# Валюта на місці (для пам'ятки)
+CURRENCY = {"Швейцарія": "швейцарські франки (CHF) — євро приймають, але решту дають франками",
+            "Ліхтенштейн": "швейцарські франки (CHF), євро теж приймають",
+            "Чехія": "чеські крони (CZK) — найвигідніше платити карткою"}
+
+_GUIDES_FILE = Path(__file__).resolve().parent / "data" / "guides.json"
+GUIDES: dict[str, dict] = json.loads(_GUIDES_FILE.read_text(encoding="utf-8")) if _GUIDES_FILE.exists() else {}
+
+for _t in TRIPS:
+    _t["child_price"] = child_price(_t)
+    _t["child_max_age"] = CHILD_MAX_AGE
+
+
 def public_catalog() -> dict:
     return {"trips": TRIPS, "seats": SEATS, "capacity": CAPACITY, "pickup_cities": PICKUP_CITIES}

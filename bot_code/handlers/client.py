@@ -20,7 +20,7 @@ from ..db import touch_user
 from ..db import (Booking, DateRequest, Departure, Session, SupportThread, WaitlistEntry, get_customer, media_list,
                   taken_seats, trip_photo)
 from ..services import (clean_postcode, full_address, load_booking, BookingError, booking_admin_text, booking_client_text, cancel_booking, create_booking,
-                        free_count, notify_admins, notify_new_booking, payment_note, upcoming_departures,
+                        free_count, notify_admins, notify_new_booking, parse_ages, payment_note, price_for, upcoming_departures,
                         user_bookings)
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,8 @@ class Propose(StatesGroup):
 
 class Book(StatesGroup):
     pax = State()
+    kids = State()
+    kid_ages = State()
     seats = State()
     city = State()
     saved_address = State()
@@ -357,7 +359,7 @@ async def start_booking(message: Message, state: FSMContext, dep_id: int):
     await state.set_state(Book.pax)
     await message.answer(
         f"<b>{trip['flag']} {escape(trip['short_title'])}</b>, {cat.fmt_departure(dep.date, trip['days'])}\n\n"
-        f"<b>Скільки людей поїде?</b> (вільно місць: {free})",
+        f"<b>Скільки людей поїде?</b> Разом із дітьми (вільно місць: {free})",
         reply_markup=kb.pax_kb(free),
     )
 
@@ -368,9 +370,63 @@ async def cb_pax(callback: CallbackQuery, callback_data: kb.PaxCb, state: FSMCon
     data = await state.get_data()
     async with Session() as s:
         taken = await taken_seats(s, data["dep_id"])
-    await state.update_data(pax=callback_data.n, seats=[])
+    await state.update_data(pax=callback_data.n, seats=[], children=0, child_ages=[])
+    if callback_data.n >= 2:
+        trip = cat.TRIPS_BY_ID[data["trip_id"]]
+        await state.set_state(Book.kids)
+        await callback.message.edit_text(
+            f"<b>Чи є серед них діти до {cat.CHILD_MAX_AGE + 1} років?</b>\n\n"
+            f"👶 Дитячий квиток: <b>{cat.child_price(trip)} €</b> замість {trip['price']} €",
+            reply_markup=kb.kids_kb(callback_data.n))
+        return
     await state.set_state(Book.seats)
     await callback.message.edit_text(seats_prompt(callback_data.n, []), reply_markup=kb.seats_kb(taken, [], callback_data.n))
+
+
+@router.callback_query(kb.KidsCb.filter(), Book.kids)
+async def cb_kids(callback: CallbackQuery, callback_data: kb.KidsCb, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    n = max(0, min(callback_data.n, data["pax"] - 1))
+    await state.update_data(children=n, child_ages=[])
+    if n == 0:
+        return await show_seats(callback.message, state, edit=True)
+    await state.set_state(Book.kid_ages)
+    word = "дитині" if n == 1 else "дітям"
+    await callback.message.edit_text(
+        f"<b>Скільки років {word}?</b>\n\nНапишіть вік{' кожної дитини через кому' if n > 1 else ''}, "
+        f"наприклад: <code>{'7' if n == 1 else '4, 9'}</code>\n\n"
+        "Це потрібно, щоб підготувати дитяче автокрісло або бустер — так вимагають правила перевезення дітей.",
+        reply_markup=kb.InlineKeyboardMarkup(inline_keyboard=[[kb.IB(text="⬅️ Назад", callback_data=kb.StepCb(action="restart").pack())]]))
+
+
+@router.message(Book.kid_ages, F.text)
+async def msg_kid_ages(message: Message, state: FSMContext):
+    data = await state.get_data()
+    n = data.get("children", 0)
+    ages = parse_ages(message.text)
+    if len(ages) != n:
+        await message.answer(f"Напишіть, будь ласка, {n} {'число' if n == 1 else 'числа'} через кому, наприклад: "
+                             f"<code>{'7' if n == 1 else ', '.join(['4', '9', '11', '2', '6', '8', '10'][:n])}</code>")
+        return
+    if any(a > cat.CHILD_MAX_AGE for a in ages):
+        older = sum(1 for a in ages if a > cat.CHILD_MAX_AGE)
+        ages = [a for a in ages if a <= cat.CHILD_MAX_AGE]
+        await message.answer(f"ℹ️ Дитячий квиток діє до {cat.CHILD_MAX_AGE + 1} років, тому {older} з дітей їде за звичайною ціною.")
+    await state.update_data(children=len(ages), child_ages=ages)
+    await show_seats(message, state)
+
+
+async def show_seats(message: Message, state: FSMContext, edit: bool = False):
+    data = await state.get_data()
+    async with Session() as s:
+        taken = await taken_seats(s, data["dep_id"])
+    await state.set_state(Book.seats)
+    pax = data["pax"]
+    if edit:
+        await message.edit_text(seats_prompt(pax, []), reply_markup=kb.seats_kb(taken, [], pax))
+    else:
+        await message.answer(seats_prompt(pax, []), reply_markup=kb.seats_kb(taken, [], pax))
 
 
 def seats_prompt(pax: int, selected: list[int]) -> str:
@@ -592,13 +648,15 @@ async def show_summary(message: Message, state: FSMContext):
     seats = data.get("seats") or []
     auto = data.get("auto", True)
     fee = cat.seat_fee(seats, auto)
-    total = trip["price"] * data["pax"] + fee
+    kids = data.get("children", 0) or 0
+    total = price_for(trip, data["pax"], seats, auto, kids)
     seats_line = "будь-які вільні (без доплати)" if auto else f"{', '.join(map(str, seats))} (+{fee} €)" if fee else ", ".join(map(str, seats))
     text = (
         "<b>Перевірте, будь ласка:</b>\n\n"
         f"{trip['flag']} <b>{escape(trip['short_title'])}</b>\n"
         f"📅 {cat.fmt_departure(dep.date, trip['days'])}\n"
-        f"👥 Пасажирів: {data['pax']}\n"
+        f"👥 Пасажирів: {data['pax']}"
+        + (f" (з них дітей: {kids}, вік {', '.join(map(str, data.get('child_ages') or []))})" if kids else "") + "\n"
         f"💺 Місця: {seats_line}\n"
         f"📍 {escape(data['city'])}: {escape(data['address'])}, {escape(data.get('postcode') or '')}"
         + (f", район {escape(data['district'])}" if data.get("district") else "") + "\n"
@@ -606,6 +664,9 @@ async def show_summary(message: Message, state: FSMContext):
     )
     if data.get("comment"):
         text += f"💬 {escape(data['comment'])}\n"
+    if kids:
+        text += (f"\n💶 {data['pax'] - kids} × {trip['price']} € + {kids} × {cat.child_price(trip)} € (дитячий)"
+                 + (f" + {fee} € за місця" if fee else ""))
     text += f"\n💶 <b>Разом: {total} €</b>\n{payment_note(data['trip_id'])}"
     text += "\n\n<i>Натискаючи «Підтвердити», ви погоджуєтесь з обробкою даних для організації поїздки.</i>"
     await state.set_state(Book.confirm)
@@ -623,6 +684,7 @@ async def cb_confirm(callback: CallbackQuery, state: FSMContext, bot: Bot):
                 seats=None if data.get("auto", True) else data.get("seats"),
                 name=user.full_name, phone=data["phone"], city=data["city"], address=data["address"],
                 postcode=data.get("postcode"), district=data.get("district"),
+                children=data.get("children", 0), child_ages=data.get("child_ages"),
                 user_id=user.id, username=user.username, comment=data.get("comment"), source="bot")
     except BookingError as e:
         await callback.answer()
@@ -652,6 +714,7 @@ async def cb_restart(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(kb.PaxCb.filter())
+@router.callback_query(kb.KidsCb.filter())
 @router.callback_query(kb.SeatCb.filter())
 @router.callback_query(kb.CityCb.filter())
 @router.callback_query(kb.StepCb.filter())

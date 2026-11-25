@@ -9,6 +9,8 @@ export interface Trip {
   days: number;
   image: string;
   thumb?: string;
+  child_price?: number;
+  child_max_age?: number;
   gallery?: string[];
   highlights: string[];
   description: string;
@@ -68,6 +70,7 @@ export interface MyBooking {
   postcode?: string | null;
   district?: string | null;
   pickup_time?: string | null;
+  children?: number;
 }
 
 export interface SavedContact {
@@ -82,6 +85,8 @@ export interface Draft {
   tripId: string | null;
   departureId: number | null;
   pax: number;
+  kids: number;
+  kidAges: (number | null)[];
   seats: number[];
   auto: boolean;
   city: string;
