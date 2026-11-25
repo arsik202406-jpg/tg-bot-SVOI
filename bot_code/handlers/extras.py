@@ -265,6 +265,7 @@ async def cb_delete_yes(callback: CallbackQuery, bot: Bot):
     async with Session() as s:
         for b in await s.scalars(select(Booking).where(Booking.user_id == uid)):
             b.name, b.phone, b.address, b.username, b.comment, b.user_id = "Видалено", "", "видалено", None, None, None
+            b.postcode, b.district = None, None
         for model in (Customer, BotUser, AiPause):
             row = await s.get(model, uid)
             if row:

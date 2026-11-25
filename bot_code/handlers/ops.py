@@ -19,7 +19,7 @@ from ..config import settings
 from ..db import (Booking, BotUser, DateRequest, Departure, Review, Session, utcnow)
 from ..route import RouteError, Stop, build_plan
 from ..screens import KeepAll, keep
-from ..services import active_bookings, departure_label, load_booking
+from ..services import active_bookings, departure_label, full_address, load_booking, map_query
 
 log = logging.getLogger(__name__)
 router = Router(name="ops")
@@ -102,7 +102,7 @@ async def render_route(dep_id: int) -> tuple[str, InlineKeyboardMarkup]:
             f"🏁 Куди: {escape(dest)}\n🕚 Бути на місці: <b>{arrive.strftime('%H:%M')}</b>\n")
     if not home:
         return head + "\nСпершу вкажіть адресу, звідки ви виїжджаєте 👇", route_kb(dep_id, None)
-    stops = [Stop(b.id, b.name, map_address(b.address, b.city), b.pax, b.phone) for b in bookings]
+    stops = [Stop(b.id, b.name, map_address(map_query(b), b.city), b.pax, b.phone) for b in bookings]
     try:
         plan = await build_plan(home, stops, dest, arrive)
     except RouteError as e:
@@ -164,7 +164,7 @@ async def cb_approve(callback: CallbackQuery, callback_data: OpsCb, bot: Bot):
                         b.user_id,
                         f"🚐 <b>Час посадки на поїздку {trip.get('flag', '')} {escape(trip.get('short_title', ''))}</b>\n"
                         f"📅 {cat.fmt_departure(dep.date, trip.get('days', 1))}\n"
-                        f"🕐 Заберемо вас о <b>{b.pickup_time}</b>\n📍 {escape(b.address)}\n\n"
+                        f"🕐 Заберемо вас о <b>{b.pickup_time}</b>\n📍 {escape(full_address(b))}\n\n"
                         "Будь ласка, будьте готові за 5 хвилин. Якщо щось зміниться — напишемо тут.")
                 sent += 1
             except Exception as e:  # noqa: BLE001

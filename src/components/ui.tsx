@@ -105,10 +105,15 @@ export function Choice({ active, onClick, children, disabled }: { active: boolea
       disabled={disabled}
       onClick={onClick}
       aria-pressed={active}
-      className={`w-full rounded-2xl border-2 p-4 text-left transition-all active:scale-[0.99] ${
-        active ? 'border-accent bg-accent-soft' : 'border-transparent bg-surface shadow-sm'
+      className={`relative w-full rounded-2xl border-2 p-4 text-left transition-all active:scale-[0.99] ${
+        active ? 'border-accent bg-accent-soft shadow-[0_0_0_2px_var(--accent)]' : 'border-line bg-surface shadow-sm'
       } ${disabled ? 'opacity-45' : ''}`}
     >
+      {active && (
+        <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[13px] font-black text-accent-ink shadow" aria-hidden>
+          ✓
+        </span>
+      )}
       {children}
     </button>
   );

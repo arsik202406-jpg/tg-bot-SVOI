@@ -27,7 +27,7 @@ from . import keyboards as kb
 from .config import settings
 from .db import Booking, Departure, Session, job_done
 from .screens import keep
-from .services import STATUS_UA, active_bookings, departure_label, notify_admins, seats_text
+from .services import STATUS_UA, active_bookings, departure_label, full_address, notify_admins, seats_text
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ async def _departure_jobs(bot: Bot, dep: Departure, now: datetime) -> None:
                     await bot.send_message(
                         b.user_id,
                         f"🚐 <b>Завтра поїздка!</b>\n{trip.get('flag', '')} {escape(trip.get('short_title', ''))}, "
-                        f"{cat.fmt_departure(dep.date, days)}\n\n{when}📍 {escape(b.address)}\n"
+                        f"{cat.fmt_departure(dep.date, days)}\n\n{when}📍 {escape(full_address(b))}\n"
                         f"👥 {b.pax} ос. · 💶 {b.price_total} €\n\n<b>Підтвердіть, будь ласка, що ви їдете:</b>",
                         reply_markup=attend_kb(b.id))
             except Exception as e:  # noqa: BLE001
@@ -146,12 +146,12 @@ async def _weekly_backup(bot: Bot, now: datetime) -> None:
                                     .order_by(Departure.date, Booking.id)))
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
-    w.writerow(["Дата", "Поїздка", "Бронь", "Статус", "Ім'я", "Телефон", "Місто", "Адреса", "Пасажирів", "Місця",
+    w.writerow(["Дата", "Поїздка", "Бронь", "Статус", "Ім'я", "Телефон", "Місто", "Адреса", "Індекс", "Пасажирів", "Місця",
                 "Сума €", "Оплачено", "Час посадки"])
     for b in rows:
         t = cat.TRIPS_BY_ID.get(b.departure.trip_id, {})
         w.writerow([b.departure.date.isoformat(), t.get("short_title", b.departure.trip_id), b.code,
-                    STATUS_UA.get(b.status, b.status), b.name, b.phone, b.city, b.address, b.pax, seats_text(b),
+                    STATUS_UA.get(b.status, b.status), b.name, b.phone, b.city, b.address, b.postcode or "", b.pax, seats_text(b),
                     b.price_total, "так" if b.paid else "ні", b.pickup_time or ""])
     data = ("﻿" + buf.getvalue()).encode("utf-8")
     for admin_id in settings.admin_ids:

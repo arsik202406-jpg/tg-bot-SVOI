@@ -15,7 +15,7 @@ from sqlalchemy import select
 from . import catalog as cat
 from .config import settings
 from .db import Departure, Media, Session, TripPhoto, WaitlistEntry, get_customer, media_list, trip_photos
-from .services import (BookingError, booking_client_text, create_booking, departure_public, notify_admins,
+from .services import (clean_postcode, BookingError, booking_client_text, create_booking, departure_public, notify_admins,
                        notify_new_booking, upcoming_departures, user_bookings)
 
 log = logging.getLogger(__name__)
@@ -170,9 +170,11 @@ async def post_me(request: web.Request) -> web.Response:
             "date": b.departure.date.isoformat(),
             "label": cat.fmt_departure(b.departure.date, cat.TRIPS_BY_ID.get(b.departure.trip_id, {}).get("days", 1)),
             "pax": b.pax, "seats": b.seat_list, "auto": bool(b.auto_seats), "total": b.price_total,
-            "city": b.city, "address": b.address, "pickup_time": b.pickup_time,
+            "city": b.city, "address": b.address, "postcode": b.postcode, "district": b.district,
+            "pickup_time": b.pickup_time,
         } for b in items]
-    saved = {"phone": cust.phone, "city": cust.city, "address": cust.address} if cust else None
+    saved = ({"phone": cust.phone, "city": cust.city, "address": cust.address, "postcode": cust.postcode,
+              "district": cust.district} if cust else None)
     return web.json_response({"ok": True, "saved": saved, "bookings": bookings})
 
 
@@ -193,12 +195,15 @@ async def post_booking(request: web.Request) -> web.Response:
     city_id = body.get("city") or "saarland"
     city = cat.PICKUP_BY_ID.get(city_id, {}).get("name", str(city_id))
     name = (body.get("name") or " ".join(filter(None, [user.get("first_name"), user.get("last_name")]))).strip()
+    if not clean_postcode(body.get("postcode")):
+        return err("Вкажіть поштовий індекс, наприклад 66111 або L-1234.")
     try:
         async with Session() as s:
             booking = await create_booking(
                 s, departure_id=dep_id, pax=pax, seats=seats, name=name or "Клієнт",
                 phone=str(body.get("phone") or ""), city=city, address=str(body.get("address") or ""),
-                user_id=user["id"], username=user.get("username"), comment=body.get("comment"), source="miniapp")
+                user_id=user["id"], username=user.get("username"), comment=body.get("comment"), source="miniapp",
+                postcode=body.get("postcode"), district=body.get("district"))
     except BookingError as e:
         return err(str(e), 409)
     await notify_new_booking(request.app["bot"], booking)
@@ -268,6 +273,37 @@ async def post_cancel(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def post_address(request: web.Request) -> web.Response:
+    """Клієнт змінює адресу у своїй броні (Mini App)."""
+    from .db import Booking
+    from .services import booking_admin_text, update_address
+    body = await request.json()
+    user = get_user(request, body)
+    if not user:
+        return err("Відкрийте застосунок через Telegram-бота.", 401)
+    async with Session() as s:
+        b = await s.scalar(select(Booking).where(Booking.code == str(body.get("code", ""))))
+        if not b or b.user_id != user["id"] or b.status == "cancelled":
+            return err("Бронь не знайдено.", 404)
+        await s.refresh(b, ["departure"])
+        try:
+            had_route = await update_address(s, b, str(body.get("address") or ""), str(body.get("postcode") or ""),
+                                             body.get("district"))
+        except BookingError as e:
+            return err(str(e))
+        await s.refresh(b.departure, ["bookings"])
+        text = booking_admin_text(b, "✏️ Клієнт змінив адресу (Mini App)")
+        dep_id = b.departure_id
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    markup = None
+    if had_route:
+        text += "\n\n⚠️ Час посадки скинуто — перерахуйте маршрут."
+        markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text="🗺 Перерахувати маршрут", callback_data=f"o:route:{dep_id}")]])
+    await notify_admins(request.app["bot"], text, markup)
+    return web.json_response({"ok": True})
+
+
 async def get_privacy(_request: web.Request) -> web.Response:
     from .handlers.extras import privacy_text
     return web.json_response({"ok": True, "text": privacy_text()})
@@ -285,6 +321,7 @@ def build_app(bot: Bot, bot_token: str) -> web.Application:
     app.router.add_get("/api/media/{id}", get_media)
     app.router.add_post("/api/date-request", post_date_request)
     app.router.add_post("/api/bookings/cancel", post_cancel)
+    app.router.add_post("/api/bookings/address", post_address)
     app.router.add_get("/api/privacy", get_privacy)
     app.router.add_post("/api/me", post_me)
     app.router.add_post("/api/bookings", post_booking)

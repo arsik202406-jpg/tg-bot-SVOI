@@ -1,12 +1,12 @@
 import { CalendarCheck, MessageCircle, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cancelBooking, createBooking, DEMO, joinWaitlist, loadCatalog, loadMe, loadPrivacy } from './api';
+import { cancelBooking, createBooking, DEMO, joinWaitlist, loadCatalog, loadMe, loadPrivacy, postcodeOk, updateAddress } from './api';
 import { PickupStep, ReviewStep, SeatStep, TripList, TripStep } from './components/steps';
 import { BottomBar, Header, Sheet, Stepper } from './components/ui';
 import { closeApp, cloudGet, cloudSet, haptic, inTelegram, onBackButton, openLink, setChrome, userName } from './tg';
 import type { Catalog, Draft, MyBooking } from './types';
 
-const EMPTY: Draft = { tripId: null, departureId: null, pax: 1, seats: [], auto: true, city: 'saarland', address: '', phone: '', name: '', comment: '' };
+const EMPTY: Draft = { tripId: null, departureId: null, pax: 1, seats: [], auto: true, city: 'saarland', address: '', postcode: '', district: '', phone: '', name: '', comment: '' };
 
 // Світла тема — основна. Якщо людина обрала темну, запам'ятовуємо її вибір.
 function initialTheme(): 'light' | 'dark' {
@@ -34,6 +34,25 @@ export default function App() {
   const [privacy, setPrivacy] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [editing, setEditing] = useState<{ code: string; address: string; postcode: string; district: string } | null>(null);
+  const [savingAddr, setSavingAddr] = useState(false);
+
+  const saveAddress = async () => {
+    if (!editing) return;
+    setSavingAddr(true);
+    setError('');
+    try {
+      await updateAddress(editing.code, editing.address.trim(), editing.postcode.trim(), editing.district.trim());
+      haptic('success');
+      setMyBookings((list) => list.map((b) => (b.code === editing.code ? { ...b, address: editing.address.trim(), postcode: editing.postcode.trim().toUpperCase(), district: editing.district.trim() || null, pickup_time: null } : b)));
+      setEditing(null);
+    } catch (e) {
+      haptic('error');
+      setError(e instanceof Error ? e.message : 'Не вдалося зберегти');
+    } finally {
+      setSavingAddr(false);
+    }
+  };
 
   const openPrivacy = async () => {
     setPrivacy('Завантаження…');
@@ -98,6 +117,8 @@ export default function App() {
           ...prev,
           phone: prev.phone || me.saved?.phone || '',
           address: prev.address || me.saved?.address || '',
+          postcode: prev.postcode || me.saved?.postcode || '',
+          district: prev.district || me.saved?.district || '',
           city: cat.pickup_cities.find((c) => c.name === me.saved?.city)?.id ?? prev.city,
         }));
       }
@@ -138,14 +159,14 @@ export default function App() {
     true,
     Boolean(dep && dep.free >= draft.pax),
     draft.auto || draft.seats.length === draft.pax,
-    draft.address.trim().length >= 5 && phoneOk && draft.name.trim().length >= 2,
+    draft.address.trim().length >= 5 && postcodeOk(draft.postcode) && phoneOk && draft.name.trim().length >= 2,
     true,
   ][step];
   const nextHint = [
     '',
     !dep ? 'Оберіть дату' : '',
     !draft.auto && draft.seats.length !== draft.pax ? `Оберіть ${draft.pax - draft.seats.length} ще` : '',
-    draft.address.trim().length < 5 ? 'Вкажіть адресу' : draft.name.trim().length < 2 ? 'Вкажіть ім’я' : !phoneOk ? 'Вкажіть телефон' : '',
+    draft.address.trim().length < 5 ? 'Вкажіть адресу' : !postcodeOk(draft.postcode) ? 'Вкажіть поштовий індекс' : draft.name.trim().length < 2 ? 'Вкажіть ім’я' : !phoneOk ? 'Вкажіть телефон' : '',
     '',
   ][step];
 
@@ -160,6 +181,8 @@ export default function App() {
         seats: draft.auto ? null : draft.seats,
         city: draft.city,
         address: draft.address.trim(),
+        postcode: draft.postcode.trim(),
+        district: draft.district.trim(),
         phone: draft.phone.trim(),
         name: draft.name.trim(),
         comment: draft.comment.trim(),
@@ -229,10 +252,39 @@ export default function App() {
                   </div>
                   <div>
                     📍 {b.city}, {b.address}
+                    {b.postcode ? `, ${b.postcode}` : ''}
+                    {b.district ? `, район ${b.district}` : ''}
                   </div>
                   <div className="text-ink">💶 {b.total} € · {b.code}</div>
                 </div>
-                {confirmCancel === b.code ? (
+                {editing?.code === b.code ? (
+                  <div className="mt-3 space-y-2.5 fade-in">
+                    <input className="field" value={editing.address} onChange={(e) => setEditing({ ...editing, address: e.target.value })} placeholder="Вулиця, будинок, місто" />
+                    <div className="grid grid-cols-[2fr_3fr] gap-2.5">
+                      <input
+                        className={`field ${editing.postcode && !postcodeOk(editing.postcode) ? 'border-danger' : ''}`}
+                        value={editing.postcode}
+                        inputMode="numeric"
+                        onChange={(e) => setEditing({ ...editing, postcode: e.target.value.toUpperCase().slice(0, 8) })}
+                        placeholder="Індекс"
+                      />
+                      <input className="field" value={editing.district} onChange={(e) => setEditing({ ...editing, district: e.target.value })} placeholder="Район (необов’язково)" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={savingAddr || editing.address.trim().length < 5 || !postcodeOk(editing.postcode)}
+                        onClick={saveAddress}
+                        className="btn-primary flex-1"
+                      >
+                        {savingAddr ? 'Зберігаємо…' : 'Зберегти адресу'}
+                      </button>
+                      <button type="button" onClick={() => setEditing(null)} className="flex-1 rounded-2xl bg-surface-2 font-bold">
+                        Скасувати
+                      </button>
+                    </div>
+                  </div>
+                ) : confirmCancel === b.code ? (
                   <div className="mt-3 flex gap-2">
                     <button type="button" disabled={cancelling} onClick={() => doCancel(b.code)} className="flex-1 rounded-xl bg-danger py-3 text-[15px] font-bold text-white disabled:opacity-50">
                       {cancelling ? 'Скасовуємо…' : 'Так, скасувати'}
@@ -242,9 +294,18 @@ export default function App() {
                     </button>
                   </div>
                 ) : (
-                  <button type="button" onClick={() => setConfirmCancel(b.code)} className="mt-3 w-full rounded-xl border-2 border-line py-3 text-[15px] font-bold text-danger">
-                    Скасувати бронь
-                  </button>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ code: b.code, address: b.address, postcode: b.postcode || '', district: b.district || '' })}
+                      className="flex-1 rounded-xl border-2 border-line py-3 text-[15px] font-bold"
+                    >
+                      ✏️ Змінити адресу
+                    </button>
+                    <button type="button" onClick={() => setConfirmCancel(b.code)} className="flex-1 rounded-xl border-2 border-line py-3 text-[15px] font-bold text-danger">
+                      Скасувати
+                    </button>
+                  </div>
                 )}
               </div>
             );
@@ -286,7 +347,7 @@ export default function App() {
           <button type="button" className="btn-primary mt-6 w-full" onClick={() => (inTelegram ? closeApp() : (setDone(null), setDraftState({ ...EMPTY, name: userName() }), setStep(0)))}>
             {inTelegram ? 'Повернутись у чат' : 'На головну'}
           </button>
-          <button type="button" className="mt-3 w-full py-3 text-[15px] font-bold text-accent" onClick={() => (setDone(null), setDraftState((d) => ({ ...EMPTY, name: d.name, phone: d.phone, address: d.address, city: d.city })), setStep(0))}>
+          <button type="button" className="mt-3 w-full py-3 text-[15px] font-bold text-accent" onClick={() => (setDone(null), setDraftState((d) => ({ ...EMPTY, name: d.name, phone: d.phone, address: d.address, postcode: d.postcode, district: d.district, city: d.city })), setStep(0))}>
             Забронювати ще одну поїздку
           </button>
         </div>

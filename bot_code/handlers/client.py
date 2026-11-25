@@ -19,7 +19,7 @@ from ..config import settings
 from ..db import touch_user
 from ..db import (Booking, DateRequest, Departure, Session, SupportThread, WaitlistEntry, get_customer, media_list,
                   taken_seats, trip_photo)
-from ..services import (load_booking, BookingError, booking_admin_text, booking_client_text, cancel_booking, create_booking,
+from ..services import (clean_postcode, full_address, load_booking, BookingError, booking_admin_text, booking_client_text, cancel_booking, create_booking,
                         free_count, notify_admins, notify_new_booking, payment_note, upcoming_departures,
                         user_bookings)
 
@@ -37,6 +37,8 @@ class Book(StatesGroup):
     city = State()
     saved_address = State()
     address = State()
+    postcode = State()
+    district = State()
     phone = State()
     comment = State()
     confirm = State()
@@ -424,11 +426,11 @@ async def cb_city(callback: CallbackQuery, callback_data: kb.CityCb, state: FSMC
     await state.update_data(city=city["name"])
     async with Session() as s:
         cust = await get_customer(s, callback.from_user.id)
-    if cust and cust.address and cust.city == city["name"]:
-        await state.update_data(saved_address=cust.address)
+    if cust and cust.address and cust.city == city["name"] and cust.postcode:
+        await state.update_data(saved_address=cust.address, saved_postcode=cust.postcode, saved_district=cust.district)
         await state.set_state(Book.saved_address)
         await callback.message.edit_text(
-            f"Забрати за тією ж адресою, що минулого разу?\n\n🏠 <b>{escape(cust.address)}</b>",
+            f"Забрати за тією ж адресою, що минулого разу?\n\n🏠 <b>{escape(full_address(cust))}</b>",
             reply_markup=kb.saved_address_kb())
         return
     await callback.message.edit_text(f"📍 {city['name']}")
@@ -439,7 +441,8 @@ async def ask_address(message: Message, state: FSMContext, other: bool = False):
     await state.set_state(Book.address)
     example = "місто, вулиця і номер будинку" if other else "вулиця, номер будинку і місто"
     await message.answer(
-        f"<b>Напишіть адресу, звідки вас забрати</b>\n({example}, наприклад: <i>Bahnhofstraße 12, Saarbrücken</i>)",
+        f"<b>Напишіть адресу, звідки вас забрати</b>\n({example}, наприклад: <i>Bahnhofstraße 12, Saarbrücken</i>)\n"
+        "Поштовий індекс спитаю наступним кроком.",
         reply_markup=kb.cancel_kb())
 
 
@@ -447,8 +450,9 @@ async def ask_address(message: Message, state: FSMContext, other: bool = False):
 async def cb_use_saved(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     data = await state.get_data()
-    await state.update_data(address=data["saved_address"])
-    await callback.message.edit_text(f"🏠 {escape(data['saved_address'])}")
+    await state.update_data(address=data["saved_address"], postcode=data.get("saved_postcode"),
+                            district=data.get("saved_district"))
+    await callback.message.edit_text("🏠 Адресу збережено ✅")
     await ask_phone(callback.message, state, callback.from_user.id)
 
 
@@ -466,7 +470,36 @@ async def msg_address(message: Message, state: FSMContext):
         await message.answer("Напишіть, будь ласка, повну адресу: вулицю, номер будинку і місто.")
         return
     await state.update_data(address=address)
+    await state.set_state(Book.postcode)
+    await message.answer("<b>Поштовий індекс</b> (наприклад: <i>66111</i> або <i>L-1234</i> для Люксембургу)\n"
+                         "Це важливо: у сусідніх містах бувають однакові вулиці.", reply_markup=kb.cancel_kb())
+
+
+@router.message(Book.postcode, F.text)
+async def msg_postcode(message: Message, state: FSMContext):
+    pc = clean_postcode(message.text)
+    if not pc:
+        return await message.answer("Не схоже на індекс 🤔 Напишіть 4–5 цифр, наприклад <i>66111</i> або <i>L-1234</i>.")
+    await state.update_data(postcode=pc)
+    await state.set_state(Book.district)
+    await message.answer("<b>Район</b> (необов'язково) — наприклад, <i>Burbach</i> або <i>Dudweiler</i>.\n"
+                         "Напишіть або натисніть «Пропустити».",
+                         reply_markup=kb.InlineKeyboardMarkup(inline_keyboard=[[kb.IB(
+                             text="Пропустити ➡️", callback_data=kb.StepCb(action="skip_district").pack())]]))
+
+
+@router.message(Book.district, F.text)
+async def msg_district(message: Message, state: FSMContext):
+    await state.update_data(district=message.text.strip()[:80])
     await ask_phone(message, state, message.from_user.id)
+
+
+@router.callback_query(kb.StepCb.filter(F.action == "skip_district"), Book.district)
+async def cb_skip_district(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await state.update_data(district=None)
+    await ask_phone(callback.message, state, callback.from_user.id)
 
 
 async def ask_phone(message: Message, state: FSMContext, user_id: int):
@@ -543,7 +576,8 @@ async def show_summary(message: Message, state: FSMContext):
         f"📅 {cat.fmt_departure(dep.date, trip['days'])}\n"
         f"👥 Пасажирів: {data['pax']}\n"
         f"💺 Місця: {seats_line}\n"
-        f"📍 {escape(data['city'])}: {escape(data['address'])}\n"
+        f"📍 {escape(data['city'])}: {escape(data['address'])}, {escape(data.get('postcode') or '')}"
+        + (f", район {escape(data['district'])}" if data.get("district") else "") + "\n"
         f"📞 {escape(data['phone'])}\n"
     )
     if data.get("comment"):
@@ -564,6 +598,7 @@ async def cb_confirm(callback: CallbackQuery, state: FSMContext, bot: Bot):
                 s, departure_id=data["dep_id"], pax=data["pax"],
                 seats=None if data.get("auto", True) else data.get("seats"),
                 name=user.full_name, phone=data["phone"], city=data["city"], address=data["address"],
+                postcode=data.get("postcode"), district=data.get("district"),
                 user_id=user.id, username=user.username, comment=data.get("comment"), source="bot")
     except BookingError as e:
         await callback.answer()

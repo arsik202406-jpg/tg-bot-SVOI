@@ -11,7 +11,7 @@
   --line: #ddd6c8;
   --accent: #0d6b57;
   --accent-ink: #ffffff;
-  --accent-soft: #d6ece4;
+  --accent-soft: #cde8de;
   --warm: #b4500c;
   --danger: #b42318;
   --seat-taken: #d9d3c6;
@@ -88,7 +88,14 @@ body {
   opacity: 0.4;
 }
 
+/* Виділення тексту — добре видно і на світлому, і на темному фоні */
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 .field {
+  caret-color: var(--accent);
   width: 100%;
   min-height: 56px;
   padding: 14px 16px;
@@ -103,6 +110,7 @@ body {
 }
 .field:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .field::placeholder {
   color: var(--muted);

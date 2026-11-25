@@ -38,6 +38,7 @@ class Adm(StatesGroup):
     m_phone = State()
     m_city = State()
     m_address = State()
+    m_postcode = State()
     m_pax = State()
     photo = State()
     welcome_media = State()
@@ -410,21 +411,21 @@ async def cb_manual(callback: CallbackQuery, callback_data: kb.AdmCb, state: FSM
     await state.clear()
     await state.set_state(Adm.m_name)
     await state.update_data(dep_id=callback_data.id)
-    await callback.message.answer("Додаємо пасажира вручну (наприклад, після дзвінка).\n\n1/5 Ім'я та прізвище?\n/cancel — скасувати")
+    await callback.message.answer("Додаємо пасажира вручну (наприклад, після дзвінка).\n\n1/6 Ім'я та прізвище?\n/cancel — скасувати")
 
 
 @router.message(Adm.m_name, F.text)
 async def m_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
     await state.set_state(Adm.m_phone)
-    await message.answer("2/5 Телефон?")
+    await message.answer("2/6 Телефон?")
 
 
 @router.message(Adm.m_phone, F.text)
 async def m_phone(message: Message, state: FSMContext):
     await state.update_data(phone=message.text.strip())
     await state.set_state(Adm.m_city)
-    await message.answer("3/5 Звідки забрати?", reply_markup=kb.admin_city_kb())
+    await message.answer("3/6 Звідки забрати?", reply_markup=kb.admin_city_kb())
 
 
 @router.callback_query(kb.AdmCb.filter(F.action == "m_city"), Adm.m_city)
@@ -433,14 +434,25 @@ async def m_city(callback: CallbackQuery, callback_data: kb.AdmCb, state: FSMCon
     city = cat.PICKUP_BY_ID[callback_data.extra]["name"]
     await state.update_data(city=city)
     await state.set_state(Adm.m_address)
-    await callback.message.edit_text(f"📍 {city}\n\n4/5 Адреса?")
+    await callback.message.edit_text(f"📍 {city}\n\n4/6 Адреса?")
 
 
 @router.message(Adm.m_address, F.text)
 async def m_address(message: Message, state: FSMContext):
     await state.update_data(address=message.text.strip())
+    await state.set_state(Adm.m_postcode)
+    await message.answer("5/6 Поштовий індекс? (наприклад 66111 або L-1234)")
+
+
+@router.message(Adm.m_postcode, F.text)
+async def m_postcode(message: Message, state: FSMContext):
+    from ..services import clean_postcode
+    pc = clean_postcode(message.text)
+    if not pc:
+        return await message.answer("Не схоже на індекс. Напишіть 4–5 цифр, наприклад 66111.")
+    await state.update_data(postcode=pc)
     await state.set_state(Adm.m_pax)
-    await message.answer("5/5 Скільки людей? (цифрою; місця призначу автоматично)")
+    await message.answer("6/6 Скільки людей? (цифрою; місця призначу автоматично)")
 
 
 @router.message(Adm.m_pax, F.text)
@@ -453,7 +465,7 @@ async def m_pax(message: Message, state: FSMContext, bot: Bot):
         async with Session() as s:
             b = await create_booking(s, departure_id=data["dep_id"], pax=int(message.text.strip()), seats=None,
                                      name=data["name"], phone=data["phone"], city=data["city"],
-                                     address=data["address"], source="admin")
+                                     address=data["address"], postcode=data.get("postcode"), source="admin")
             b.status = "confirmed"
             await s.commit()
     except BookingError as e:

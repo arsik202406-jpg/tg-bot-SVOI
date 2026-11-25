@@ -1,5 +1,5 @@
 import { Bell, CalendarPlus, Check, ChevronDown, Clock, MapPin, Minus, Phone, Plus, Share2, Star, Users } from 'lucide-react';
-import { sendDateRequest } from '../api';
+import { postcodeOk, sendDateRequest } from '../api';
 import { useState } from 'react';
 import type { Catalog, Departure, Draft, Trip } from '../types';
 import { haptic, openLink, requestPhone, tg } from '../tg';
@@ -429,6 +429,27 @@ export function PickupStep({ catalog, draft, setDraft }: { catalog: Catalog; dra
           />
         </label>
 
+        <div className="grid grid-cols-[2fr_3fr] gap-2.5">
+          <label className="block">
+            <span className="mb-2 block px-1 text-[15px] font-extrabold">Індекс</span>
+            <input
+              className={`field ${draft.postcode && !postcodeOk(draft.postcode) ? 'border-danger' : ''}`}
+              value={draft.postcode}
+              onChange={(e) => setDraft({ postcode: e.target.value.toUpperCase().slice(0, 8) })}
+              placeholder="66111"
+              inputMode="numeric"
+              autoComplete="postal-code"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-2 block px-1 text-[15px] font-extrabold">
+              Район <span className="font-semibold text-muted">(необов’язково)</span>
+            </span>
+            <input className="field" value={draft.district} onChange={(e) => setDraft({ district: e.target.value })} placeholder="напр. Burbach" />
+          </label>
+        </div>
+        <p className="-mt-1 px-1 text-[13px] font-semibold text-muted">Індекс потрібен: у сусідніх містах бувають однакові вулиці.</p>
+
         <label className="block">
           <span className="mb-2 block px-1 text-[15px] font-extrabold">Ім’я</span>
           <input className="field" value={draft.name} onChange={(e) => setDraft({ name: e.target.value })} placeholder="Як до вас звертатись" autoComplete="name" />
@@ -493,7 +514,7 @@ export function ReviewStep({ trip, dep, draft, catalog, total, onPrivacy }: { tr
     ['Дата', dep.label],
     ['Пасажирів', String(draft.pax)],
     ['Місця', draft.auto ? 'будь-які вільні' : [...draft.seats].sort((a, b) => a - b).join(', ')],
-    ['Звідки', `${city}, ${draft.address}`],
+    ['Звідки', `${city}, ${draft.address}, ${draft.postcode.toUpperCase()}${draft.district.trim() ? `, район ${draft.district.trim()}` : ''}`],
     ['Ім’я', draft.name],
     ['Телефон', draft.phone],
   ];
