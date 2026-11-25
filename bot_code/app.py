@@ -15,7 +15,7 @@ from aiohttp import web
 from .api import build_app
 from .config import settings
 from .db import init_db
-from .handlers import address_edit, admin, client, community, extras, games, ops, support
+from .handlers import address_edit, admin, client, community, extras, games, ops, support, tripday
 from .jobs import scheduler
 from .screens import CleanChat, TrackRequests
 
@@ -27,6 +27,7 @@ log = logging.getLogger("svoi")
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher()
     dp.update.outer_middleware(CleanChat())  # прибирання старих повідомлень у чаті клієнта
+    dp.include_router(tripday.router)  # групи поїздок — раніше за загальну групу (там свої правила)
     dp.include_router(community.router)  # групи й канали: першим, щоб бот мовчав у групі
     dp.include_router(community.admin)
     dp.include_router(ops.router)

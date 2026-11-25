@@ -78,6 +78,8 @@ export async function loadMe(): Promise<{ saved: SavedContact | null; bookings: 
 export interface BookingPayload {
   departure_id: number;
   pax: number;
+  children: number;
+  child_ages: number[];
   seats: number[] | null;
   city: string;
   address: string;
@@ -130,4 +132,15 @@ export async function updateAddress(code: string, address: string, postcode: str
 /** Поштовий індекс: 4–5 цифр, для Люксембургу можна «L-1234». */
 export function postcodeOk(v: string): boolean {
   return /^(?:[A-Za-z]{1,2}-?)?\d{4,5}$/.test(v.replace(/\s/g, ''));
+}
+
+// Дитячий квиток (до 12 років). Сервер рахує так само: багатоденна −10 %, одноденна >100 € — −20 €, інакше −15 €.
+export function childPrice(trip: { price: number; days: number; child_price?: number }): number {
+  if (typeof trip.child_price === 'number') return trip.child_price;
+  if (trip.days > 1) return trip.price - Math.round(trip.price * 0.1);
+  return trip.price - (trip.price > 100 ? 20 : 15);
+}
+
+export function childMaxAge(trip: { child_max_age?: number }): number {
+  return trip.child_max_age ?? 11;
 }

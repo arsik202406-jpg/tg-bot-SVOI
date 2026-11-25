@@ -1,12 +1,12 @@
 import { CalendarCheck, MessageCircle, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cancelBooking, createBooking, DEMO, joinWaitlist, loadCatalog, loadMe, loadPrivacy, postcodeOk, updateAddress } from './api';
+import { cancelBooking, childPrice, createBooking, DEMO, joinWaitlist, loadCatalog, loadMe, loadPrivacy, postcodeOk, updateAddress } from './api';
 import { PickupStep, ReviewStep, SeatStep, TripList, TripStep } from './components/steps';
 import { BottomBar, Header, Sheet, Stepper } from './components/ui';
 import { closeApp, cloudGet, cloudSet, haptic, inTelegram, onBackButton, openLink, setChrome, userName } from './tg';
 import type { Catalog, Draft, MyBooking } from './types';
 
-const EMPTY: Draft = { tripId: null, departureId: null, pax: 1, seats: [], auto: true, city: 'saarland', address: '', postcode: '', district: '', phone: '', name: '', comment: '' };
+const EMPTY: Draft = { tripId: null, departureId: null, pax: 1, kids: 0, kidAges: [], seats: [], auto: true, city: 'saarland', address: '', postcode: '', district: '', phone: '', name: '', comment: '' };
 
 // Світла тема — основна. Якщо людина обрала темну, запам'ятовуємо її вибір.
 function initialTheme(): 'light' | 'dark' {
@@ -136,7 +136,7 @@ export default function App() {
   const total = useMemo(() => {
     if (!trip || !catalog) return null;
     const fee = draft.auto ? 0 : draft.seats.reduce((s, n) => s + (catalog.seats.find((x) => x.no === n)?.fee ?? 0), 0);
-    return trip.price * draft.pax + fee;
+    return trip.price * (draft.pax - draft.kids) + childPrice(trip) * draft.kids + fee;
   }, [trip, catalog, draft]);
 
   const go = (n: number) => {
@@ -157,14 +157,14 @@ export default function App() {
   const phoneOk = draft.phone.replace(/\D/g, '').length >= 7;
   const canNext = [
     true,
-    Boolean(dep && dep.free >= draft.pax),
+    Boolean(dep && dep.free >= draft.pax) && draft.kidAges.slice(0, draft.kids).every((a) => a !== null && a !== undefined) && draft.kidAges.length >= draft.kids,
     draft.auto || draft.seats.length === draft.pax,
     draft.address.trim().length >= 5 && postcodeOk(draft.postcode) && phoneOk && draft.name.trim().length >= 2,
     true,
   ][step];
   const nextHint = [
     '',
-    !dep ? 'Оберіть дату' : '',
+    !dep ? 'Оберіть дату' : draft.kids > 0 && !(draft.kidAges.length >= draft.kids && draft.kidAges.slice(0, draft.kids).every((a) => a !== null)) ? 'Вкажіть вік дітей' : '',
     !draft.auto && draft.seats.length !== draft.pax ? `Оберіть ${draft.pax - draft.seats.length} ще` : '',
     draft.address.trim().length < 5 ? 'Вкажіть адресу' : !postcodeOk(draft.postcode) ? 'Вкажіть поштовий індекс' : draft.name.trim().length < 2 ? 'Вкажіть ім’я' : !phoneOk ? 'Вкажіть телефон' : '',
     '',
@@ -178,6 +178,8 @@ export default function App() {
       const res = await createBooking({
         departure_id: dep.id,
         pax: draft.pax,
+        children: draft.kids,
+        child_ages: draft.kidAges.slice(0, draft.kids).map((a) => a ?? 0),
         seats: draft.auto ? null : draft.seats,
         city: draft.city,
         address: draft.address.trim(),
@@ -247,7 +249,7 @@ export default function App() {
                   <div>📅 {b.label}</div>
                   {b.pickup_time && <div className="text-ink">🕐 Заберемо о {b.pickup_time}</div>}
                   <div>
-                    👥 {b.pax} · місця {b.seats.join(', ')}
+                    👥 {b.pax}{b.children ? ` (дітей: ${b.children})` : ''} · місця {b.seats.join(', ')}
                     {b.auto ? ' (будь-які)' : ''}
                   </div>
                   <div>
@@ -376,7 +378,7 @@ export default function App() {
               catalog={catalog}
               onPick={(t) => {
                 const first = catalog.departures.find((d) => d.trip_id === t.id && d.free > 0);
-                setDraft({ tripId: t.id, departureId: first?.id ?? null, pax: 1, seats: [], auto: true });
+                setDraft({ tripId: t.id, departureId: first?.id ?? null, pax: 1, kids: 0, kidAges: [], seats: [], auto: true });
                 go(1);
               }}
             />

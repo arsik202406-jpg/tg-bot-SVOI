@@ -51,6 +51,10 @@ class GalleryCb(CallbackData, prefix="gal"):
     trip: str
 
 
+class KidsCb(CallbackData, prefix="kids"):
+    n: int
+
+
 class ProposeCb(CallbackData, prefix="pd"):
     trip: str
 
@@ -145,6 +149,15 @@ def pax_kb(max_pax: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
+def kids_kb(pax: int) -> InlineKeyboardMarkup:
+    """Скільки з пасажирів — діти до 12 років (максимум pax-1: хоча б один дорослий)."""
+    nums = list(range(0, pax))
+    rows = [nums[i:i + 4] for i in range(0, len(nums), 4)]
+    kb = [[IB(text="Без дітей" if n == 0 else f"👶 {n}", callback_data=KidsCb(n=n).pack()) for n in row] for row in rows]
+    kb.append([IB(text="⬅️ Назад", callback_data=StepCb(action="restart").pack())])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
 def seats_kb(taken: set[int], selected: list[int], pax: int) -> InlineKeyboardMarkup:
     def cell(no: int) -> IB:
         seat = cat.SEATS_BY_NO[no]
@@ -224,6 +237,7 @@ def admin_menu_kb(ai_state: str | None = None) -> InlineKeyboardMarkup:
          IB(text="🔔 Лист очікування", callback_data=AdmCb(action="waitlist").pack())],
         [IB(text="📊 Статистика", callback_data=AdmCb(action="stats").pack()),
          IB(text="⭐ Відгуки", callback_data=AdmCb(action="reviews").pack())],
+        [IB(text="👥 Групи поїздок", callback_data=AdmCb(action="tgroups").pack())],
     ]
     if ai_state:
         rows.append([IB(text=ai_state, callback_data=AdmCb(action="ai_toggle").pack())])
@@ -240,6 +254,8 @@ def admin_dep_kb(dep_id: int, status: str, bookings: list[tuple[int, str]]) -> I
     kb = [[IB(text=label, callback_data=AdmCb(action="bk", id=bid).pack())] for bid, label in bookings]
     kb += [
         [IB(text="🗺 Маршрут і час збору", callback_data=f"o:route:{dep_id}")],
+        [IB(text="🚐 Режим водія", callback_data=f"drv:open:{dep_id}"),
+         IB(text="👥 Група поїздки", callback_data=f"tg:info:{dep_id}")],
         [IB(text="➕ Додати пасажира (дзвінок)", callback_data=AdmCb(action="manual", id=dep_id).pack())],
         [IB(text="📨 Написати всім пасажирам", callback_data=AdmCb(action="broadcast", id=dep_id).pack())],
         [IB(text="📄 Таблиця (Excel)", callback_data=AdmCb(action="csv", id=dep_id).pack()),

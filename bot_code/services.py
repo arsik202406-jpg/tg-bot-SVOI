@@ -123,8 +123,37 @@ async def load_booking(session: AsyncSession, booking_id: int) -> Booking | None
         .execution_options(populate_existing=True))
 
 
-def price_for(trip: dict, pax: int, seats: list[int], auto: bool) -> int:
-    return trip["price"] * pax + cat.seat_fee(seats, auto)
+def price_for(trip: dict, pax: int, seats: list[int], auto: bool, children: int = 0) -> int:
+    return trip["price"] * pax - cat.child_discount(trip) * children + cat.seat_fee(seats, auto)
+
+
+def parse_ages(text: str | list | None) -> list[int]:
+    """«4, 9» або [4, 9] → [4, 9]. Некоректне ігноруємо."""
+    if text is None:
+        return []
+    items = text if isinstance(text, list) else __import__("re").findall(r"\d+", str(text))
+    out = []
+    for x in items:
+        try:
+            a = int(x)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= a <= 17:
+            out.append(a)
+    return out
+
+
+def children_text(b) -> str:
+    """«👶 2 дітей (4, 9 р.) — потрібно: автокрісло, бустер» або ''."""
+    n = getattr(b, "children", 0) or 0
+    if not n:
+        return ""
+    ages = parse_ages(getattr(b, "child_ages", None))
+    line = f"👶 Дітей до 12 років: {n}"
+    if ages:
+        line += f" (вік: {', '.join(map(str, ages))})"
+        line += " — потрібно: " + ", ".join(cat.seat_word(a) for a in ages)
+    return line
 
 
 async def create_booking(
@@ -132,6 +161,7 @@ async def create_booking(
     name: str, phone: str, city: str, address: str, user_id: int | None = None,
     username: str | None = None, comment: str | None = None, source: str = "bot",
     postcode: str | None = None, district: str | None = None,
+    children: int = 0, child_ages: list[int] | str | None = None,
 ) -> Booking:
     dep = await session.get(Departure, departure_id)
     if not dep or dep.status != "open" or dep.date < cat.today():
@@ -141,6 +171,12 @@ async def create_booking(
         raise BookingError("Тур не знайдено.")
     if not 1 <= pax <= cat.CAPACITY:
         raise BookingError("Невірна кількість пасажирів.")
+    children = int(children or 0)
+    if children < 0 or children > pax - 1:
+        raise BookingError("Дитина може їхати лише разом із дорослим.")
+    ages = parse_ages(child_ages)[:children]
+    if any(a > cat.CHILD_MAX_AGE for a in ages):
+        raise BookingError(f"Дитячий тариф діє до {cat.CHILD_MAX_AGE + 1} років.")
     name, phone, address = name.strip()[:128], phone.strip()[:32], address.strip()[:500]
     if not name or not phone or not address:
         raise BookingError("Заповніть, будь ласка, ім'я, телефон і адресу.")
@@ -165,8 +201,8 @@ async def create_booking(
         city=city, address=address, postcode=clean_postcode(postcode) or None,
         district=(district or "").strip()[:80] or None,
         pax=pax, seats=",".join(map(str, seats)), auto_seats=int(auto),
-        price_total=price_for(trip, pax, seats, auto), comment=(comment or "").strip()[:500] or None,
-        source=source,
+        price_total=price_for(trip, pax, seats, auto, children), comment=(comment or "").strip()[:500] or None,
+        source=source, children=children, child_ages=",".join(map(str, ages)) or None,
     )
     session.add(booking)
     try:
@@ -245,6 +281,7 @@ def booking_client_text(b: Booking) -> str:
         f"<b>{trip.get('flag', '')} {escape(trip.get('short_title', ''))}</b>\n"
         f"📅 {cat.fmt_departure(b.departure.date, trip.get('days', 1))}\n"
         f"👥 Пасажирів: {b.pax} · місця: {seats_text(b)}\n"
+        + (f"{children_text(b)}\n" if b.children else "") +
         f"📍 Звідки забрати: {escape(b.city)}, {escape(full_address(b))}\n"
         f"📞 {escape(b.phone)}\n"
         f"💶 До сплати: <b>{b.price_total} €</b>\n"
@@ -266,6 +303,7 @@ def booking_admin_text(b: Booking, title: str = "🆕 Нова заявка") ->
         f"📞 <code>{escape(b.phone)}</code>\n"
         f"📍 {escape(b.city)}: {escape(full_address(b))}\n"
         f"👥 {b.pax} · місця {seats_text(b)}\n"
+        + (f"{children_text(b)}\n" if b.children else "") +
         f"💶 {b.price_total} €\n"
         f"Статус: {STATUS_UA.get(b.status, b.status)}"
     )
@@ -343,8 +381,16 @@ def manifest_text(dep: Departure, compact: bool = False) -> str:
                 f"   📞 <code>{escape(b.phone)}</code>\n"
                 + (f"   🏠 {escape(full_address(b))}" if compact else
                    f'   🏠 <a href="{maps_link(map_query(b))}">{escape(full_address(b))}</a>')
+                + (f"\n   {children_text(b)}" if b.children else "")
                 + (f"\n   💬 {escape(b.comment)}" if b.comment and not compact else "")
             )
+    kids = [a for b in bookings for a in parse_ages(b.child_ages)]
+    if any(b.children for b in bookings):
+        need: dict[str, int] = {}
+        for a in kids:
+            need[cat.seat_word(a)] = need.get(cat.seat_word(a), 0) + 1
+        total_kids = sum(b.children or 0 for b in bookings)
+        lines.append(f"\n👶 <b>Дітей: {total_kids}</b>" + (" · взяти: " + ", ".join(f"{k} ×{v}" for k, v in need.items()) if need else ""))
     seat_map = {s: b for b in bookings for s in b.seat_list}
     lines.append("\n<b>Посадка:</b>")
     for row in (1, 2, 3):
@@ -361,11 +407,11 @@ def manifest_csv(dep: Departure) -> bytes:
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
     w.writerow(["Порядок", "Час посадки", "Бронь", "Статус", "Ім'я", "Telegram", "Телефон", "Місто", "Адреса", "Індекс", "Район",
-                "Пасажирів", "Місця", "Сума €", "Оплачено", "Участь", "Коментар", "Джерело"])
+                "Пасажирів", "Дітей", "Вік дітей", "Місця", "Сума €", "Оплачено", "Участь", "Коментар", "Джерело"])
     for b in sorted(active_bookings(dep), key=lambda b: (b.pickup_order or 99, b.id)):
         w.writerow([b.pickup_order or "", b.pickup_time or "", b.code, STATUS_UA.get(b.status, b.status), b.name,
                     f"@{b.username}" if b.username else "", b.phone, b.city, b.address, b.postcode or "", b.district or "",
-                    b.pax, seats_text(b),
+                    b.pax, b.children or 0, b.child_ages or "", seats_text(b),
                     b.price_total, "так" if b.paid else "ні", {"yes": "їде", "no": "не їде", "asked": "не відповів"}.get(b.attend or "", ""),
                     b.comment or "", b.source])
     return ("﻿" + buf.getvalue()).encode("utf-8")  # BOM, щоб Excel правильно показав кирилицю

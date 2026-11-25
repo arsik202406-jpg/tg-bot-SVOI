@@ -171,7 +171,7 @@ async def post_me(request: web.Request) -> web.Response:
             "label": cat.fmt_departure(b.departure.date, cat.TRIPS_BY_ID.get(b.departure.trip_id, {}).get("days", 1)),
             "pax": b.pax, "seats": b.seat_list, "auto": bool(b.auto_seats), "total": b.price_total,
             "city": b.city, "address": b.address, "postcode": b.postcode, "district": b.district,
-            "pickup_time": b.pickup_time,
+            "pickup_time": b.pickup_time, "children": b.children or 0,
         } for b in items]
     saved = ({"phone": cust.phone, "city": cust.city, "address": cust.address, "postcode": cust.postcode,
               "district": cust.district} if cust else None)
@@ -190,8 +190,12 @@ async def post_booking(request: web.Request) -> web.Response:
         dep_id = int(body.get("departure_id"))
         pax = int(body.get("pax"))
         seats = [int(x) for x in body.get("seats") or []] or None
+        children = int(body.get("children") or 0)
+        child_ages = [int(x) for x in body.get("child_ages") or []]
     except (TypeError, ValueError):
         return err("Невірні дані бронювання.")
+    if children and len(child_ages) != children:
+        return err("Вкажіть вік кожної дитини.")
     city_id = body.get("city") or "saarland"
     city = cat.PICKUP_BY_ID.get(city_id, {}).get("name", str(city_id))
     name = (body.get("name") or " ".join(filter(None, [user.get("first_name"), user.get("last_name")]))).strip()
@@ -203,7 +207,8 @@ async def post_booking(request: web.Request) -> web.Response:
                 s, departure_id=dep_id, pax=pax, seats=seats, name=name or "Клієнт",
                 phone=str(body.get("phone") or ""), city=city, address=str(body.get("address") or ""),
                 user_id=user["id"], username=user.get("username"), comment=body.get("comment"), source="miniapp",
-                postcode=body.get("postcode"), district=body.get("district"))
+                postcode=body.get("postcode"), district=body.get("district"),
+                children=children, child_ages=child_ages)
     except BookingError as e:
         return err(str(e), 409)
     await notify_new_booking(request.app["bot"], booking)

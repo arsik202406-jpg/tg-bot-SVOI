@@ -176,6 +176,8 @@ async def cb_approve(callback: CallbackQuery, callback_data: OpsCb, bot: Bot):
         text += "\nБез Telegram (зателефонуйте): " + ", ".join(
             f"{escape(b.name)} {b.pickup_time} <code>{escape(b.phone)}</code>" for b in no_tg)
     await callback.message.answer(text)
+    from ..jobs import replan
+    await replan(bot, callback_data.id)  # пам'ятки в день поїздки — під новий час посадки
 
 
 @router.callback_query(OpsCb.filter(F.action.in_({"home", "arrive", "dest"})))

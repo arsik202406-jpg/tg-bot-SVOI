@@ -1,5 +1,5 @@
-import { Bell, CalendarPlus, Check, ChevronDown, Clock, MapPin, Minus, Phone, Plus, Share2, Star, Users } from 'lucide-react';
-import { postcodeOk, sendDateRequest } from '../api';
+import { Baby, Bell, CalendarPlus, Check, ChevronDown, Clock, MapPin, Minus, Phone, Plus, Share2, Star, Users } from 'lucide-react';
+import { childMaxAge, childPrice, postcodeOk, sendDateRequest } from '../api';
 import { useState } from 'react';
 import type { Catalog, Departure, Draft, Trip } from '../types';
 import { haptic, openLink, requestPhone, tg } from '../tg';
@@ -259,7 +259,11 @@ export function TripStep({ trip, catalog, departures, draft, setDraft, onWaitlis
                 disabled={d.free <= 0}
                 onClick={() => {
                   haptic('select');
-                  setDraft({ departureId: d.id, pax: Math.min(draft.pax, Math.max(d.free, 1)), seats: [] });
+                  {
+                    const pax = Math.min(draft.pax, Math.max(d.free, 1));
+                    const kids = Math.max(0, Math.min(draft.kids, pax - 1));
+                    setDraft({ departureId: d.id, pax, kids, kidAges: draft.kidAges.slice(0, kids), seats: [] });
+                  }
                 }}
               >
                 <div className="flex items-center justify-between">
@@ -291,7 +295,9 @@ export function TripStep({ trip, catalog, departures, draft, setDraft, onWaitlis
               disabled={draft.pax <= 1}
               onClick={() => {
                 haptic();
-                setDraft({ pax: draft.pax - 1, seats: [] });
+                const pax = draft.pax - 1;
+                const kids = Math.min(draft.kids, pax - 1);
+                setDraft({ pax, kids, kidAges: draft.kidAges.slice(0, kids), seats: [] });
               }}
               className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-2 disabled:opacity-35"
             >
@@ -317,7 +323,72 @@ export function TripStep({ trip, catalog, departures, draft, setDraft, onWaitlis
               <Plus size={24} />
             </button>
           </div>
+          {draft.pax >= 2 && <KidsPicker trip={trip} draft={draft} setDraft={setDraft} />}
         </section>
+      )}
+    </div>
+  );
+}
+
+// Діти до 12 років: кількість і вік кожної дитини (для автокрісла)
+function KidsPicker({ trip, draft, setDraft }: { trip: Trip; draft: Draft; setDraft: (d: Partial<Draft>) => void }) {
+  const maxKids = draft.pax - 1;
+  const maxAge = childMaxAge(trip);
+  const setKids = (n: number) => {
+    haptic();
+    const ages = draft.kidAges.slice(0, n);
+    while (ages.length < n) ages.push(null);
+    setDraft({ kids: n, kidAges: ages });
+  };
+  return (
+    <div className="card mt-3 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-[15px] font-extrabold">
+            <Baby size={18} className="text-accent" /> З них дітей до {maxAge + 1} років
+          </div>
+          <div className="mt-0.5 text-[13px] font-semibold text-muted">
+            Дитячий квиток: <b className="text-accent">{childPrice(trip)} €</b> замість {trip.price} €
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" aria-label="Менше дітей" disabled={draft.kids <= 0} onClick={() => setKids(draft.kids - 1)}
+            className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 disabled:opacity-35">
+            <Minus size={20} />
+          </button>
+          <div className="w-6 text-center text-xl font-extrabold">{draft.kids}</div>
+          <button type="button" aria-label="Більше дітей" disabled={draft.kids >= maxKids} onClick={() => setKids(draft.kids + 1)}
+            className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-accent-ink disabled:opacity-35">
+            <Plus size={20} />
+          </button>
+        </div>
+      </div>
+      {draft.kids > 0 && (
+        <div className="mt-4 space-y-2.5 fade-in">
+          <p className="text-[13px] leading-snug font-semibold text-muted">Вік потрібен, щоб підготувати дитяче автокрісло або бустер.</p>
+          {Array.from({ length: draft.kids }, (_, i) => (
+            <label key={i} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 px-4 py-2.5">
+              <span className="text-[15px] font-bold">{draft.kids > 1 ? `Вік ${i + 1}-ї дитини` : 'Вік дитини'}</span>
+              <select
+                value={draft.kidAges[i] ?? ''}
+                onChange={(e) => {
+                  const ages = [...draft.kidAges];
+                  while (ages.length < draft.kids) ages.push(null);
+                  ages[i] = e.target.value === '' ? null : Number(e.target.value);
+                  setDraft({ kidAges: ages });
+                }}
+                className="rounded-lg border-2 border-line bg-surface px-3 py-1.5 text-[15px] font-bold"
+              >
+                <option value="">— оберіть —</option>
+                {Array.from({ length: maxAge + 1 }, (_, a) => (
+                  <option key={a} value={a}>
+                    {a === 0 ? 'до 1 року' : `${a} ${a === 1 ? 'рік' : a < 5 ? 'роки' : 'років'}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -555,7 +626,7 @@ export function ReviewStep({ trip, dep, draft, catalog, total, onPrivacy }: { tr
   const rows: [string, string][] = [
     ['Поїздка', `${trip.flag} ${trip.short_title}`],
     ['Дата', dep.label],
-    ['Пасажирів', String(draft.pax)],
+    ['Пасажирів', draft.kids ? `${draft.pax} (з них дітей: ${draft.kids}, вік ${draft.kidAges.slice(0, draft.kids).join(', ')})` : String(draft.pax)],
     ['Місця', draft.auto ? 'будь-які вільні' : [...draft.seats].sort((a, b) => a - b).join(', ')],
     ['Звідки', `${city}, ${draft.address}, ${draft.postcode.toUpperCase()}${draft.district.trim() ? `, район ${draft.district.trim()}` : ''}`],
     ['Ім’я', draft.name],
@@ -576,10 +647,18 @@ export function ReviewStep({ trip, dep, draft, catalog, total, onPrivacy }: { tr
       <div className="card space-y-1.5 p-4 text-[15px] font-semibold">
         <div className="flex justify-between">
           <span className="text-muted">
-            {trip.price} € × {draft.pax}
+            {trip.price} € × {draft.pax - draft.kids}
           </span>
-          <span>{trip.price * draft.pax} €</span>
+          <span>{trip.price * (draft.pax - draft.kids)} €</span>
         </div>
+        {draft.kids > 0 && (
+          <div className="flex justify-between">
+            <span className="text-muted">
+              👶 {childPrice(trip)} € × {draft.kids}
+            </span>
+            <span>{childPrice(trip) * draft.kids} €</span>
+          </div>
+        )}
         {fee > 0 && (
           <div className="flex justify-between">
             <span className="text-muted">Вибір місць</span>
