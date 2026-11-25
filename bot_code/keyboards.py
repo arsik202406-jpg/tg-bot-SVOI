@@ -47,6 +47,10 @@ class WaitCb(CallbackData, prefix="w"):
     trip: str
 
 
+class GalleryCb(CallbackData, prefix="gal"):
+    trip: str
+
+
 class ProposeCb(CallbackData, prefix="pd"):
     trip: str
 
@@ -116,9 +120,11 @@ def trips_kb(rows: list[tuple[dict, str | None]]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
-def trip_kb(trip_id: str, deps: list[tuple[int, str, int]]) -> InlineKeyboardMarkup:
+def trip_kb(trip_id: str, deps: list[tuple[int, str, int]], photos: int = 0) -> InlineKeyboardMarkup:
     """deps: (id, підпис дати, вільних місць)."""
     kb = []
+    if photos > 1:
+        kb.append([IB(text=f"🖼 Більше фото ({photos})", callback_data=GalleryCb(trip=trip_id).pack())])
     for dep_id, label, free in deps:
         if free > 0:
             kb.append([IB(text=f"📅 {label} · вільно {free}", callback_data=DepCb(dep=dep_id).pack())])

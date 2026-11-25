@@ -10,7 +10,7 @@ from aiogram import Bot, F, Router
 from aiogram.filters import CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
+from aiogram.types import CallbackQuery, InputMediaPhoto, Message, ReplyKeyboardRemove
 from sqlalchemy import select
 
 from .. import catalog as cat
@@ -215,9 +215,9 @@ async def send_trip_card(message: Message, trip_id: str):
     async with Session() as s:
         deps = await upcoming_departures(s, trip_id)
         rows = [(d.id, cat.fmt_departure(d.date, trip["days"]), free_count(d)) for d in deps]
-        photo = await trip_photo(s, trip_id)
+        photo, rel = await trip_photo(s, trip_id)
     caption = trip_caption(trip, bool(rows))
-    markup = kb.trip_kb(trip_id, rows)
+    markup = kb.trip_kb(trip_id, rows, photos=len(cat.gallery(trip_id)))
     me = await message.bot.me()
     share = ("https://t.me/share/url?url=" + quote(f"https://t.me/{me.username}?start=trip_{trip_id}") +
              "&text=" + quote(f"Поїхали разом: {trip['flag']} {trip['short_title']} 🚐"))
@@ -229,7 +229,8 @@ async def send_trip_card(message: Message, trip_id: str):
     markup.inline_keyboard.insert(len(markup.inline_keyboard) - 1, extra)
     if photo:
         try:
-            await message.answer_photo(photo, caption=caption, reply_markup=markup)
+            sent = await message.answer_photo(photo, caption=caption, reply_markup=markup)
+            cat.remember_photo(rel, sent)
             return
         except Exception:  # noqa: BLE001 — фото недоступне, показуємо текстом
             pass
@@ -240,6 +241,29 @@ async def send_trip_card(message: Message, trip_id: str):
 async def cb_trip(callback: CallbackQuery, callback_data: kb.TripCb, state: FSMContext):
     await callback.answer()
     await state.clear()
+    await send_trip_card(callback.message, callback_data.trip)
+
+
+@router.callback_query(kb.GalleryCb.filter())
+async def cb_gallery(callback: CallbackQuery, callback_data: kb.GalleryCb):
+    """Альбом фото локацій, а під ним — знову картка туру з кнопками."""
+    await callback.answer()
+    trip = cat.TRIPS_BY_ID.get(callback_data.trip)
+    files = cat.gallery(callback_data.trip)[:10]
+    if not trip or not files:
+        return
+    try:
+        await callback.message.delete()
+    except Exception:  # noqa: BLE001
+        pass
+    album = [InputMediaPhoto(media=cat.photo_input(f), caption=f"📸 {trip['flag']} {escape(trip['short_title'])}" if i == 0 else None)
+             for i, f in enumerate(files)]
+    try:
+        sent = await callback.message.answer_media_group(album)
+        for f, m in zip(files, sent):
+            cat.remember_photo(f, m)
+    except Exception:  # noqa: BLE001
+        log.exception("Не вдалося надіслати альбом %s", callback_data.trip)
     await send_trip_card(callback.message, callback_data.trip)
 
 

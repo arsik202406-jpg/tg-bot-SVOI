@@ -309,13 +309,17 @@ async def trip_photos(session: AsyncSession) -> dict[str, str]:
     return {r.trip_id: r.file_id for r in rows}
 
 
-async def trip_photo(session: AsyncSession, trip_id: str) -> str | None:
-    """file_id власного фото або URL зі стандартного каталогу (або None)."""
+async def trip_photo(session: AsyncSession, trip_id: str):
+    """Обкладинка туру: (фото для Telegram, шлях локального файлу або None).
+    Фото, завантажене адміном, має пріоритет над фото з каталогу."""
     row = await session.get(TripPhoto, trip_id)
     if row:
-        return row.file_id
-    from .catalog import TRIPS_BY_ID
-    return TRIPS_BY_ID.get(trip_id, {}).get("image") or None
+        return row.file_id, None
+    from .catalog import gallery, photo_input
+    files = gallery(trip_id)
+    if files:
+        return photo_input(files[0]), files[0]
+    return None, None
 
 
 async def media_list(session: AsyncSession, key: str) -> list[Media]:
