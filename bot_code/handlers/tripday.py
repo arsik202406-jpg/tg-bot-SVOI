@@ -61,37 +61,63 @@ def checklist(trip: dict, b: Booking | None = None) -> str:
 
 
 async def memo_text(b: Booking, dep: Departure) -> str:
+    """Пам'ятка напередодні ввечері: час посадки, погода, що взяти."""
     trip = cat.TRIPS_BY_ID.get(dep.trip_id, {})
     first = escape((b.name or "").split()[0]) if b.name else ""
-    lines = [f"☀️ <b>Доброго ранку{', ' + first if first else ''}!</b>",
-             f"Сьогодні їдемо: {trip.get('flag', '')} <b>{escape(trip.get('short_title', ''))}</b>", ""]
+    lines = [f"🌙 <b>Добрий вечір{', ' + first if first else ''}!</b>",
+             f"Завтра їдемо: {trip.get('flag', '')} <b>{escape(trip.get('short_title', ''))}</b>", ""]
     if b.pickup_time:
-        lines.append(f"🕐 Посадка о <b>{b.pickup_time}</b>")
+        lines.append(f"🕐 Посадка завтра о <b>{b.pickup_time}</b>")
+    else:
+        lines.append("🕐 Точний час посадки водій напише окремо")
     lines.append(f"📍 {escape(full_address(b))}")
-    lines.append("Водій напише вам, коли виїде, і ще раз — коли буде біля дому.")
+    lines.append("Вранці водій напише, коли виїде до вас, і ще раз — коли буде біля дому.")
     w = await weather_text(trip, dep.date)
     if w:
         lines += ["", w]
     lines += ["", "<b>Не забудьте:</b>", checklist(trip, b), "",
-              "Будьте, будь ласка, біля дому за 5 хвилин до посадки 🙏 Гарної поїздки! 🚐"]
+              "Будьте, будь ласка, біля дому за 5 хвилин до посадки 🙏 Добраніч і до завтра! 🚐"]
     return "\n".join(lines)
 
 
-async def send_memo(bot: Bot, booking_id: int) -> None:
+async def send_memo(bot: Bot, booking_id: int, link: str | None = None) -> bool:
+    """Надіслати пам'ятку один раз. link — кнопка «Група поїздки»."""
     from ..db import job_done
     async with Session() as s:
         b = await s.get(Booking, booking_id)
         if not b or not b.user_id or b.status == "cancelled" or b.attend == "no":
-            return
+            return False
         dep = await s.get(Departure, b.departure_id)
         if dep.status == "cancelled" or not await job_done(s, f"memo:{b.id}"):
-            return
+            return False
+    if link is None:
+        link = await current_link(dep.id)
     text = await memo_text(b, dep)
     try:
         with keep():
-            await bot.send_message(b.user_id, text, disable_web_page_preview=True)
+            await bot.send_message(b.user_id, text, disable_web_page_preview=True,
+                                   reply_markup=join_markup(link) if link else None)
+        return True
     except Exception as e:  # noqa: BLE001
         log.warning("Пам'ятка %s: %s", b.code, e)
+        return False
+
+
+async def send_memos(bot: Bot, dep_id: int, force: bool = False) -> tuple[int, int]:
+    """Пам'ятки всім, у кого вже є час посадки (або всім, якщо force). Повертає (надіслано, чекають часу)."""
+    async with Session() as s:
+        dep = await s.get(Departure, dep_id)
+        await s.refresh(dep, ["bookings"])
+    link = await current_link(dep_id)
+    sent = waiting = 0
+    for b in active_bookings(dep):
+        if not b.user_id or b.attend == "no":
+            continue
+        if not b.pickup_time and not force:
+            waiting += 1
+            continue
+        sent += await send_memo(bot, b.id, link)
+    return sent, waiting
 
 
 # ====================================================================================
@@ -423,13 +449,35 @@ async def cb_join_decision(callback: CallbackQuery, bot: Bot):
 
 # ---------- Тексти для групи ----------
 
-def guide_messages(trip: dict, dep: Departure, weather: str) -> list[str]:
+def walk_url(queries: list[str]) -> str:
+    """Пішохідний маршрут Google Maps через усі точки по черзі."""
+    q = [quote(x) for x in queries]
+    url = f"https://www.google.com/maps/dir/?api=1&travelmode=walking&origin={q[0]}&destination={q[-1]}"
+    if len(q) > 2:
+        url += "&waypoints=" + "%7C".join(q[1:-1])
+    return url
+
+
+CLEANUP_NOTE = ("⚠️ <b>Група тимчасова.</b> Наступного дня після поїздки о 21:00 усі повідомлення й фото тут "
+                "буде видалено, а учасників — прибрано з групи. Фото й відео, які хочете залишити, "
+                "<b>збережіть собі заздалегідь</b> 📲")
+
+
+def _visible_len(html_text: str) -> int:
+    import re
+    from html import unescape
+    return len(unescape(re.sub(r"<[^>]+>", "", html_text)))
+
+
+def guide_posts(trip: dict, dep: Departure, weather: str) -> list[dict]:
+    """Пости для групи поїздки: {'text': HTML, 'photo': шлях або None}. Перший — вступ (закріплюється)."""
     g = cat.GUIDES.get(trip["id"], {})
-    msgs = []
+    posts: list[dict] = []
     head = [f"🚐 <b>Вітаємо в групі поїздки!</b>",
             f"{trip['flag']} <b>{escape(trip['title'])}</b>",
             f"📅 {cat.fmt_departure(dep.date, trip.get('days', 1))}", "",
-            "Тут — програма, усі локації з картами, поради й погода. "
+            "Нижче — програма, а далі кожне місце з фото, адресою на Google Maps і пішохідним маршрутом. "
+            "Вільний час гуляєте самі, тож збережіть собі потрібні точки 🙂 "
             "Водій напише сюди, коли ми на місці, а також час і місце збору.", ""]
     if trip.get("program"):
         head.append("<b>🗓 Програма</b>")
@@ -438,39 +486,59 @@ def guide_messages(trip: dict, dep: Departure, weather: str) -> list[str]:
         head += ["", f"📝 {escape(dep.note)}"]
     if weather:
         head += ["", weather]
-    head += ["", "<b>🎒 Не забудьте</b>", checklist(trip)]
-    msgs.append("\n".join(head))
+    head += ["", "<b>🎒 Не забудьте</b>", checklist(trip), "", CLEANUP_NOTE]
+    posts.append({"text": "\n".join(head), "photo": None})
     for part in g.get("parts", []):
-        lines = [f"📍 <b>{escape(part['title'])}</b>"]
+        lines = [f"📍 <b>{escape(part['title'])}</b>", ""]
         for i, (name, query, tip) in enumerate(part["sights"], 1):
-            lines.append(f'{i}. <a href="{maps_link(query)}">{escape(name)}</a> — {escape(tip)}')
-        msgs.append("\n".join(lines))
+            lines.append(f'{i}. <a href="{maps_link(query)}">{escape(name)}</a> — {escape(tip, quote=False)}')
+        if part.get("walk"):
+            lines += ["", f'🚶 <a href="{walk_url([x[1] for x in part["sights"]])}">Пішохідний маршрут по всіх точках</a>']
+        posts.append({"text": "\n".join(lines), "photo": part.get("photo")})
     tail = []
     if g.get("food"):
-        tail += ["🍽 <b>Що скуштувати</b>", escape(g["food"]), ""]
+        tail += ["🍽 <b>Що скуштувати</b>", escape(g["food"], quote=False), ""]
     if g.get("tips"):
-        tail += ["💡 <b>Корисно знати</b>", escape(g["tips"]), ""]
+        tail += ["💡 <b>Корисно знати</b>", escape(g["tips"], quote=False), ""]
     tail += ["⏰ <b>Час і місце збору</b> водій напише тут, щойно приїдемо. Не запізнюйтесь, будь ласка — "
              "ми чекаємо всіх 🙏",
              f"Загубилися або є питання — пишіть сюди або менеджеру @{escape(settings.MANAGER_USERNAME.lstrip('@'))}"]
-    msgs.append("\n".join(tail))
-    # Telegram: не більше 4096 символів у повідомленні
-    out = []
-    for m in msgs:
-        while len(m) > 4000:
-            cut = m.rfind("\n", 0, 4000)
-            out.append(m[:cut])
-            m = m[cut + 1:]
-        out.append(m)
-    return out
+    posts.append({"text": "\n".join(tail), "photo": None})
+    return posts
+
+
+async def _publish(bot: Bot, chat_id: int, post: dict) -> Message:
+    """Фото з підписом; якщо підпис задовгий (ліміт Telegram — 1024 символи) — фото, а текст окремо."""
+    text, rel = post["text"], post.get("photo")
+    if rel and (cat.PUBLIC_DIR / rel).is_file():
+        if _visible_len(text) <= 1024:
+            m = await bot.send_photo(chat_id, cat.photo_input(rel), caption=text)
+            cat.remember_photo(rel, m)
+            return m
+        m = await bot.send_photo(chat_id, cat.photo_input(rel))
+        cat.remember_photo(rel, m)
+        await bot.send_message(chat_id, text, disable_web_page_preview=True)
+        return m
+    return await bot.send_message(chat_id, text, disable_web_page_preview=True)
 
 
 def group_title(trip: dict, dep: Departure) -> str:
     return f"🚐 SVOI · {trip['short_title']} · {dep.date.strftime('%d.%m')}"[:128]
 
 
-async def open_trip_group(bot: Bot, dep_id: int) -> str | None:
-    """Взяти вільну групу під рейс. Повертає посилання-запрошення або None."""
+def join_markup(link: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[IB(text="👥 Група поїздки: локації та маршрути", url=link)]])
+
+
+async def current_link(dep_id: int) -> str | None:
+    async with Session() as s:
+        row = await s.scalar(select(TripGroup).where(TripGroup.departure_id == dep_id))
+    return row.invite_link if row else None
+
+
+async def open_trip_group(bot: Bot, dep_id: int, send_links: bool = False) -> str | None:
+    """Взяти вільну групу під рейс і наповнити її. Повертає посилання-запрошення або None.
+    Посилання пасажирам зазвичай іде разом із пам'яткою о 18:00; send_links — якщо групу створено вручну пізніше."""
     async with Session() as s:
         dep = await s.get(Departure, dep_id)
         if not dep or dep.status == "cancelled":
@@ -491,14 +559,14 @@ async def open_trip_group(bot: Bot, dep_id: int) -> str | None:
     try:
         await bot.set_chat_title(chat_id, group_title(trip, dep))
         try:
-            await bot.set_chat_description(chat_id, f"{trip['title']} · {cat.fmt_departure(dep.date, trip.get('days', 1))}. "
-                                                     "Група діє до наступного дня після поїздки."[:255])
+            await bot.set_chat_description(chat_id, (f"{trip['title']} · {cat.fmt_departure(dep.date, trip.get('days', 1))}. "
+                                                     "Група тимчасова: наступного дня після поїздки о 21:00 її буде очищено.")[:255])
         except Exception:  # noqa: BLE001 — опис той самий
             pass
         first_id = None
         with keep():
-            for i, text in enumerate(guide_messages(trip, dep, weather)):
-                m = await bot.send_message(chat_id, text, disable_web_page_preview=True)
+            for i, post in enumerate(guide_posts(trip, dep, weather)):
+                m = await _publish(bot, chat_id, post)
                 if i == 0:
                     first_id = m.message_id
                     await bot.pin_chat_message(chat_id, m.message_id, disable_notification=True)
@@ -518,31 +586,44 @@ async def open_trip_group(bot: Bot, dep_id: int) -> str | None:
         row.invite_link, row.first_message_id, row.members = link.invite_link, first_id, ""
         await s.commit()
 
-    markup = InlineKeyboardMarkup(inline_keyboard=[[IB(text="👥 Приєднатися до групи", url=link.invite_link)]])
     sent = 0
-    for b in active_bookings(dep):
-        if not b.user_id or b.attend == "no":
-            continue
-        try:
-            with keep():
-                await bot.send_message(
-                    b.user_id,
-                    f"👥 <b>Група поїздки</b> {trip['flag']} {escape(trip['short_title'])}\n\n"
-                    "Там уже є програма, усі локації з картами, погода й поради, куди піти. "
-                    "Водій напише в групу, коли ми на місці, і час збору.\n\n"
-                    "Натисніть кнопку й надішліть запит — я одразу вас пущу 🙂",
-                    reply_markup=markup)
-            sent += 1
-        except Exception as e:  # noqa: BLE001
-            log.warning("Посилання на групу %s: %s", b.code, e)
+    if send_links:
+        for b in active_bookings(dep):
+            if not b.user_id or b.attend == "no":
+                continue
+            try:
+                with keep():
+                    await bot.send_message(
+                        b.user_id,
+                        f"👥 <b>Група поїздки</b> {trip['flag']} {escape(trip['short_title'])}\n\n"
+                        "Там усі локації з фото, картами й пішохідними маршрутами, погода й поради. "
+                        "Водій напише в групу, коли ми на місці, і час збору.\n\n"
+                        "Натисніть кнопку й надішліть запит — я одразу вас пущу 🙂",
+                        reply_markup=join_markup(link.invite_link))
+                sent += 1
+            except Exception as e:  # noqa: BLE001
+                log.warning("Посилання на групу %s: %s", b.code, e)
     no_tg = [b for b in active_bookings(dep) if not b.user_id and b.attend != "no"]
     extra = ""
     if no_tg:
         extra = ("\n\nБез Telegram (надішліть їм посилання самі, запит підтвердите кнопкою): "
                  + ", ".join(escape(b.name) for b in no_tg))
-    await notify_admins(bot, f"👥 Група поїздки готова: {escape(departure_label(dep))}\n"
-                             f"Посилання надіслано {sent} пасажирам.\n{link.invite_link}{extra}")
+    sent_line = f"Посилання надіслано {sent} пасажирам." if send_links else "Пасажири отримають посилання разом із пам'яткою о 18:00."
+    await notify_admins(bot, f"👥 Група поїздки готова: {escape(departure_label(dep))}\n{sent_line}\n{link.invite_link}{extra}")
     return link.invite_link
+
+
+async def group_reminder(bot: Bot, dep_id: int, kind: str) -> None:
+    """Повідомлення в групу: «thanks» — увечері в день повернення, «cleanup» — зранку перед очищенням."""
+    texts = {
+        "thanks": ("🙏 <b>Дякуємо, що були з нами!</b>\nДіліться тут фото й враженнями 📸\n\n"
+                   "⚠️ Завтра о 21:00 групу буде очищено: усі повідомлення й фото зникнуть, а учасників буде прибрано. "
+                   "Збережіть собі все, що хочете залишити."),
+        "cleanup": ("⏰ <b>Нагадування:</b> сьогодні о 21:00 групу буде очищено — усі фото, відео й повідомлення зникнуть.\n"
+                    "Встигніть завантажити собі все потрібне 📲\n\n"
+                    "Сподобалась поїздка? Ми надішлемо вам коротке опитування — будемо дуже вдячні за відгук ⭐"),
+    }
+    await post_to_group(bot, dep_id, texts[kind])
 
 
 async def close_trip_group(bot: Bot, chat_id: int) -> None:
@@ -649,14 +730,18 @@ async def cb_group_actions(callback: CallbackQuery, bot: Bot):
             row = await s.scalar(select(TripGroup).where(TripGroup.departure_id == dep_id))
         text = (f"👥 <b>Група поїздки</b> · {escape(departure_label(dep))}\n\n"
                 + ("Група готова, пасажири отримали посилання." if row else
-                   "Група створюється автоматично напередодні о 18:00. Можна створити й зараз.")
+                   "Група створюється автоматично напередодні о 18:00, посилання пасажири отримують разом із пам'яткою. "
+                   "Можна створити й зараз.")
                 + "\nПісля поїздки, наступного дня о 21:00, група очищується сама.")
         rows = await group_buttons(dep_id) + [[IB(text="⬅️ Рейс", callback_data=kb.AdmCb(action="dep", id=dep_id).pack())]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         return
     if action == "open":
         await callback.answer("Готую групу…")
-        link = await open_trip_group(bot, dep_id)
+        async with Session() as s:
+            d = await s.get(Departure, dep_id)
+        eve18 = datetime.combine(d.date - timedelta(days=1), datetime.min.time(), tzinfo=cat.TZ).replace(hour=18)
+        link = await open_trip_group(bot, dep_id, send_links=datetime.now(cat.TZ) >= eve18)
         if not link:
             await notify_admins(bot, "⚠️ Немає вільної групи поїздки.\n\n" + HOW_TO)
     elif action == "close":
