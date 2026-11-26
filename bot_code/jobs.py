@@ -5,10 +5,11 @@
   Якщо маршрут ще не затверджено — нагадування адміну.
 • Напередодні о 21:00: адміну список тих, хто не відповів.
 • Наступного дня після поїздки о 11:00: прохання оцінити поїздку.
-• Напередодні о 18:00: група поїздки (програма, локації, погода) і посилання пасажирам.
-• У день поїздки за годину до посадки: пам'ятка з погодою й нагадуванням про паспорт/ID.
+• Напередодні о 18:00: група поїздки (програма, локації з фото й маршрутами, погода) і пам'ятка
+  пасажирам: час посадки, погода, паспорт/ID — разом із посиланням на групу.
 • За 30 хв до першої посадки: адміну кнопка «Режим водія».
-• Наступного дня після поїздки о 21:00: група поїздки очищується й звільняється.
+• Увечері в день повернення — подяка в групі, наступного дня о 10:00 — нагадування зберегти фото,
+  о 21:00 — група очищується й звільняється.
 • Щонеділі о 20:00: резервна копія всіх бронювань (таблиця) адміну.
 • Щоночі: телефон і адреса у бронюваннях старших за 6 місяців видаляються.
 Кожна дія записується в job_log, тож після перезапуску бот нічого не надішле двічі.
@@ -124,18 +125,38 @@ async def _departure_jobs(bot: Bot, dep: Departure, now: datetime) -> None:
                     lines += [f"• {escape(b.name)} — <code>{escape(b.phone)}</code>" for b in silent]
                     await notify_admins(bot, "\n".join(lines))
 
-    # 5) Група поїздки — напередодні о 18:00
+    # 5) Напередодні о 18:00: група поїздки + пам'ятка (час посадки, погода, що взяти) з посиланням на групу
     active = [b for b in bookings if b.attend != "no"]
-    if active and at(eve, 18) <= now < at(dep.date, 12) and dep.status != "cancelled":
-        from .handlers.tripday import HOW_TO, open_trip_group
+    if active and at(eve, 18) <= now < at(dep.date, 6) and dep.status != "cancelled":
+        from .handlers.tripday import HOW_TO, open_trip_group, send_memos
         link = await open_trip_group(bot, dep.id)
         if not link:
             async with Session() as s:
                 if await job_done(s, f"nogroup:{dep.id}"):
                     await notify_admins(bot, f"👥 Завтра поїздка {label}, але немає вільної групи поїздки.\n\n{HOW_TO}")
+        # без затвердженого маршруту часу посадки ще немає: чекаємо до 21:00, далі шлемо без часу
+        sent, waiting = await send_memos(bot, dep.id, force=now >= at(eve, 21))
+        if waiting:
+            async with Session() as s:
+                if await job_done(s, f"memo_wait:{dep.id}"):
+                    await notify_admins(bot, f"🕐 {label}\n{waiting} пасажирів ще не отримали пам'ятку, бо немає часу посадки. "
+                                             "Затвердіть маршрут — пам'ятка з часом піде одразу. Якщо до 21:00 маршруту не буде, "
+                                             "надішлю без часу.",
+                                        InlineKeyboardMarkup(inline_keyboard=[[IB(
+                                            text="🗺 Маршрут і час збору", callback_data=f"o:route:{dep.id}")]]))
 
-    # 6) День поїздки: пам'ятка пасажирам і «Режим водія» адміну — точно за часом посадки
+    # 6) День поїздки: кнопка «Режим водія» адміну — за 30 хв до першої посадки
     plan_day(bot, dep, now)
+
+    # 7) Група: подяка ввечері в день повернення й нагадування зранку перед очищенням
+    from .handlers.tripday import group_reminder, trip_end
+    end = trip_end(dep)
+    for kind, start, stop in (("thanks", at(end, 21), at(end + timedelta(days=1), 10)),
+                              ("cleanup", at(end + timedelta(days=1), 10), at(end + timedelta(days=1), 21))):
+        if start <= now < stop and dep.status != "cancelled":
+            async with Session() as s:
+                if await job_done(s, f"group_{kind}:{dep.id}"):
+                    await group_reminder(bot, dep.id, kind)
 
     # 4) Відгук — наступного дня після завершення поїздки о 11:00
     end = dep.date + timedelta(days=days - 1)
@@ -185,20 +206,13 @@ def _hhmm(d: date, value: str | None) -> datetime | None:
 
 
 def plan_day(bot: Bot, dep: Departure, now: datetime) -> None:
-    """Запланувати пам'ятки (за годину до посадки) і кнопку «Режим водія» (за 30 хв до першої посадки)."""
+    """Запланувати кнопку «Режим водія» за 30 хв до першої посадки."""
     if dep.status == "cancelled" or not (now.date() <= dep.date <= now.date() + timedelta(days=1)):
         return
-    from .handlers.tripday import morning_driver, send_memo
+    from .handlers.tripday import morning_driver
     trip = cat.TRIPS_BY_ID.get(dep.trip_id, {})
     default = _hhmm(dep.date, trip.get("pickup_time")) or at(dep.date, 6)
-    starts = []
-    for b in active_bookings(dep):
-        if b.attend == "no":
-            continue
-        pick = _hhmm(dep.date, b.pickup_time) or default
-        starts.append(pick)
-        if b.user_id and now < pick:
-            plan_at(f"memo:{b.id}", pick - timedelta(minutes=60), partial(send_memo, bot, b.id))
+    starts = [_hhmm(dep.date, b.pickup_time) or default for b in active_bookings(dep) if b.attend != "no"]
     if dep.start_time:
         starts.append(_hhmm(dep.date, dep.start_time) or default)
     if starts and now < min(starts) + timedelta(hours=2):
@@ -206,13 +220,19 @@ def plan_day(bot: Bot, dep: Departure, now: datetime) -> None:
 
 
 async def replan(bot: Bot, dep_id: int) -> None:
-    """Після затвердження маршруту — перепланувати пам'ятки під новий час посадки."""
+    """Після затвердження маршруту: перепланувати «Режим водія», а якщо вже після 18:00 напередодні —
+    одразу надіслати пам'ятки тим, хто їх ще не отримав."""
     async with Session() as s:
         dep = await s.get(Departure, dep_id)
         if dep:
             await s.refresh(dep, ["bookings"])
-    if dep:
-        plan_day(bot, dep, datetime.now(cat.TZ))
+    if not dep:
+        return
+    now = datetime.now(cat.TZ)
+    plan_day(bot, dep, now)
+    if at(dep.date - timedelta(days=1), 18) <= now < at(dep.date, 6):
+        from .handlers.tripday import send_memos
+        await send_memos(bot, dep_id)
 
 
 async def _release_groups(bot: Bot, now: datetime) -> None:

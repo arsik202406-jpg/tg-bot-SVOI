@@ -19,6 +19,21 @@
    "file": "4.jpg",
    "author": "edmondlafoto",
    "source": "https://pixabay.com/photos/paris-seine-peniche-city-3234472/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "robertahillcanada",
+   "source": "https://pixabay.com/photos/fountain-water-architecture-splash-109367/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "lgmedia04",
+   "source": "https://pixabay.com/photos/paris-city-tourism-boat-chateau-6872290/"
+  },
+  {
+   "file": "parts/3.jpg",
+   "author": "designerpoint",
+   "source": "https://pixabay.com/photos/paris-louvre-museum-pyramid-7159870/"
   }
  ],
  "etretat_paris": [
@@ -41,6 +56,16 @@
    "file": "4.jpg",
    "author": "CJMM",
    "source": "https://pixabay.com/photos/paris-night-scene-france-city-4793193/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "TonyKnight",
+   "source": "https://pixabay.com/photos/france-normandy-etretat-cliffs-4288103/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "nuno_lopes",
+   "source": "https://pixabay.com/photos/eiffel-tower-france-paris-landscape-975004/"
   }
  ],
  "alsace_strasbourg": [
@@ -63,6 +88,16 @@
    "file": "4.jpg",
    "author": "Konevi",
    "source": "https://pixabay.com/photos/the-church-cathedral-religion-4682249/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "Konevi",
+   "source": "https://pixabay.com/photos/city-date-architectural-urban-old-4351840/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "pierre9x6",
+   "source": "https://pixabay.com/photos/colmar-alsace-france-house-4730644/"
   }
  ],
  "neuschwanstein": [
@@ -85,6 +120,16 @@
    "file": "4.jpg",
    "author": "OrcaTec",
    "source": "https://pixabay.com/photos/partnachklamm-clammy-flow-3642136/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "derwiki",
+   "source": "https://pixabay.com/photos/fairytale-neuschwanstein-castle-532850/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "OrcaTec",
+   "source": "https://pixabay.com/photos/clammy-partnachklamm-3642135/"
   }
  ],
  "berlin_dresden": [
@@ -107,6 +152,16 @@
    "file": "4.jpg",
    "author": "analogicus",
    "source": "https://pixabay.com/photos/dresden-germany-cityscape-saxony-5347387/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "nikolaus_bader",
+   "source": "https://pixabay.com/photos/brand-front-of-the-brandenburg-gate-5117579/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "Melmak",
+   "source": "https://pixabay.com/photos/woman-church-city-square-dresden-1252472/"
   }
  ],
  "legoland_germany": [
@@ -129,6 +184,11 @@
    "file": "4.jpg",
    "author": "Sanshiro",
    "source": "https://pixabay.com/photos/childhood-memory-child-memories-2503152/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "MARKTPLATZRehburg-Loccum",
+   "source": "https://pixabay.com/photos/lego-legoland-copenhagen-nyhavn-2714098/"
   }
  ],
  "stuttgart_tour": [
@@ -151,6 +211,16 @@
    "file": "4.jpg",
    "author": "leandro_monsieur",
    "source": "https://pixabay.com/photos/vehicle-car-sports-porsche-4036203/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "jplenio",
+   "source": "https://pixabay.com/photos/automobile-car-salon-salon-3670432/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "BeckerFilmproduktion",
+   "source": "https://pixabay.com/photos/stuttgart-germany-water-fountain-3804684/"
   }
  ],
  "europa_park": [
@@ -173,6 +243,11 @@
    "file": "4.jpg",
    "author": "whitealix",
    "source": "https://pixabay.com/photos/theme-park-theme-park-ride-6592969/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "ignartonosbg",
+   "source": "https://pixabay.com/photos/roller-coaster-theme-park-7942853/"
   }
  ],
  "eltz_cochem_mosel": [
@@ -195,6 +270,21 @@
    "file": "4.jpg",
    "author": "fantareis",
    "source": "https://pixabay.com/photos/suspension-bridge-hunsr%C3%BCck-hike-2644245/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "ThomasSeidel",
+   "source": "https://pixabay.com/photos/burgeltz-moselle-castle-2269551/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "TreptowerAlex",
+   "source": "https://pixabay.com/photos/germany-geierley-suspension-bridge-3669503/"
+  },
+  {
+   "file": "parts/3.jpg",
+   "author": "MariaFelde",
+   "source": "https://pixabay.com/photos/city-castle-germany-europe-7423213/"
   }
  ],
  "heidelberg_baden": [
@@ -217,6 +307,16 @@
    "file": "4.jpg",
    "author": "MaKrieger",
    "source": "https://pixabay.com/photos/heidelberg-bridge-river-city-6791485/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "ChiemSeherin",
+   "source": "https://pixabay.com/photos/heidelberg-castle-neckar-historical-4877504/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "photosforyou",
+   "source": "https://pixabay.com/photos/baden-baden-waterfall-park-nature-3556193/"
   }
  ],
  "amsterdam": [
@@ -239,6 +339,16 @@
    "file": "4.jpg",
    "author": "iulian_ursache",
    "source": "https://pixabay.com/photos/canal-boats-buildings-reflection-5488271/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "myeclecticself",
+   "source": "https://pixabay.com/photos/house-cottage-village-home-6959399/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "1919021",
+   "source": "https://pixabay.com/photos/amsterdam-night-canal-evening-1150319/"
   }
  ],
  "zaandam_sea_amsterdam": [
@@ -261,6 +371,21 @@
    "file": "4.jpg",
    "author": "Rianne_SchillerMclean",
    "source": "https://pixabay.com/photos/amsterdam-channels-houses-9936659/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "Nel_Botha",
+   "source": "https://pixabay.com/photos/amsterdam-zaanse-schans-windmill-4457557/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "pixel2013",
+   "source": "https://pixabay.com/photos/pier-mood-dusk-netherlands-holland-7582627/"
+  },
+  {
+   "file": "parts/3.jpg",
+   "author": "MemoryCatcher",
+   "source": "https://pixabay.com/photos/buildings-amsterdam-historic-6778915/"
   }
  ],
  "brussels": [
@@ -283,6 +408,16 @@
    "file": "4.jpg",
    "author": "dimitrisvetsikas1969",
    "source": "https://pixabay.com/photos/belgium-brussels-atomium-entrance-3675639/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "dimitrisvetsikas1969",
+   "source": "https://pixabay.com/photos/atomium-brussels-travel-landmark-4035100/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "dimitrisvetsikas1969",
+   "source": "https://pixabay.com/photos/belgium-brussels-grand-place-3590656/"
   }
  ],
  "bruges": [
@@ -305,6 +440,16 @@
    "file": "4.jpg",
    "author": "2427999",
    "source": "https://pixabay.com/photos/belgium-antwerp-office-building-1748927/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "LVER",
+   "source": "https://pixabay.com/photos/harbor-masters-office-4765838/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "pixel2013",
+   "source": "https://pixabay.com/photos/belfry-tower-bruges-canal-channel-2611575/"
   }
  ],
  "liechtenstein": [
@@ -327,6 +472,21 @@
    "file": "4.jpg",
    "author": "webentwicklerin",
    "source": "https://pixabay.com/photos/lake-constance-bregenz-riverbank-4948878/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "Leonhard_Niederwimmer",
+   "source": "https://pixabay.com/photos/castle-fortress-keep-liechtenstein-7581492/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "2780243",
+   "source": "https://pixabay.com/photos/city-lake-constance-austria-3699923/"
+  },
+  {
+   "file": "parts/3.jpg",
+   "author": "maxmann",
+   "source": "https://pixabay.com/photos/lindau-lake-constance-port-1410031/"
   }
  ],
  "swiss_rhine_zurich": [
@@ -349,6 +509,21 @@
    "file": "4.jpg",
    "author": "hpgruesen",
    "source": "https://pixabay.com/photos/rhine-falls-schaffhausen-1344623/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "xuuxuu",
+   "source": "https://pixabay.com/photos/schaffhausen-waterfall-water-heaven-66012/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "ChiemSeherin",
+   "source": "https://pixabay.com/photos/building-boats-zurich-cityscape-7616202/"
+  },
+  {
+   "file": "parts/3.jpg",
+   "author": "suju-foto",
+   "source": "https://pixabay.com/photos/lucerne-switzerland-chapel-bridge-4340262/"
   }
  ],
  "swiss_aare_bern": [
@@ -371,6 +546,21 @@
    "file": "4.jpg",
    "author": "pasja1000",
    "source": "https://pixabay.com/photos/the-glacier-trail-mountains-tourism-6384916/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "suju-foto",
+   "source": "https://pixabay.com/photos/canyon-water-stream-flow-rock-5310791/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "nextvoyage",
+   "source": "https://pixabay.com/photos/switzerland-lauterbrunnen-mountains-5028117/"
+  },
+  {
+   "file": "parts/3.jpg",
+   "author": "ykaiavu",
+   "source": "https://pixabay.com/photos/architecture-cathedral-gothic-7830295/"
   }
  ],
  "cote_dazur": [
@@ -393,6 +583,21 @@
    "file": "4.jpg",
    "author": "pierre9x6",
    "source": "https://pixabay.com/photos/nice-france-sea-mediterranean-4519327/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "ausdiemaus",
+   "source": "https://pixabay.com/photos/promenade-beach-sea-vacation-sand-7264641/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "Olga_Fil",
+   "source": "https://pixabay.com/photos/town-travel-tourism-sunset-monaco-6809666/"
+  },
+  {
+   "file": "parts/3.jpg",
+   "author": "MonacoCannes",
+   "source": "https://pixabay.com/photos/water-sea-seashore-travel-beach-3298213/"
   }
  ],
  "mont_saint_michel": [
@@ -415,6 +620,16 @@
    "file": "4.jpg",
    "author": "ykaiavu",
    "source": "https://pixabay.com/photos/city-seaside-town-ocean-picturesque-7435376/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "Paul_Henri",
+   "source": "https://pixabay.com/photos/sunset-water-evening-sky-4353170/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "ThierryBEUVE",
+   "source": "https://pixabay.com/photos/pier-bridge-structure-ramparts-sea-5711622/"
   }
  ],
  "como_milan": [
@@ -437,6 +652,16 @@
    "file": "4.jpg",
    "author": "GPoulsen",
    "source": "https://pixabay.com/photos/lake-lake-como-trees-sunburst-7767623/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "Mphoto48",
+   "source": "https://pixabay.com/photos/italy-bellagio-port-water-3804261/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "ShenXin",
+   "source": "https://pixabay.com/photos/milan-cathedral-church-architecture-2436458/"
   }
  ],
  "prague": [
@@ -459,6 +684,21 @@
    "file": "4.jpg",
    "author": "Duernsteiner",
    "source": "https://pixabay.com/photos/charles-bridge-prague-czech-republic-5568178/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "pierre9x6",
+   "source": "https://pixabay.com/photos/prague-cathedral-architecture-4533455/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "Zef51",
+   "source": "https://pixabay.com/photos/charles-bridge-prague-dusk-city-5039256/"
+  },
+  {
+   "file": "parts/3.jpg",
+   "author": "iankelsall1",
+   "source": "https://pixabay.com/photos/prague-city-architecture-tourism-4794636/"
   }
  ],
  "salzburg_hallstatt": [
@@ -481,6 +721,16 @@
    "file": "4.jpg",
    "author": "Turenza",
    "source": "https://pixabay.com/photos/mirabel-gardens-austria-salzburg-963781/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "TomasHa73",
+   "source": "https://pixabay.com/photos/houses-buildings-village-homes-6527892/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "Makalu",
+   "source": "https://pixabay.com/photos/austria-salzburg-panorama-3753979/"
   }
  ],
  "bruges_ghent_brussels": [
@@ -503,6 +753,21 @@
    "file": "4.jpg",
    "author": "dimitrisvetsikas1969",
    "source": "https://pixabay.com/photos/belgium-brussels-grand-place-3590638/"
+  },
+  {
+   "file": "parts/1.jpg",
+   "author": "ErinSummer",
+   "source": "https://pixabay.com/photos/brugge-bruges-belgium-architecture-5278796/"
+  },
+  {
+   "file": "parts/2.jpg",
+   "author": "dendoktoor",
+   "source": "https://pixabay.com/photos/castle-middle-ages-historic-building-7298867/"
+  },
+  {
+   "file": "parts/3.jpg",
+   "author": "dimitrisvetsikas1969",
+   "source": "https://pixabay.com/photos/belgium-brussels-grand-place-3707925/"
   }
  ]
 }
